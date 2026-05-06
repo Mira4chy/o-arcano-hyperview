@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>O Arcano · Codex</title>
+    <meta name="description" content="O Arcano — codex de campanha de RPG dark fantasy. Magia viva, mana morta e sobrevivência.">
+    <script>
+      if (window.location.search.includes("skipIntro")) {
+        document.documentElement.classList.add("skip-intro");
+      }
+    </script>
+    <link rel="icon" href="assets/images/Logo.png" type="image/png">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;600;700&family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="assets/css/styles.css">
+  </head>
+  <body>
+    <canvas id="cosmos" aria-hidden="true"></canvas>
+    <div class="vignette" aria-hidden="true"></div>
+    <div class="grain" aria-hidden="true"></div>
+
+    <div class="intro" id="intro" aria-hidden="true">
+      <div class="intro__sigil">
+        <img src="assets/images/Logo.png" alt="">
+        <div class="intro__ring"></div>
+        <div class="intro__ring intro__ring--2"></div>
+      </div>
+      <div class="intro__text">O · ARCANO</div>
+      <div class="intro__sub">codex de campanha</div>
+    </div>
+
+    <header class="topbar" id="topbar">
+      <div class="topbar__left">
+        <button class="btn-icon topbar__menu" id="menuBtn" aria-label="Alternar menu">
+          <svg viewBox="0 0 24 24" width="20" height="20"><path d="M3 6h18M3 12h18M3 18h18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+        </button>
+        <a href="#/" class="brand" aria-label="O Arcano">
+          <span class="brand__sigil">
+            <img src="assets/images/Logo.png" alt="">
+          </span>
+          <span class="brand__text">
+            <strong>O ARCANO</strong>
+            <small>codex</small>
+          </span>
+        </a>
+      </div>
+
+      <div class="topbar__center">
+        <label class="search">
+          <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><circle cx="11" cy="11" r="7" stroke="currentColor" stroke-width="2" fill="none"/><path d="M21 21l-4.3-4.3" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+          <input type="search" id="globalSearch" placeholder="Buscar em todo o codex..." autocomplete="off">
+          <kbd>/</kbd>
+        </label>
+      </div>
+
+      <div class="topbar__right">
+        <a href="#/" class="btn-ghost" data-route-link="Index">
+          <svg viewBox="0 0 24 24" width="16" height="16"><path d="M3 12L12 4l9 8M5 10v9h4v-6h6v6h4v-9" stroke="currentColor" stroke-width="2" fill="none" stroke-linejoin="round"/></svg>
+          <span>Início</span>
+        </a>
+        <span class="topbar__divider"></span>
+        <span class="version-tag">v1.0 · ALPHA</span>
+      </div>
+    </header>
+
+    <div class="layout" id="appShell">
+      <aside class="sidebar" id="sidebar">
+        <div class="sidebar__head">
+          <span class="sidebar__title">CATEGORIAS</span>
+          <span class="sidebar__count" id="sidebarCount">0</span>
+        </div>
+        <nav class="sidenav" id="sidenav" aria-label="Navegação principal"></nav>
+        <div class="sidebar__footer">
+          <div class="campaign">
+            <div class="campaign__pulse"></div>
+            <div class="campaign__info">
+              <span class="campaign__label">Campanha ativa</span>
+              <strong class="campaign__name">O Arcano</strong>
+              <span class="campaign__meta">Dark Fantasy · BR</span>
+            </div>
+          </div>
+        </div>
+      </aside>
+
+      <main class="main">
+        <div id="view" class="view" aria-live="polite"></div>
+      </main>
+    </div>
+
+    <div class="search-results" id="searchResults" hidden>
+      <div class="search-results__inner"></div>
+    </div>
+
+    <script src="assets/js/cosmos.js" defer></script>
+    <script src="assets/js/content.js" defer></script>
+    <script src="assets/js/app.js" defer></script>
+  </body>
+</html>
