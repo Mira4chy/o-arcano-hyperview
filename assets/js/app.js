@@ -10,9 +10,174 @@
 
   /* Categorias em que o usuário pode criar histórias */
   const CREATABLE_TABS = ['Cenarios', 'Eras', 'Sistemas', 'Mapa', 'Deuses', 'Grupos'];
-  const STORAGE_KEY = 'arcano:userEntries:v1';
-  const INDEX_STORAGE_KEY = 'arcano:indexCustom:v1';
   const isCreatable = (id) => CREATABLE_TABS.includes(id);
+
+  /* ── SUPABASE CLIENT ──────────────────────────── */
+  const cfg = window.ARCANO_CONFIG || {};
+  const supabaseConfigured =
+    cfg.supabaseUrl &&
+    cfg.supabaseAnonKey &&
+    !cfg.supabaseUrl.startsWith('COLE_') &&
+    !cfg.supabaseAnonKey.startsWith('COLE_') &&
+    window.supabase;
+  const sb = supabaseConfigured
+    ? window.supabase.createClient(cfg.supabaseUrl, cfg.supabaseAnonKey)
+    : null;
+  if (!sb) {
+    console.warn('[O Arcano] Supabase não configurado — preencha assets/js/config.js para ativar o salvamento online.');
+  }
+  const BANNERS_BUCKET = 'banners';
+  const ADMIN_EMAIL = cfg.adminEmail || 'admin@arcano.local';
+  const PLAYER_EMAIL = cfg.playerEmail || 'jogador@arcano.local';
+
+  /* ── AUTH STATE ───────────────────────────────── */
+  const auth = {
+    user: null,
+    role: null,
+    isAdmin: false,
+    isPlayer: false
+  };
+
+  function setAuthState(session) {
+    if (session && session.user) {
+      auth.user = session.user;
+      auth.isAdmin = session.user.email === ADMIN_EMAIL;
+      auth.isPlayer = session.user.email === PLAYER_EMAIL;
+      auth.role = auth.isAdmin ? 'admin' : (auth.isPlayer ? 'player' : 'authenticated');
+    } else {
+      auth.user = null;
+      auth.role = null;
+      auth.isAdmin = false;
+      auth.isPlayer = false;
+    }
+    document.body.classList.toggle('is-locked', !auth.user);
+    document.body.classList.toggle('is-admin', auth.isAdmin);
+    document.body.classList.toggle('is-player', auth.isPlayer);
+  }
+
+  /* ── AUTH GATE (tela de login) ────────────────── */
+  function ensureAuthGate() {
+    let gate = document.getElementById('authGate');
+    if (gate) return gate;
+    gate = document.createElement('div');
+    gate.id = 'authGate';
+    gate.className = 'auth-gate';
+    gate.innerHTML = `
+      <div class="auth-gate__bg" aria-hidden="true"></div>
+      <div class="auth-gate__card">
+        <div class="auth-gate__brand">
+          <img src="assets/images/Logo.png" alt="">
+          <h1>O Arcano</h1>
+          <p>Codex de campanha · acesso restrito</p>
+        </div>
+
+        <div class="auth-gate__roles" role="tablist">
+          <button type="button" class="auth-role is-active" data-role="player" role="tab">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 4-7 8-7s8 3 8 7"/></svg>
+            <span>Jogador</span>
+          </button>
+          <button type="button" class="auth-role" data-role="admin" role="tab">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l9 4v6c0 5-4 9-9 10-5-1-9-5-9-10V6l9-4z"/><path d="M9 12l2 2 4-4"/></svg>
+            <span>Mestre</span>
+          </button>
+        </div>
+
+        <form class="auth-gate__form" id="authForm" novalidate>
+          <label class="auth-gate__label">
+            <span>Senha</span>
+            <input type="password" id="authPassword" placeholder="Digite a senha" autocomplete="current-password" required>
+          </label>
+          <button type="submit" class="btn btn-primary auth-gate__submit" id="authSubmit">
+            <span>Entrar</span>
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 5l7 7-7 7"/></svg>
+          </button>
+          <p class="auth-gate__error" id="authError" role="alert"></p>
+        </form>
+      </div>
+    `;
+    document.body.appendChild(gate);
+
+    const roles = gate.querySelectorAll('.auth-role');
+    roles.forEach((b) => {
+      b.addEventListener('click', () => {
+        roles.forEach((x) => x.classList.toggle('is-active', x === b));
+      });
+    });
+
+    const form = gate.querySelector('#authForm');
+    const passInput = gate.querySelector('#authPassword');
+    const errEl = gate.querySelector('#authError');
+    const submitBtn = gate.querySelector('#authSubmit');
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      errEl.textContent = '';
+      const role = gate.querySelector('.auth-role.is-active').dataset.role;
+      const email = role === 'admin' ? ADMIN_EMAIL : PLAYER_EMAIL;
+      const password = passInput.value;
+      if (!password) {
+        errEl.textContent = 'Informe a senha.';
+        return;
+      }
+      submitBtn.disabled = true;
+      submitBtn.querySelector('span').textContent = 'Entrando…';
+      try {
+        const { data, error } = await sb.auth.signInWithPassword({ email, password });
+        if (error) throw error;
+        setAuthState(data.session);
+        gate.classList.add('is-gone');
+        setTimeout(() => gate.remove(), 500);
+        await Promise.all([loadIndexCustom(), loadUserEntries()]);
+        renderRoleBadge();
+        render(true);
+      } catch (err) {
+        console.error(err);
+        errEl.textContent = 'Senha incorreta ou sessão indisponível.';
+        submitBtn.disabled = false;
+        submitBtn.querySelector('span').textContent = 'Entrar';
+      }
+    });
+
+    return gate;
+  }
+
+  /* ── LOGOUT + ROLE BADGE ──────────────────────── */
+  function renderRoleBadge() {
+    const right = document.querySelector('.topbar__right');
+    if (!right) return;
+    let pill = right.querySelector('.role-pill');
+    let logout = right.querySelector('[data-logout]');
+    if (!auth.user) {
+      pill && pill.remove();
+      logout && logout.remove();
+      return;
+    }
+    if (!pill) {
+      pill = document.createElement('span');
+      pill.className = 'role-pill';
+      right.insertBefore(pill, right.firstChild);
+    }
+    pill.dataset.role = auth.role;
+    pill.innerHTML = auth.isAdmin
+      ? '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l9 4v6c0 5-4 9-9 10-5-1-9-5-9-10V6l9-4z"/></svg><strong>MESTRE</strong>'
+      : '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 4-7 8-7s8 3 8 7"/></svg><strong>JOGADOR</strong>';
+
+    if (!logout) {
+      logout = document.createElement('button');
+      logout.type = 'button';
+      logout.className = 'btn-icon';
+      logout.dataset.logout = '1';
+      logout.title = 'Sair';
+      logout.setAttribute('aria-label', 'Sair');
+      logout.innerHTML = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 17l5-5-5-5M21 12H9M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/></svg>';
+      logout.addEventListener('click', async () => {
+        if (!confirm('Sair da sessão?')) return;
+        if (sb) await sb.auth.signOut();
+        location.reload();
+      });
+      right.appendChild(logout);
+    }
+  }
 
   /* ── ICONS (inline SVG, lucide-style) ─────────── */
   const ICONS = {
@@ -86,52 +251,108 @@
     return id;
   }
 
-  /* ── PERSISTENCE ──────────────────────────────── */
-  function loadUserEntries() {
+  /* ── PERSISTENCE (Supabase) ───────────────────── */
+  function rowToEntry(row) {
+    return {
+      id: row.id,
+      tab: row.tab,
+      title: row.title,
+      summary: row.summary || '',
+      image: row.image || '',
+      imagePath: row.image_path || '',
+      bodyHtml: row.body_html || '',
+      createdAt: row.created_at ? new Date(row.created_at).getTime() : Date.now(),
+      isUserCreated: true
+    };
+  }
+
+  async function loadUserEntries() {
+    if (!sb) return;
+    const { data, error } = await sb
+      .from('stories')
+      .select('*')
+      .order('created_at', { ascending: false });
+    if (error) {
+      console.error('Erro ao carregar histórias:', error);
+      return;
+    }
+    (data || []).forEach((row) => {
+      if (!entryById(row.id)) ARCHIVE.entries.push(rowToEntry(row));
+    });
+  }
+
+  async function uploadBanner(file, prefix) {
+    if (!sb || !file) return { url: '', path: '' };
+    const ext = (file.name.split('.').pop() || 'png').toLowerCase().replace(/[^a-z0-9]/g, '');
+    const path = `${prefix}-${Date.now()}.${ext || 'png'}`;
+    const { error } = await sb.storage.from(BANNERS_BUCKET).upload(path, file, {
+      upsert: true,
+      contentType: file.type || 'image/png'
+    });
+    if (error) throw error;
+    const { data } = sb.storage.from(BANNERS_BUCKET).getPublicUrl(path);
+    return { url: data.publicUrl, path };
+  }
+
+  async function removeBanner(path) {
+    if (!sb || !path) return;
     try {
-      const raw = localStorage.getItem(STORAGE_KEY);
-      if (!raw) return;
-      const arr = JSON.parse(raw);
-      if (!Array.isArray(arr)) return;
-      arr.forEach((e) => {
-        if (e && e.id && !entryById(e.id)) ARCHIVE.entries.push(e);
-      });
+      await sb.storage.from(BANNERS_BUCKET).remove([path]);
     } catch (err) {
-      console.warn('Falha ao carregar histórias salvas:', err);
+      console.warn('Falha ao remover imagem do storage:', err);
     }
   }
 
-  function persistUserEntries() {
-    const userEntries = ARCHIVE.entries.filter((e) => e.isUserCreated);
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(userEntries));
-    } catch (err) {
-      alert('Não foi possível salvar a história. O armazenamento do navegador pode estar cheio (imagens muito grandes?).');
-      throw err;
-    }
+  async function persistUserEntry(entry) {
+    if (!sb) throw new Error('Supabase não configurado');
+    const { error } = await sb.from('stories').insert({
+      id: entry.id,
+      tab: entry.tab,
+      title: entry.title,
+      summary: entry.summary || '',
+      image: entry.image || '',
+      image_path: entry.imagePath || '',
+      body_html: entry.bodyHtml || ''
+    });
+    if (error) throw error;
   }
 
-  function loadIndexCustom() {
-    try {
-      const raw = localStorage.getItem(INDEX_STORAGE_KEY);
-      if (!raw) return;
-      const data = JSON.parse(raw);
-      if (!data || typeof data !== 'object') return;
-      Object.assign(ARCHIVE.index, data);
-    } catch (err) {
-      console.warn('Falha ao carregar apresentação personalizada:', err);
-    }
+  async function deleteUserEntry(entry) {
+    if (!sb) throw new Error('Supabase não configurado');
+    const { error } = await sb.from('stories').delete().eq('id', entry.id);
+    if (error) throw error;
+    if (entry.imagePath) await removeBanner(entry.imagePath);
   }
 
-  function persistIndexCustom(patch) {
-    try {
-      const current = JSON.parse(localStorage.getItem(INDEX_STORAGE_KEY) || '{}') || {};
-      const merged = Object.assign(current, patch);
-      localStorage.setItem(INDEX_STORAGE_KEY, JSON.stringify(merged));
-    } catch (err) {
-      alert('Não foi possível salvar a apresentação. Imagem muito grande?');
-      throw err;
+  async function loadIndexCustom() {
+    if (!sb) return;
+    const { data, error } = await sb
+      .from('index_config')
+      .select('*')
+      .eq('id', 1)
+      .maybeSingle();
+    if (error) {
+      console.error('Erro ao carregar apresentação:', error);
+      return;
     }
+    if (!data) return;
+    if (data.title) ARCHIVE.index.title = data.title;
+    if (data.subtitle) ARCHIVE.index.subtitle = data.subtitle;
+    if (data.image) ARCHIVE.index.image = data.image;
+    if (data.image_path) ARCHIVE.index.imagePath = data.image_path;
+    if (data.manifesto_html) ARCHIVE.index.manifestoHtml = data.manifesto_html;
+  }
+
+  async function persistIndexCustom(patch) {
+    if (!sb) throw new Error('Supabase não configurado');
+    const row = { id: 1, updated_at: new Date().toISOString() };
+    if ('title' in patch) row.title = patch.title;
+    if ('subtitle' in patch) row.subtitle = patch.subtitle;
+    if ('image' in patch) row.image = patch.image;
+    if ('imagePath' in patch) row.image_path = patch.imagePath;
+    if ('manifestoHtml' in patch) row.manifesto_html = patch.manifestoHtml;
+    const { error } = await sb.from('index_config').upsert(row, { onConflict: 'id' });
+    if (error) throw error;
   }
 
   /* ── HTML SANITIZATION (rich text) ────────────── */
@@ -218,10 +439,12 @@
       <section class="hero">
         <div class="hero__bg" style="background-image:url('${idx.image}')"></div>
         <div class="hero__overlay"></div>
-        <button type="button" class="hero__edit" data-edit-index aria-label="Editar apresentação">
-          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 113 3L7 19l-4 1 1-4 12.5-12.5z"/></svg>
-          <span>Editar apresentação</span>
-        </button>
+        ${auth.isAdmin ? `
+          <button type="button" class="hero__edit" data-edit-index aria-label="Editar apresentação">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 113 3L7 19l-4 1 1-4 12.5-12.5z"/></svg>
+            <span>Editar apresentação</span>
+          </button>
+        ` : ''}
         <div class="hero__inner">
           <div class="hero__eyebrow">
             <span class="hero__dot"></span>
@@ -389,7 +612,7 @@
         })
       : all;
 
-    const showCreate = isCreatable(tabId);
+    const showCreate = isCreatable(tabId) && auth.isAdmin;
     const totalCards = list.length + (showCreate ? 1 : 0);
 
     return `
@@ -518,6 +741,7 @@
 
   /* ── CREATE VIEW ──────────────────────────────── */
   function viewCreate(tabId) {
+    if (!auth.isAdmin) return viewForbidden();
     const tab = tabById(tabId);
     if (!tab || !isCreatable(tabId)) return viewNotFound(tabId);
     const theme = themeOf(tabId);
@@ -577,6 +801,7 @@
 
   /* ── EDIT INDEX VIEW ──────────────────────────── */
   function viewEditIndex() {
+    if (!auth.isAdmin) return viewForbidden();
     const idx = ARCHIVE.index;
     const theme = themeOf('Index');
     return `
@@ -711,7 +936,7 @@
                 </dl>
               </div>
             ` : ''}
-            ${e.isUserCreated ? `
+            ${(e.isUserCreated && auth.isAdmin) ? `
               <button type="button" class="back-link back-link--danger" data-delete-entry="${escapeHtml(e.id)}">
                 <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"/></svg>
                 Apagar história
@@ -734,6 +959,18 @@
         <div class="not-found__glyph">404</div>
         <h2>Entrada não encontrada</h2>
         <p>O caminho <code>${escapeHtml(what || '?')}</code> não existe no codex.</p>
+        <a href="#/" class="btn btn-primary">Voltar ao início</a>
+      </section>
+    `;
+  }
+
+  /* ── FORBIDDEN ────────────────────────────────── */
+  function viewForbidden() {
+    return `
+      <section class="not-found">
+        <div class="not-found__glyph">403</div>
+        <h2>Acesso restrito</h2>
+        <p>Esta área é exclusiva do Mestre da campanha.</p>
         <a href="#/" class="btn btn-primary">Voltar ao início</a>
       </section>
     `;
@@ -821,9 +1058,10 @@
     const preview = document.getElementById('bannerPreview');
     const placeholder = document.getElementById('bannerPlaceholder');
     const clearBtn = document.getElementById('bannerClear');
-    if (!drop) return { getDataUrl: () => '' };
+    if (!drop) return { getDataUrl: () => '', getFile: () => null };
 
     let bannerDataUrl = initialUrl || '';
+    let bannerFile = null;
 
     drop.addEventListener('click', (e) => {
       if (e.target.closest('.banner-drop__clear')) return;
@@ -853,6 +1091,7 @@
     clearBtn.addEventListener('click', (e) => {
       e.stopPropagation();
       bannerDataUrl = '';
+      bannerFile = null;
       preview.style.backgroundImage = '';
       preview.hidden = true;
       placeholder.hidden = false;
@@ -865,9 +1104,10 @@
         alert('Selecione um arquivo de imagem.');
         return;
       }
-      if (file.size > 4 * 1024 * 1024) {
-        if (!confirm('A imagem é grande (' + Math.round(file.size / 1024) + ' KB) e pode lentificar o salvamento. Continuar?')) return;
+      if (file.size > 5 * 1024 * 1024) {
+        if (!confirm('A imagem é grande (' + Math.round(file.size / 1024) + ' KB). Continuar?')) return;
       }
+      bannerFile = file;
       const reader = new FileReader();
       reader.onload = () => {
         bannerDataUrl = reader.result;
@@ -879,7 +1119,10 @@
       reader.readAsDataURL(file);
     }
 
-    return { getDataUrl: () => bannerDataUrl };
+    return {
+      getDataUrl: () => bannerDataUrl,
+      getFile: () => bannerFile
+    };
   }
 
   function bindEditor() {
@@ -932,11 +1175,17 @@
     const tabId = form.dataset.tab;
     const titleInput = document.getElementById('titleInput');
     const summaryInput = document.getElementById('summaryInput');
+    const submitBtn = form.querySelector('[type="submit"]');
     const banner = bindBannerDrop();
     const editor = bindEditor();
 
-    form.addEventListener('submit', (e) => {
+    form.addEventListener('submit', async (e) => {
       e.preventDefault();
+      if (!sb) {
+        alert('Supabase não configurado. Edite assets/js/config.js com sua URL e anon key.');
+        return;
+      }
+
       const title = titleInput.value.trim();
       if (!title) {
         titleInput.focus();
@@ -947,30 +1196,37 @@
 
       const summary = summaryInput.value.trim();
       const bodyHtml = sanitizeHtml(editor.innerHTML).trim();
-
       const baseId = slugify(title);
       const id = uniqueId(baseId);
 
-      const newEntry = {
-        id,
-        tab: tabId,
-        title,
-        summary,
-        image: banner.getDataUrl() || '',
-        bodyHtml,
-        createdAt: Date.now(),
-        isUserCreated: true
-      };
+      submitBtn.disabled = true;
+      const originalLabel = submitBtn.innerHTML;
+      submitBtn.innerHTML = '<span>Salvando…</span>';
 
-      ARCHIVE.entries.push(newEntry);
+      let imageUrl = '';
+      let imagePath = '';
       try {
-        persistUserEntries();
-      } catch {
-        const i = ARCHIVE.entries.indexOf(newEntry);
-        if (i >= 0) ARCHIVE.entries.splice(i, 1);
-        return;
+        const file = banner.getFile();
+        if (file) {
+          const up = await uploadBanner(file, `stories/${id}`);
+          imageUrl = up.url;
+          imagePath = up.path;
+        }
+        const newEntry = {
+          id, tab: tabId, title, summary,
+          image: imageUrl, imagePath, bodyHtml,
+          createdAt: Date.now(), isUserCreated: true
+        };
+        await persistUserEntry(newEntry);
+        ARCHIVE.entries.push(newEntry);
+        location.hash = `#/${tabId}/${id}`;
+      } catch (err) {
+        console.error(err);
+        alert('Erro ao salvar a história: ' + (err.message || err));
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = originalLabel;
+        if (imagePath) await removeBanner(imagePath);
       }
-      location.hash = `#/${tabId}/${id}`;
     });
   }
 
@@ -982,11 +1238,17 @@
 
     const titleInput = document.getElementById('titleInput');
     const summaryInput = document.getElementById('summaryInput');
+    const submitBtn = form.querySelector('[type="submit"]');
     const banner = bindBannerDrop({ initialUrl: ARCHIVE.index.image || '' });
     const editor = bindEditor();
 
-    form.addEventListener('submit', (e) => {
+    form.addEventListener('submit', async (e) => {
       e.preventDefault();
+      if (!sb) {
+        alert('Supabase não configurado. Edite assets/js/config.js com sua URL e anon key.');
+        return;
+      }
+
       const title = titleInput.value.trim();
       if (!title) {
         titleInput.focus();
@@ -997,26 +1259,34 @@
 
       const subtitle = summaryInput.value.trim();
       const manifestoHtml = sanitizeHtml(editor.innerHTML).trim();
-      const newImage = banner.getDataUrl() || ARCHIVE.index.image || '';
 
-      const patch = {
-        title,
-        subtitle,
-        image: newImage,
-        manifestoHtml,
-        paragraphs: []
-      };
+      submitBtn.disabled = true;
+      const originalLabel = submitBtn.innerHTML;
+      submitBtn.innerHTML = '<span>Salvando…</span>';
 
-      Object.assign(ARCHIVE.index, patch);
       try {
-        persistIndexCustom(patch);
-      } catch {
-        return;
-      }
-      if (location.hash === '#/' || location.hash === '') {
-        render(true);
-      } else {
-        location.hash = '#/';
+        const patch = { title, subtitle, manifestoHtml };
+        const file = banner.getFile();
+        if (file) {
+          // remove imagem anterior do bucket (se houver) e sobe a nova
+          if (ARCHIVE.index.imagePath) await removeBanner(ARCHIVE.index.imagePath);
+          const up = await uploadBanner(file, 'index/banner');
+          patch.image = up.url;
+          patch.imagePath = up.path;
+        }
+        await persistIndexCustom(patch);
+        Object.assign(ARCHIVE.index, patch, { paragraphs: [] });
+
+        if (location.hash === '#/' || location.hash === '') {
+          render(true);
+        } else {
+          location.hash = '#/';
+        }
+      } catch (err) {
+        console.error(err);
+        alert('Erro ao salvar apresentação: ' + (err.message || err));
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = originalLabel;
       }
     });
   }
@@ -1036,15 +1306,26 @@
     document.querySelectorAll('[data-delete-entry]').forEach((btn) => {
       if (btn.dataset.bound) return;
       btn.dataset.bound = '1';
-      btn.addEventListener('click', () => {
+      btn.addEventListener('click', async () => {
         const id = btn.dataset.deleteEntry;
         const e = entryById(id);
         if (!e) return;
         if (!confirm(`Apagar "${e.title}"? Esta ação não pode ser desfeita.`)) return;
-        const i = ARCHIVE.entries.indexOf(e);
-        if (i >= 0) ARCHIVE.entries.splice(i, 1);
-        persistUserEntries();
-        location.hash = `#/${e.tab}`;
+        if (!sb) {
+          alert('Supabase não configurado.');
+          return;
+        }
+        btn.disabled = true;
+        try {
+          await deleteUserEntry(e);
+          const i = ARCHIVE.entries.indexOf(e);
+          if (i >= 0) ARCHIVE.entries.splice(i, 1);
+          location.hash = `#/${e.tab}`;
+        } catch (err) {
+          console.error(err);
+          alert('Erro ao apagar: ' + (err.message || err));
+          btn.disabled = false;
+        }
       });
     });
   }
@@ -1142,11 +1423,8 @@
   }
 
   /* ── INIT ─────────────────────────────────────── */
-  function init() {
-    loadIndexCustom();
-    loadUserEntries();
+  async function init() {
     bindEvents();
-    render();
 
     const topbar = document.querySelector('.topbar');
     window.addEventListener('scroll', () => {
@@ -1158,6 +1436,38 @@
     } else if (intro) {
       intro.style.display = 'none';
     }
+
+    if (!sb) {
+      // Sem Supabase: roda offline com defaults
+      render();
+      return;
+    }
+
+    // Verificar sessão existente
+    const { data: { session } } = await sb.auth.getSession();
+    setAuthState(session);
+
+    if (!auth.user) {
+      ensureAuthGate();
+      render();  // renderiza atrás do gate
+      return;
+    }
+
+    // Logado: carrega dados e renderiza
+    try {
+      await Promise.all([loadIndexCustom(), loadUserEntries()]);
+    } catch (err) {
+      console.error('Erro ao sincronizar com Supabase:', err);
+    }
+    renderRoleBadge();
+    render(true);
+
+    // Reagir a logout em outras abas
+    sb.auth.onAuthStateChange((event, newSession) => {
+      if (event === 'SIGNED_OUT' && auth.user) {
+        location.reload();
+      }
+    });
   }
 
   if (document.readyState === 'loading') {
