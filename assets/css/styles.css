@@ -2421,6 +2421,13 @@ img { display: block; max-width: 100%; }
 .entry__body--rich .rt-content > div { margin: 0 0 14px; }
 .entry__body--rich .rt-content p:last-child,
 .entry__body--rich .rt-content > div:last-child { margin-bottom: 0; }
+.entry__body--rich .rt-content b,
+.entry__body--rich .rt-content strong { font-weight: 700; }
+.entry__body--rich .rt-content i,
+.entry__body--rich .rt-content em { font-style: italic; }
+.entry__body--rich .rt-content u { text-decoration: underline; }
+.entry__body--rich .rt-content s,
+.entry__body--rich .rt-content strike { text-decoration: line-through; }
 .entry__body--rich .rt-content h1,
 .entry__body--rich .rt-content h2,
 .entry__body--rich .rt-content h3 {

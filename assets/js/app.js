@@ -639,6 +639,8 @@
   const ALLOWED_TAGS = new Set(['B','STRONG','I','EM','U','S','STRIKE','BR','P','DIV','SPAN','UL','OL','LI','H1','H2','H3','H4','BLOCKQUOTE']);
   const ALLOWED_ATTRS = new Set(['style']);
   const STYLE_RE = /^(color|background-color|font-weight|font-style|text-decoration|text-align)\s*:\s*[^;]+$/i;
+  const COLOR_VALUE_RE = /^(#[0-9a-f]{3,8}|rgba?\([^)]+\)|hsla?\([^)]+\)|[a-z]+)$/i;
+  const ALIGN_VALUE_RE = /^(left|right|center|justify)$/i;
 
   function sanitizeHtml(html) {
     const tpl = document.createElement('template');
@@ -648,8 +650,9 @@
 
     function walk(node) {
       const children = Array.from(node.childNodes);
-      for (const child of children) {
+      for (let child of children) {
         if (child.nodeType === Node.ELEMENT_NODE) {
+          child = normalizeRichTextElement(child);
           if (!ALLOWED_TAGS.has(child.tagName)) {
             // desembrulhar nó mantendo filhos
             while (child.firstChild) node.insertBefore(child.firstChild, child);
@@ -674,6 +677,30 @@
           node.removeChild(child);
         }
       }
+    }
+
+    function normalizeRichTextElement(el) {
+      if (el.tagName === 'FONT') {
+        const span = document.createElement('span');
+        const style = (el.getAttribute('style') || '').trim();
+        if (style) span.setAttribute('style', style);
+        const color = (el.getAttribute('color') || '').trim();
+        if (color && COLOR_VALUE_RE.test(color)) {
+          const current = span.getAttribute('style') || '';
+          span.setAttribute('style', `${current}; color: ${color}`);
+        }
+        while (el.firstChild) span.appendChild(el.firstChild);
+        el.replaceWith(span);
+        el = span;
+      }
+
+      const align = (el.getAttribute('align') || '').trim().toLowerCase();
+      if (align && ALIGN_VALUE_RE.test(align)) {
+        const current = el.getAttribute('style') || '';
+        el.setAttribute('style', `${current}; text-align: ${align}`);
+      }
+
+      return el;
     }
   }
 
