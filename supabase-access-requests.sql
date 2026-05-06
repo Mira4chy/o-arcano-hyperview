@@ -213,13 +213,49 @@ drop policy if exists "banners_master_delete" on storage.objects;
 
 create policy "banners_master_upload" on storage.objects
   for insert to authenticated
-  with check (bucket_id = 'banners' and public.current_arcano_role() = 'admin');
+  with check (
+    bucket_id = 'banners'
+    and exists (
+      select 1
+      from public.access_requests ar
+      where ar.user_id = (select auth.uid())
+        and ar.status = 'approved'
+        and ar.approved_role = 'admin'
+    )
+  );
 
 create policy "banners_master_update" on storage.objects
   for update to authenticated
-  using (bucket_id = 'banners' and public.current_arcano_role() = 'admin')
-  with check (bucket_id = 'banners' and public.current_arcano_role() = 'admin');
+  using (
+    bucket_id = 'banners'
+    and exists (
+      select 1
+      from public.access_requests ar
+      where ar.user_id = (select auth.uid())
+        and ar.status = 'approved'
+        and ar.approved_role = 'admin'
+    )
+  )
+  with check (
+    bucket_id = 'banners'
+    and exists (
+      select 1
+      from public.access_requests ar
+      where ar.user_id = (select auth.uid())
+        and ar.status = 'approved'
+        and ar.approved_role = 'admin'
+    )
+  );
 
 create policy "banners_master_delete" on storage.objects
   for delete to authenticated
-  using (bucket_id = 'banners' and public.current_arcano_role() = 'admin');
+  using (
+    bucket_id = 'banners'
+    and exists (
+      select 1
+      from public.access_requests ar
+      where ar.user_id = (select auth.uid())
+        and ar.status = 'approved'
+        and ar.approved_role = 'admin'
+    )
+  );
