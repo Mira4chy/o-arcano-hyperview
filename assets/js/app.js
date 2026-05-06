@@ -517,9 +517,63 @@
 
   const themeOf = (id) => THEMES[id] || { hue: 268, label: 'CODEX' };
   const iconOf = (id) => ICONS[id] || ICONS.Index;
+  const TAG_COLOR_RE = /^#[0-9a-f]{6}$/i;
+  const DEFAULT_TAG_COLOR = '#f59e0b';
+  const categoryState = {};
 
   function slugify(str) {
     return normalize(str).replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 80) || 'historia';
+  }
+
+  function safeTagColor(color) {
+    const value = String(color || '').trim();
+    return TAG_COLOR_RE.test(value) ? value : DEFAULT_TAG_COLOR;
+  }
+
+  function cleanTagLabel(label) {
+    return String(label || '').replace(/\s+/g, ' ').trim().slice(0, 32);
+  }
+
+  function sanitizeTags(tags) {
+    const source = typeof tags === 'string'
+      ? (() => { try { return JSON.parse(tags); } catch { return []; } })()
+      : tags;
+    if (!Array.isArray(source)) return [];
+
+    const seen = new Set();
+    const clean = [];
+    for (const tag of source) {
+      const label = cleanTagLabel(typeof tag === 'string' ? tag : tag?.label);
+      if (!label) continue;
+      const key = normalize(label);
+      if (seen.has(key)) continue;
+      seen.add(key);
+      clean.push({ label, color: safeTagColor(tag?.color) });
+      if (clean.length >= 8) break;
+    }
+    return clean;
+  }
+
+  function tagKey(label) {
+    return normalize(label);
+  }
+
+  function tagChipHTML(tag, className = 'story-tag', attrs = '') {
+    const color = safeTagColor(tag.color);
+    return `<span class="${className}" style="--tag:${color}" ${attrs}>${escapeHtml(tag.label)}</span>`;
+  }
+
+  function categoryTagStats(entries) {
+    const map = new Map();
+    entries.forEach((entry) => {
+      sanitizeTags(entry.tags).forEach((tag) => {
+        const key = tagKey(tag.label);
+        const current = map.get(key) || { ...tag, count: 0, key };
+        current.count += 1;
+        map.set(key, current);
+      });
+    });
+    return [...map.values()].sort((a, b) => a.label.localeCompare(b.label, 'pt-BR'));
   }
 
   function uniqueId(base) {
@@ -541,6 +595,7 @@
       image: row.image || '',
       imagePath: row.image_path || '',
       bodyHtml: row.body_html || '',
+      tags: sanitizeTags(row.tags || []),
       createdAt: row.created_at ? new Date(row.created_at).getTime() : Date.now(),
       isUserCreated: true
     };
@@ -591,7 +646,8 @@
       summary: entry.summary || '',
       image: entry.image || '',
       image_path: entry.imagePath || '',
-      body_html: entry.bodyHtml || ''
+      body_html: entry.bodyHtml || '',
+      tags: sanitizeTags(entry.tags)
     });
     if (error) throw error;
   }
@@ -905,21 +961,27 @@
   }
 
   /* ── CATEGORY VIEW ────────────────────────────── */
-  function viewCategory(tabId, query) {
+  function viewCategory(tabId, query, selectedTag) {
     const tab = tabById(tabId);
     if (!tab) return viewNotFound(tabId);
     const theme = themeOf(tabId);
     const all = entriesIn(tabId);
     const q = normalize(query || '');
-    const list = q
-      ? all.filter((e) => {
-          const hay = [e.title, e.summary, ...(e.body || []), e.bodyHtml || '', ...Object.values(e.fields || {})].join(' ');
-          return normalize(hay).includes(q);
-        })
-      : all;
+    const tag = tagKey(selectedTag || '');
+    const tagStats = categoryTagStats(all);
+    const list = all.filter((e) => {
+      const entryTags = sanitizeTags(e.tags);
+      const matchesTag = !tag || entryTags.some((t) => tagKey(t.label) === tag);
+      if (!matchesTag) return false;
+      if (!q) return true;
+      const tagText = entryTags.map((t) => t.label).join(' ');
+      const hay = [e.title, e.summary, tagText, ...(e.body || []), e.bodyHtml || '', ...Object.values(e.fields || {})].join(' ');
+      return normalize(hay).includes(q);
+    });
 
     const showCreate = isCreatable(tabId) && auth.isAdmin;
     const totalCards = list.length + (showCreate ? 1 : 0);
+    const activeTagLabel = tagStats.find((t) => t.key === tag)?.label || '';
 
     return `
       <section class="cat-hero" style="--hue:${theme.hue}">
@@ -942,6 +1004,26 @@
         </label>
         <span class="filter-count">${totalCards} ${totalCards === 1 ? 'item' : 'itens'}</span>
       </section>
+
+      ${tagStats.length ? `
+        <section class="tag-filter" aria-label="Filtrar por tag">
+          <button type="button" class="tag-filter__chip ${!tag ? 'is-active' : ''}" data-tag-filter="">
+            Todas
+          </button>
+          ${tagStats.map((t) => `
+            <button type="button" class="tag-filter__chip ${t.key === tag ? 'is-active' : ''}" data-tag-filter="${escapeHtml(t.label)}" style="--tag:${safeTagColor(t.color)}">
+              <span>${escapeHtml(t.label)}</span>
+              <small>${t.count}</small>
+            </button>
+          `).join('')}
+        </section>
+      ` : ''}
+
+      ${activeTagLabel ? `
+        <div class="filter-note">
+          Filtrando por <strong>${escapeHtml(activeTagLabel)}</strong>
+        </div>
+      ` : ''}
 
       ${(list.length === 0 && !showCreate) ? emptyStateHTML(tab) : `
         <section class="entry-grid">
@@ -970,13 +1052,18 @@
   function entryCardHTML(e, i) {
     const theme = themeOf(e.tab);
     const fieldKeys = Object.keys(e.fields || {});
+    const tags = sanitizeTags(e.tags);
     return `
       <a href="#/${e.tab}/${e.id}" class="entry-card" style="--hue:${theme.hue};--delay:${i * 40}ms">
         <div class="entry-card__media">
           ${e.image ? `<img loading="lazy" src="${e.image}" alt="" onerror="this.parentElement.classList.add('is-fallback')">` : ''}
           <div class="entry-card__fallback">${iconOf(e.tab)}</div>
           <div class="entry-card__shade"></div>
-          <span class="entry-card__cat">${escapeHtml(theme.label)}</span>
+          <div class="entry-card__tags">
+            ${tags.length
+              ? tags.slice(0, 3).map((tag) => tagChipHTML(tag, 'story-tag story-tag--card')).join('')
+              : `<span class="entry-card__cat">${escapeHtml(theme.label)}</span>`}
+          </div>
         </div>
         <div class="entry-card__body">
           <h3 class="entry-card__title">${escapeHtml(e.title)}</h3>
@@ -1090,6 +1177,24 @@
         </div>
 
         <div class="create-form__field">
+          <label class="create-form__label">Tags</label>
+          <div class="tag-builder" id="tagBuilder">
+            <div class="tag-builder__row">
+              <input type="text" id="tagNameInput" class="create-form__input tag-builder__name" placeholder="Ex.: Tempo, Fome, Reino" maxlength="32">
+              <label class="tag-builder__color" title="Cor da tag">
+                <span id="tagColorPreview" style="background:${DEFAULT_TAG_COLOR}"></span>
+                <input type="color" id="tagColorInput" value="${DEFAULT_TAG_COLOR}" aria-label="Cor da tag">
+              </label>
+              <button type="button" class="btn btn-ghost tag-builder__add" id="tagAddBtn">
+                <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+                <span>Adicionar</span>
+              </button>
+            </div>
+            <div class="tag-builder__list" id="tagList" aria-live="polite"></div>
+          </div>
+        </div>
+
+        <div class="create-form__field">
           <label class="create-form__label">Texto</label>
           ${editorToolbarHTML()}
         </div>
@@ -1171,6 +1276,7 @@
     const tab = tabById(tabId);
     const fields = Object.entries(e.fields || {});
     const related = ARCHIVE.entries.filter((x) => x.tab === tabId && x.id !== e.id).slice(0, 3);
+    const tags = sanitizeTags(e.tags);
 
     const bodyMarkup = e.bodyHtml
       ? `<div class="entry__body entry__body--rich">
@@ -1198,7 +1304,11 @@
               <span>/</span>
               <span class="breadcrumb__current">${escapeHtml(e.title)}</span>
             </nav>
-            <span class="entry__cat">${escapeHtml(theme.label)}</span>
+            <div class="entry__tagline">
+              ${tags.length
+                ? tags.map((tag) => tagChipHTML(tag, 'story-tag story-tag--hero')).join('')
+                : `<span class="entry__cat">${escapeHtml(theme.label)}</span>`}
+            </div>
             <h1 class="entry__title" data-text-reveal>${escapeHtml(e.title)}</h1>
             ${e.summary ? `<p class="entry__summary">${escapeHtml(e.summary)}</p>` : ''}
           </div>
@@ -1297,7 +1407,10 @@
     else if (tab === 'Index' && entry === 'editar') html = viewEditIndex();
     else if (entry === 'criar') html = viewCreate(tab);
     else if (entry) html = viewEntry(tab, entry);
-    else html = viewCategory(tab, '');
+    else {
+      const state = categoryState[tab] || {};
+      html = viewCategory(tab, state.query || '', state.tag || '');
+    }
 
     view.classList.add('is-leaving');
     setTimeout(() => {
@@ -1337,23 +1450,51 @@
   /* ── CATEGORY FILTER ──────────────────────────── */
   function attachCategoryFilter() {
     const input = document.getElementById('catSearch');
-    if (!input || input.dataset.bound) return;
-    input.dataset.bound = '1';
-    let t;
-    input.addEventListener('input', (e) => {
-      clearTimeout(t);
-      t = setTimeout(() => {
-        const { tab } = parseHash();
-        const cursor = e.target.selectionStart;
-        view.innerHTML = viewCategory(tab, e.target.value);
-        animateView();
-        attachCategoryFilter();
+    const tagButtons = document.querySelectorAll('[data-tag-filter]');
+    if (!input && !tagButtons.length) return;
+
+    const refreshCategory = ({ keepFocus = false, cursor = null } = {}) => {
+      const { tab } = parseHash();
+      const state = categoryState[tab] || {};
+      view.innerHTML = viewCategory(tab, state.query || '', state.tag || '');
+      animateView();
+      attachCategoryFilter();
+      if (keepFocus) {
         const fresh = document.getElementById('catSearch');
         if (fresh) {
           fresh.focus();
-          fresh.setSelectionRange(cursor, cursor);
+          if (cursor !== null) fresh.setSelectionRange(cursor, cursor);
         }
-      }, 110);
+      }
+    };
+
+    if (input && !input.dataset.bound) {
+      input.dataset.bound = '1';
+      let t;
+      input.addEventListener('input', (e) => {
+        clearTimeout(t);
+        t = setTimeout(() => {
+          const { tab } = parseHash();
+          categoryState[tab] = {
+            ...(categoryState[tab] || {}),
+            query: e.target.value
+          };
+          refreshCategory({ keepFocus: true, cursor: e.target.selectionStart });
+        }, 110);
+      });
+    }
+
+    tagButtons.forEach((btn) => {
+      if (btn.dataset.bound) return;
+      btn.dataset.bound = '1';
+      btn.addEventListener('click', () => {
+        const { tab } = parseHash();
+        categoryState[tab] = {
+          ...(categoryState[tab] || {}),
+          tag: btn.dataset.tagFilter || ''
+        };
+        refreshCategory();
+      });
     });
   }
 
@@ -1431,6 +1572,70 @@
     };
   }
 
+  function bindTagBuilder() {
+    const root = document.getElementById('tagBuilder');
+    if (!root) return { getTags: () => [] };
+
+    const nameInput = document.getElementById('tagNameInput');
+    const colorInput = document.getElementById('tagColorInput');
+    const colorPreview = document.getElementById('tagColorPreview');
+    const addBtn = document.getElementById('tagAddBtn');
+    const list = document.getElementById('tagList');
+    let tags = [];
+
+    function renderTags() {
+      list.innerHTML = tags.length
+        ? tags.map((tag, i) => `
+            <span class="story-tag story-tag--editable" style="--tag:${safeTagColor(tag.color)}">
+              ${escapeHtml(tag.label)}
+              <button type="button" data-remove-tag="${i}" aria-label="Remover tag ${escapeHtml(tag.label)}">
+                <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
+              </button>
+            </span>
+          `).join('')
+        : '<span class="tag-builder__empty">Nenhuma tag adicionada</span>';
+    }
+
+    function addTag() {
+      const label = cleanTagLabel(nameInput.value);
+      if (!label) {
+        nameInput.focus();
+        return;
+      }
+      const key = tagKey(label);
+      const existing = tags.find((tag) => tagKey(tag.label) === key);
+      if (existing) existing.color = safeTagColor(colorInput.value);
+      else if (tags.length < 8) tags.push({ label, color: safeTagColor(colorInput.value) });
+      else {
+        alert('Use no máximo 8 tags por história.');
+        return;
+      }
+      nameInput.value = '';
+      renderTags();
+      nameInput.focus();
+    }
+
+    colorInput.addEventListener('input', () => {
+      colorPreview.style.background = safeTagColor(colorInput.value);
+    });
+    addBtn.addEventListener('click', addTag);
+    nameInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        addTag();
+      }
+    });
+    list.addEventListener('click', (e) => {
+      const btn = e.target.closest('[data-remove-tag]');
+      if (!btn) return;
+      tags.splice(Number(btn.dataset.removeTag), 1);
+      renderTags();
+    });
+
+    renderTags();
+    return { getTags: () => sanitizeTags(tags) };
+  }
+
   function bindEditor() {
     const editor = document.getElementById('rtEditor');
     const toolbar = document.getElementById('editorToolbar');
@@ -1483,6 +1688,7 @@
     const summaryInput = document.getElementById('summaryInput');
     const submitBtn = form.querySelector('[type="submit"]');
     const banner = bindBannerDrop();
+    const tagBuilder = bindTagBuilder();
     const editor = bindEditor();
 
     form.addEventListener('submit', async (e) => {
@@ -1501,6 +1707,7 @@
       titleInput.classList.remove('is-invalid');
 
       const summary = summaryInput.value.trim();
+      const tags = tagBuilder.getTags();
       const bodyHtml = sanitizeHtml(editor.innerHTML).trim();
       const baseId = slugify(title);
       const id = uniqueId(baseId);
@@ -1520,7 +1727,7 @@
         }
         const newEntry = {
           id, tab: tabId, title, summary,
-          image: imageUrl, imagePath, bodyHtml,
+          image: imageUrl, imagePath, bodyHtml, tags,
           createdAt: Date.now(), isUserCreated: true
         };
         await persistUserEntry(newEntry);
@@ -1644,7 +1851,8 @@
       return;
     }
     const matches = ARCHIVE.entries.filter((e) => {
-      const hay = [e.title, e.summary, ...(e.body || []), e.bodyHtml || '', ...Object.values(e.fields || {})].join(' ');
+      const tagText = sanitizeTags(e.tags).map((tag) => tag.label).join(' ');
+      const hay = [e.title, e.summary, tagText, ...(e.body || []), e.bodyHtml || '', ...Object.values(e.fields || {})].join(' ');
       return normalize(hay).includes(query);
     }).slice(0, 8);
 

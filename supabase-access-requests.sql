@@ -10,8 +10,12 @@ create table if not exists public.stories (
   image text default '',
   image_path text default '',
   body_html text default '',
+  tags jsonb not null default '[]'::jsonb,
   created_at timestamptz default now()
 );
+
+alter table public.stories
+  add column if not exists tags jsonb not null default '[]'::jsonb;
 
 create table if not exists public.index_config (
   id int primary key,
