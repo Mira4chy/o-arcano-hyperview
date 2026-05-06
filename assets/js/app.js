@@ -566,7 +566,6 @@
     const ext = (file.name.split('.').pop() || 'png').toLowerCase().replace(/[^a-z0-9]/g, '');
     const path = `${prefix}-${Date.now()}.${ext || 'png'}`;
     const { error } = await sb.storage.from(BANNERS_BUCKET).upload(path, file, {
-      upsert: true,
       contentType: file.type || 'image/png'
     });
     if (error) throw error;
