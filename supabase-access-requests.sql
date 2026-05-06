@@ -1,6 +1,33 @@
 -- O Arcano: fluxo de solicitacao/aprovacao de acesso
 -- Rode este arquivo no Supabase > SQL Editor.
 
+-- Tabelas principais do site.
+create table if not exists public.stories (
+  id text primary key,
+  tab text not null,
+  title text not null,
+  summary text default '',
+  image text default '',
+  image_path text default '',
+  body_html text default '',
+  created_at timestamptz default now()
+);
+
+create table if not exists public.index_config (
+  id int primary key,
+  title text,
+  subtitle text,
+  image text default '',
+  image_path text default '',
+  manifesto_html text default '',
+  updated_at timestamptz default now()
+);
+
+-- Bucket publico dos banners. Se preferir, tambem pode criar pelo menu Storage.
+insert into storage.buckets (id, name, public)
+values ('banners', 'banners', true)
+on conflict (id) do update set public = true;
+
 create table if not exists public.access_requests (
   user_id uuid primary key references auth.users(id) on delete cascade,
   email text not null,
