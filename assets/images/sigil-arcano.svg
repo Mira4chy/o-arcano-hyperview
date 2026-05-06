@@ -1,0 +1,36 @@
+<svg width="256" height="256" viewBox="0 0 256 256" role="img" aria-labelledby="title desc" xmlns="http://www.w3.org/2000/svg">
+  <title id="title">Símbolo de O Arcano</title>
+  <desc id="desc">Buraco negro branco e roxo, em forma de sigilo circular.</desc>
+  <defs>
+    <radialGradient id="core" cx="50%" cy="50%" r="50%">
+      <stop offset="0" stop-color="#050507"/>
+      <stop offset="0.3" stop-color="#06050a"/>
+      <stop offset="0.39" stop-color="#f7f0ff"/>
+      <stop offset="0.47" stop-color="#c59bff"/>
+      <stop offset="0.62" stop-color="#6d3fd0"/>
+      <stop offset="0.8" stop-color="#1b0f35"/>
+      <stop offset="1" stop-color="#050507" stop-opacity="0"/>
+    </radialGradient>
+    <conicGradient id="ring" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#f6f1ff"/>
+      <stop offset="0.18" stop-color="#8758ff"/>
+      <stop offset="0.36" stop-color="#08070d"/>
+      <stop offset="0.56" stop-color="#c8b0ff"/>
+      <stop offset="0.74" stop-color="#49288d"/>
+      <stop offset="1" stop-color="#f6f1ff"/>
+    </conicGradient>
+    <filter id="glow" x="-40%" y="-40%" width="180%" height="180%">
+      <feGaussianBlur stdDeviation="8" result="blur"/>
+      <feColorMatrix in="blur" type="matrix" values="0.8 0 0 0 0.55 0 0.5 0 0 0.28 0 0 1 0 1 0 0 0 0.8 0"/>
+      <feBlend in="SourceGraphic" mode="screen"/>
+    </filter>
+  </defs>
+  <rect width="256" height="256" fill="#050507"/>
+  <circle cx="128" cy="128" r="102" fill="url(#ring)" opacity="0.52" filter="url(#glow)"/>
+  <ellipse cx="128" cy="128" rx="101" ry="31" fill="none" stroke="#f8f3ff" stroke-width="8" opacity="0.92" transform="rotate(-16 128 128)"/>
+  <ellipse cx="128" cy="128" rx="98" ry="23" fill="none" stroke="#925cff" stroke-width="10" opacity="0.72" transform="rotate(18 128 128)"/>
+  <circle cx="128" cy="128" r="78" fill="url(#core)"/>
+  <circle cx="128" cy="128" r="33" fill="#030307"/>
+  <path d="M68 188c29 17 82 22 129-22" fill="none" stroke="#f4edff" stroke-width="5" stroke-linecap="round" opacity="0.62"/>
+  <path d="M55 91c37-25 87-31 145 11" fill="none" stroke="#9d6cff" stroke-width="6" stroke-linecap="round" opacity="0.44"/>
+</svg>
