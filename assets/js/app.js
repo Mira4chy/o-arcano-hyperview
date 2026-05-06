@@ -34,6 +34,11 @@
   const auth = {
     user: null,
     role: null,
+    profile: null,
+    status: null,
+    requestedRole: null,
+    approvedRole: null,
+    canRead: false,
     isAdmin: false,
     isPlayer: false
   };
@@ -41,22 +46,75 @@
   function setAuthState(session) {
     if (session && session.user) {
       auth.user = session.user;
-      auth.isAdmin = session.user.email === ADMIN_EMAIL;
-      auth.isPlayer = session.user.email === PLAYER_EMAIL;
-      auth.role = auth.isAdmin ? 'admin' : (auth.isPlayer ? 'player' : 'authenticated');
+      auth.role = null;
+      auth.profile = null;
+      auth.status = null;
+      auth.requestedRole = session.user.user_metadata?.requested_role || null;
+      auth.approvedRole = null;
+      auth.canRead = false;
+      auth.isAdmin = false;
+      auth.isPlayer = false;
     } else {
       auth.user = null;
       auth.role = null;
+      auth.profile = null;
+      auth.status = null;
+      auth.requestedRole = null;
+      auth.approvedRole = null;
+      auth.canRead = false;
       auth.isAdmin = false;
       auth.isPlayer = false;
     }
-    document.body.classList.toggle('is-locked', !auth.user);
+    document.body.classList.toggle('is-locked', !auth.canRead);
     document.body.classList.toggle('is-admin', auth.isAdmin);
     document.body.classList.toggle('is-player', auth.isPlayer);
   }
 
+  function roleLabel(role) {
+    return role === 'admin' ? 'Mestre' : 'Jogador';
+  }
+
+  function applyAccessProfile(profile) {
+    auth.profile = profile || null;
+
+    const fallbackAdmin = auth.user && auth.user.email === ADMIN_EMAIL;
+    const requestedRole = profile?.requested_role || auth.user?.user_metadata?.requested_role || 'player';
+    const status = fallbackAdmin ? 'approved' : (profile?.status || 'pending');
+    const approvedRole = fallbackAdmin ? 'admin' : (status === 'approved' ? profile?.approved_role : null);
+
+    auth.status = status;
+    auth.requestedRole = requestedRole;
+    auth.approvedRole = approvedRole;
+    auth.role = approvedRole || status;
+    auth.isAdmin = approvedRole === 'admin';
+    auth.isPlayer = approvedRole === 'player';
+    auth.canRead = auth.isAdmin || auth.isPlayer;
+
+    document.body.classList.toggle('is-locked', !auth.canRead);
+    document.body.classList.toggle('is-admin', auth.isAdmin);
+    document.body.classList.toggle('is-player', auth.isPlayer);
+  }
+
+  async function loadAccessProfile() {
+    if (!sb || !auth.user) return null;
+    const { data, error } = await sb
+      .from('access_requests')
+      .select('user_id,email,display_name,requested_role,approved_role,status')
+      .eq('user_id', auth.user.id)
+      .maybeSingle();
+
+    if (error) {
+      console.warn('[O Arcano] Nao foi possivel carregar access_requests:', error);
+      applyAccessProfile(null);
+      return null;
+    }
+
+    applyAccessProfile(data);
+    return data;
+  }
+
   /* ── AUTH GATE (tela de login) ────────────────── */
-  function ensureAuthGate() {
+  function ensureLegacyAuthGate() {
     let gate = document.getElementById('authGate');
     if (gate) return gate;
     gate = document.createElement('div');
@@ -142,12 +200,235 @@
   }
 
   /* ── LOGOUT + ROLE BADGE ──────────────────────── */
+  function ensureAuthGate() {
+    let gate = document.getElementById('authGate');
+    if (gate) return gate;
+
+    gate = document.createElement('div');
+    gate.id = 'authGate';
+    gate.className = 'auth-gate';
+    gate.innerHTML = `
+      <div class="auth-gate__bg" aria-hidden="true"></div>
+      <div class="auth-gate__card">
+        <div class="auth-gate__brand">
+          <img src="assets/images/Logo.png" alt="">
+          <h1>O Arcano</h1>
+          <p>Codex de campanha &middot; acesso restrito</p>
+        </div>
+
+        <div class="auth-gate__modes" role="tablist">
+          <button type="button" class="auth-mode is-active" data-auth-mode="login" role="tab">Entrar</button>
+          <button type="button" class="auth-mode" data-auth-mode="request" role="tab">Solicitar acesso</button>
+        </div>
+
+        <form class="auth-gate__form" id="authLoginForm" data-auth-panel="login" novalidate>
+          <label class="auth-gate__label">
+            <span>E-mail</span>
+            <input type="email" id="authEmail" placeholder="seu@email.com" autocomplete="email" required>
+          </label>
+          <label class="auth-gate__label">
+            <span>Senha</span>
+            <input type="password" id="authPassword" placeholder="Digite sua senha" autocomplete="current-password" required>
+          </label>
+          <button type="submit" class="btn btn-primary auth-gate__submit" id="authSubmit">
+            <span>Entrar</span>
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 5l7 7-7 7"/></svg>
+          </button>
+          <p class="auth-gate__error" data-auth-error role="alert"></p>
+        </form>
+
+        <form class="auth-gate__form" id="authRequestForm" data-auth-panel="request" novalidate hidden>
+          <label class="auth-gate__label">
+            <span>Nome</span>
+            <input type="text" id="requestName" placeholder="Como voce quer aparecer" autocomplete="name" maxlength="80" required>
+          </label>
+          <label class="auth-gate__label">
+            <span>E-mail</span>
+            <input type="email" id="requestEmail" placeholder="seu@email.com" autocomplete="email" required>
+          </label>
+          <label class="auth-gate__label">
+            <span>Senha</span>
+            <input type="password" id="requestPassword" placeholder="Crie uma senha" autocomplete="new-password" minlength="6" required>
+          </label>
+          <div class="auth-gate__label">
+            <span>Acesso desejado</span>
+            <div class="auth-gate__roles" role="tablist">
+              <button type="button" class="auth-role is-active" data-role="player" role="tab">
+                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 4-7 8-7s8 3 8 7"/></svg>
+                <span>Jogador</span>
+              </button>
+              <button type="button" class="auth-role" data-role="admin" role="tab">
+                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l9 4v6c0 5-4 9-9 10-5-1-9-5-9-10V6l9-4z"/><path d="M9 12l2 2 4-4"/></svg>
+                <span>Mestre</span>
+              </button>
+            </div>
+          </div>
+          <button type="submit" class="btn btn-primary auth-gate__submit" id="requestSubmit">
+            <span>Enviar solicitacao</span>
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>
+          </button>
+          <p class="auth-gate__error" data-auth-error role="alert"></p>
+          <p class="auth-gate__message" data-auth-message></p>
+        </form>
+      </div>
+    `;
+    document.body.appendChild(gate);
+
+    const modes = gate.querySelectorAll('.auth-mode');
+    const panels = gate.querySelectorAll('[data-auth-panel]');
+    modes.forEach((b) => {
+      b.addEventListener('click', () => {
+        const mode = b.dataset.authMode;
+        modes.forEach((x) => x.classList.toggle('is-active', x === b));
+        panels.forEach((p) => { p.hidden = p.dataset.authPanel !== mode; });
+      });
+    });
+
+    const roles = gate.querySelectorAll('.auth-role');
+    roles.forEach((b) => {
+      b.addEventListener('click', () => {
+        roles.forEach((x) => x.classList.toggle('is-active', x === b));
+      });
+    });
+
+    const loginForm = gate.querySelector('#authLoginForm');
+    const emailInput = gate.querySelector('#authEmail');
+    const passInput = gate.querySelector('#authPassword');
+    const loginErr = loginForm.querySelector('[data-auth-error]');
+    const submitBtn = gate.querySelector('#authSubmit');
+
+    async function finishLogin(session) {
+      setAuthState(session);
+      await loadAccessProfile();
+
+      if (!auth.canRead) {
+        renderPendingGate(gate);
+        render();
+        return;
+      }
+
+      gate.classList.add('is-gone');
+      setTimeout(() => gate.remove(), 500);
+      await Promise.all([loadIndexCustom(), loadUserEntries()]);
+      renderRoleBadge();
+      render(true);
+    }
+
+    loginForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      loginErr.textContent = '';
+      const email = emailInput.value.trim();
+      const password = passInput.value;
+      if (!email || !password) {
+        loginErr.textContent = 'Informe e-mail e senha.';
+        return;
+      }
+      submitBtn.disabled = true;
+      submitBtn.querySelector('span').textContent = 'Entrando...';
+      try {
+        const { data, error } = await sb.auth.signInWithPassword({ email, password });
+        if (error) throw error;
+        await finishLogin(data.session);
+      } catch (err) {
+        console.error(err);
+        loginErr.textContent = 'E-mail ou senha incorretos.';
+        submitBtn.disabled = false;
+        submitBtn.querySelector('span').textContent = 'Entrar';
+      }
+    });
+
+    const requestForm = gate.querySelector('#authRequestForm');
+    const requestName = gate.querySelector('#requestName');
+    const requestEmail = gate.querySelector('#requestEmail');
+    const requestPassword = gate.querySelector('#requestPassword');
+    const requestErr = requestForm.querySelector('[data-auth-error]');
+    const requestMsg = requestForm.querySelector('[data-auth-message]');
+    const requestBtn = gate.querySelector('#requestSubmit');
+
+    requestForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      requestErr.textContent = '';
+      requestMsg.textContent = '';
+      const displayName = requestName.value.trim();
+      const email = requestEmail.value.trim();
+      const password = requestPassword.value;
+      const requestedRole = gate.querySelector('.auth-role.is-active').dataset.role;
+
+      if (!displayName || !email || password.length < 6) {
+        requestErr.textContent = 'Preencha nome, e-mail e uma senha com pelo menos 6 caracteres.';
+        return;
+      }
+
+      requestBtn.disabled = true;
+      requestBtn.querySelector('span').textContent = 'Enviando...';
+      try {
+        const { data, error } = await sb.auth.signUp({
+          email,
+          password,
+          options: {
+            data: {
+              display_name: displayName,
+              requested_role: requestedRole
+            }
+          }
+        });
+        if (error) throw error;
+
+        requestMsg.textContent = `Solicitacao enviada como ${roleLabel(requestedRole)}. Aguarde aprovacao no Supabase.`;
+        requestForm.reset();
+        roles.forEach((x) => x.classList.toggle('is-active', x.dataset.role === 'player'));
+
+        if (data.session) await finishLogin(data.session);
+      } catch (err) {
+        console.error(err);
+        requestErr.textContent = err.message?.includes('already registered')
+          ? 'Esse e-mail ja existe. Use Entrar ou peca para redefinir a senha.'
+          : 'Nao foi possivel enviar a solicitacao agora.';
+      } finally {
+        requestBtn.disabled = false;
+        requestBtn.querySelector('span').textContent = 'Enviar solicitacao';
+      }
+    });
+
+    if (auth.user && !auth.canRead) renderPendingGate(gate);
+    return gate;
+  }
+
+  function renderPendingGate(gate) {
+    const card = gate.querySelector('.auth-gate__card');
+    const status = auth.status || 'pending';
+    const requested = roleLabel(auth.requestedRole || 'player');
+    const title = status === 'rejected' ? 'Acesso recusado' : 'Aguardando aprovacao';
+    const text = status === 'rejected'
+      ? 'Sua solicitacao foi recusada. Fale com o administrador da campanha.'
+      : `Sua conta esta registrada, mas ainda precisa ser aprovada como ${requested}.`;
+
+    card.innerHTML = `
+      <div class="auth-gate__brand">
+        <img src="assets/images/Logo.png" alt="">
+        <h1>O Arcano</h1>
+        <p>Codex de campanha &middot; acesso restrito</p>
+      </div>
+      <div class="auth-pending">
+        <span class="auth-pending__status">${escapeHtml(status)}</span>
+        <h2>${escapeHtml(title)}</h2>
+        <p>${escapeHtml(text)}</p>
+        <button type="button" class="btn btn-ghost auth-gate__submit" data-pending-logout>Sair</button>
+      </div>
+    `;
+
+    card.querySelector('[data-pending-logout]').addEventListener('click', async () => {
+      if (sb) await sb.auth.signOut();
+      location.reload();
+    });
+  }
+
   function renderRoleBadge() {
     const right = document.querySelector('.topbar__right');
     if (!right) return;
     let pill = right.querySelector('.role-pill');
     let logout = right.querySelector('[data-logout]');
-    if (!auth.user) {
+    if (!auth.canRead) {
       pill && pill.remove();
       logout && logout.remove();
       return;
@@ -1450,6 +1731,13 @@
     if (!auth.user) {
       ensureAuthGate();
       render();  // renderiza atrás do gate
+      return;
+    }
+
+    await loadAccessProfile();
+    if (!auth.canRead) {
+      ensureAuthGate();
+      render();
       return;
     }
 
