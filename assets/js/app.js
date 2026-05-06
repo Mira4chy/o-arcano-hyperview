@@ -77,10 +77,9 @@
   function applyAccessProfile(profile) {
     auth.profile = profile || null;
 
-    const fallbackAdmin = auth.user && auth.user.email === ADMIN_EMAIL;
     const requestedRole = profile?.requested_role || auth.user?.user_metadata?.requested_role || 'player';
-    const status = fallbackAdmin ? 'approved' : (profile?.status || 'pending');
-    const approvedRole = fallbackAdmin ? 'admin' : (status === 'approved' ? profile?.approved_role : null);
+    const status = profile?.status || 'pending';
+    const approvedRole = status === 'approved' ? profile?.approved_role : null;
 
     auth.status = status;
     auth.requestedRole = requestedRole;

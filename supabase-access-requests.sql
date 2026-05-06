@@ -42,8 +42,8 @@ begin
     new.email,
     coalesce(new.raw_user_meta_data->>'display_name', split_part(new.email, '@', 1)),
     wanted_role,
-    case when new.email = 'admin@arcano.local' then 'admin' else null end,
-    case when new.email = 'admin@arcano.local' then 'approved' else 'pending' end
+    null,
+    'pending'
   )
   on conflict (user_id) do update
     set email = excluded.email,
@@ -76,12 +76,10 @@ select
   case
     when raw_user_meta_data->>'requested_role' in ('player', 'admin')
       then raw_user_meta_data->>'requested_role'
-    when email = 'admin@arcano.local'
-      then 'admin'
     else 'player'
   end,
-  case when email = 'admin@arcano.local' then 'admin' else null end,
-  case when email = 'admin@arcano.local' then 'approved' else 'pending' end
+  null,
+  'pending'
 from auth.users
 on conflict (user_id) do nothing;
 
@@ -92,16 +90,13 @@ stable
 security definer
 set search_path = public
 as $$
-  select case
-    when auth.email() = 'admin@arcano.local' then 'admin'
-    else coalesce((
+  select coalesce((
       select ar.approved_role
       from public.access_requests ar
       where ar.user_id = auth.uid()
         and ar.status = 'approved'
       limit 1
-    ), 'pending')
-  end;
+    ), 'pending');
 $$;
 
 grant execute on function public.current_arcano_role() to authenticated;
@@ -114,12 +109,10 @@ drop policy if exists "access_requests_admin_update" on public.access_requests;
 
 create policy "access_requests_own_select" on public.access_requests
   for select to authenticated
-  using (user_id = auth.uid() or auth.email() = 'admin@arcano.local');
+  using (user_id = auth.uid());
 
-create policy "access_requests_admin_update" on public.access_requests
-  for update to authenticated
-  using (auth.email() = 'admin@arcano.local')
-  with check (auth.email() = 'admin@arcano.local');
+-- Sem policy de update aqui: a aprovacao deve ser feita no Supabase Dashboard
+-- (Table Editor), que usa permissao administrativa do projeto.
 
 -- Historias: leitura para contas aprovadas, escrita so para Mestre aprovado.
 alter table public.stories enable row level security;
