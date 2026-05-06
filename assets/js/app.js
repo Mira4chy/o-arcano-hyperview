@@ -649,7 +649,13 @@
       body_html: entry.bodyHtml || '',
       tags: sanitizeTags(entry.tags)
     });
-    if (error) throw error;
+    if (error) {
+      const missingTags = error.code === 'PGRST204' || /tags.*schema cache|schema cache.*tags/i.test(error.message || '');
+      if (missingTags) {
+        throw new Error('A coluna tags ainda não foi ativada no Supabase. Rode o arquivo supabase-tags.sql no SQL Editor e tente novamente.');
+      }
+      throw error;
+    }
   }
 
   async function deleteUserEntry(entry) {
