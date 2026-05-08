@@ -2735,12 +2735,16 @@ img { display: block; max-width: 100%; }
 /* ── Banner 4:3 (Itens) ────────────────────────── */
 .create-form--portrait .banner-drop {
   aspect-ratio: 4 / 3;
-  max-width: 480px;
-  margin: 0 auto;
+  width: min(480px, 100%);
+  justify-self: center;
+  min-height: 240px; /* fallback caso aspect-ratio nao seja respeitado */
 }
 
 .banner-drop--portrait {
   aspect-ratio: 4 / 3 !important;
+  width: min(480px, 100%);
+  justify-self: center;
+  min-height: 240px;
 }
 
 /* ── Entry retrato (Itens) ─────────────────────── */

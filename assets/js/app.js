@@ -1199,8 +1199,8 @@
     const portrait = isPortrait(tabId);
     const isItens = tabId === 'Itens';
 
-    const bannerLabel = portrait ? 'Banner (3:4)' : 'Banner (16:9)';
-    const bannerHint = portrait ? 'Proporção 3:4 (retrato) — JPG, PNG ou WebP' : 'Proporção 16:9 — JPG, PNG ou WebP';
+    const bannerLabel = portrait ? 'Banner (4:3)' : 'Banner (16:9)';
+    const bannerHint = portrait ? 'Proporção 4:3 (paisagem) — JPG, PNG ou WebP' : 'Proporção 16:9 — JPG, PNG ou WebP';
 
     return `
       <section class="cat-hero" style="--hue:${theme.hue}">
@@ -1209,7 +1209,7 @@
           <span class="cat-hero__eyebrow">CRIAR · ${escapeHtml(theme.label)}</span>
           <h1 class="cat-hero__title">${isItens ? 'Novo item em ' : 'Nova história em '}${escapeHtml(tab.title)}</h1>
           <p class="cat-hero__tone">${isItens
-            ? 'Escolha o tipo, anexe uma imagem retrato (3:4) e preencha o dossiê.'
+            ? 'Escolha o tipo, anexe uma imagem 4:3 e preencha o dossiê.'
             : 'Preencha o banner, o título e o relato. Use a barra de ferramentas para formatar e colorir o texto.'}</p>
         </div>
       </section>
