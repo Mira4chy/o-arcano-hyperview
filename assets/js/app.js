@@ -1507,17 +1507,26 @@
 
     function renderRaceDossierView(rawFields) {
       const data = rawFields || {};
+      const ROMAN = ['I', 'II', 'III'];
+      // Raridade ja aparece com destaque no tagline; nao repetir na lista de Surgimento.
       return `
         <div class="race-dossier-view">
-          ${RACE_SECTIONS.map((section) => {
+          ${RACE_SECTIONS.map((section, idx) => {
+            const numeral = ROMAN[idx] || '';
+            const sectionHead = `
+              <header class="entry__dossier-head dossier-head--ornate">
+                <span class="dossier-mark">${numeral}</span>
+                <span class="section__eyebrow">${escapeHtml(section.title.toUpperCase())}</span>
+                <span class="dossier-rule" aria-hidden="true"></span>
+              </header>
+            `;
+
             if (section.id === 'hpmp') {
               const hasAny = RACE_HP_PARTS.some((p) => data[p]) || data['Mana'];
               if (!hasAny) return '';
               return `
                 <aside class="entry__dossier-side dossier-card--hpmp">
-                  <header class="entry__dossier-head">
-                    <span class="section__eyebrow">${escapeHtml(section.title.toUpperCase())}</span>
-                  </header>
+                  ${sectionHead}
                   ${RACE_HP_PARTS.some((p) => data[p]) ? `
                     <div class="hp-grid">
                       ${RACE_HP_PARTS.filter((p) => data[p]).map((p) => `
@@ -1530,6 +1539,9 @@
                   ` : ''}
                   ${data['Mana'] ? `
                     <div class="mana-callout">
+                      <span class="mana-callout__rune" aria-hidden="true">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2c1.5 3 4 5 7 6-3 1-5.5 3-7 6-1.5-3-4-5-7-6 3-1 5.5-3 7-6z"/><circle cx="12" cy="14" r="1.5"/></svg>
+                      </span>
                       <span class="mana-callout__label">MANA</span>
                       <strong class="mana-callout__value">${escapeHtml(data['Mana'])}</strong>
                     </div>
@@ -1537,7 +1549,10 @@
                 </aside>
               `;
             }
+
+            // Surgimento: omitir raridade na lista (ja vai como destaque no tagline)
             const visible = section.fields.filter((f) => {
+              if (section.id === 'surgimento' && f.key === 'Raridade') return false;
               const v = data[f.key];
               if (f.type === 'list') return Array.isArray(v) && v.length > 0;
               return v != null && v !== '';
@@ -1545,9 +1560,7 @@
             if (!visible.length) return '';
             return `
               <aside class="entry__dossier-side">
-                <header class="entry__dossier-head">
-                  <span class="section__eyebrow">${escapeHtml(section.title.toUpperCase())}</span>
-                </header>
+                ${sectionHead}
                 <dl class="meta-list">
                   ${visible.map((f) => {
                     const v = data[f.key];
@@ -1582,9 +1595,15 @@
       ? renderRaceDossierView(e.fields)
       : renderItensDossier();
 
+    const raceRarity = isRacas && e.fields ? (e.fields['Raridade'] || '') : '';
+    const raceEmblem = isRacas
+      ? '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l1.7 4.6L18 8l-3.6 2.7 1.4 4.5L12 12.7 8.2 15.2l1.4-4.5L6 8l4.3-1.4L12 2z"/><circle cx="12" cy="20" r="1"/><path d="M9 17h6"/></svg>'
+      : '';
+
     const heroPortrait = `
       <div class="entry__portrait-card ${isRacas ? 'entry__portrait-card--tall' : ''}" style="--hue:${theme.hue}">
         ${subtypeIcon ? `<div class="entry__subtype-emblem" aria-hidden="true">${subtypeIcon}</div>` : ''}
+        ${raceEmblem ? `<div class="entry__subtype-emblem entry__subtype-emblem--race" aria-hidden="true">${raceEmblem}</div>` : ''}
         <header class="entry__portrait-header">
           <nav class="breadcrumb">
             <a href="#/">Codex</a>
@@ -1595,9 +1614,10 @@
           </nav>
           <div class="entry__tagline">
             ${subtypeName ? `<span class="entry__cat entry__cat--subtype">${escapeHtml(subtypeName.toUpperCase())}</span>` : ''}
+            ${raceRarity ? dossierValueHTML('Raridade', raceRarity) : ''}
             ${tags.length
               ? tags.map((tag) => tagChipHTML(tag, 'story-tag story-tag--hero')).join('')
-              : (subtypeName ? '' : `<span class="entry__cat">${escapeHtml(theme.label)}</span>`)}
+              : (subtypeName || raceRarity ? '' : `<span class="entry__cat">${escapeHtml(theme.label)}</span>`)}
           </div>
           <h1 class="entry__title entry__title--portrait" data-text-reveal>${escapeHtml(e.title)}</h1>
           ${e.summary ? `<p class="entry__summary">${escapeHtml(e.summary)}</p>` : ''}

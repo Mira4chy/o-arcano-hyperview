@@ -3063,103 +3063,229 @@ img { display: block; max-width: 100%; }
 /* ── Race dossier (entry detail) ───────────────── */
 .race-dossier-view {
   display: grid;
-  gap: 16px;
+  gap: 18px;
   align-content: start;
   min-width: 0;
 }
 
+.race-dossier-view .entry__dossier-side {
+  padding: 20px 22px 22px;
+}
+
+/* Cabeçalho ornado: numeral romano + eyebrow + linha gradient */
+.dossier-head--ornate {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding-bottom: 12px;
+  margin-bottom: 4px;
+  border-bottom: none;
+}
+
+.dossier-mark {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  font-family: 'Cinzel', Georgia, serif;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  color: hsl(var(--hue), 90%, 82%);
+  background: linear-gradient(135deg, hsla(var(--hue), 65%, 45%, 0.32), hsla(var(--hue), 60%, 25%, 0.42));
+  border: 1px solid hsla(var(--hue), 65%, 55%, 0.45);
+  box-shadow: 0 0 14px hsla(var(--hue), 70%, 50%, 0.25);
+  flex-shrink: 0;
+}
+
+.dossier-rule {
+  flex: 1;
+  height: 1px;
+  background: linear-gradient(90deg, hsla(var(--hue), 70%, 60%, 0.5), transparent);
+}
+
+/* Card HP/MP com mais respiro */
 .dossier-card--hpmp { display: grid; gap: 14px; }
 
 .hp-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 6px 14px;
+  gap: 7px 12px;
 }
 
 .hp-part {
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 6px 10px;
+  padding: 9px 14px 9px 16px;
   border-radius: 8px;
-  background: rgba(0, 0, 0, 0.32);
+  background: linear-gradient(90deg, rgba(0, 0, 0, 0.42), rgba(0, 0, 0, 0.18));
   border: 1px solid hsla(var(--hue), 60%, 55%, 0.18);
+  overflow: hidden;
+  transition: border-color 200ms var(--ease), background 200ms var(--ease);
+}
+
+.hp-part::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 3px;
+  height: 60%;
+  background: linear-gradient(180deg, hsl(var(--hue), 75%, 60%), hsl(var(--hue), 60%, 35%));
+  border-radius: 0 2px 2px 0;
+  opacity: 0.85;
+}
+
+.hp-part:hover {
+  border-color: hsla(var(--hue), 70%, 60%, 0.4);
+  background: linear-gradient(90deg, rgba(0, 0, 0, 0.5), hsla(var(--hue), 60%, 25%, 0.18));
 }
 
 .hp-part__name {
   font-family: 'JetBrains Mono', ui-monospace, monospace;
-  font-size: 0.66rem;
-  letter-spacing: 0.14em;
+  font-size: 0.68rem;
+  letter-spacing: 0.18em;
   text-transform: uppercase;
-  color: var(--muted);
+  color: var(--text-2);
 }
 
 .hp-part__value {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 5px;
   font-family: 'Cinzel', Georgia, serif;
-  font-size: 0.95rem;
+  font-size: 1.05rem;
   font-weight: 700;
-  color: hsl(var(--hue), 80%, 80%);
+  color: hsl(var(--hue), 85%, 82%);
+  text-shadow: 0 0 14px hsla(var(--hue), 80%, 50%, 0.25);
 }
 
 .hp-part__value em {
   font-style: normal;
   font-family: 'JetBrains Mono', ui-monospace, monospace;
-  font-size: 0.62rem;
-  letter-spacing: 0.14em;
-  margin-left: 4px;
+  font-size: 0.6rem;
+  letter-spacing: 0.18em;
   color: var(--muted);
   font-weight: 500;
 }
 
+/* Callout etereo de MANA */
 .mana-callout {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  padding: 12px 16px;
-  border-radius: 10px;
-  border-left: 3px solid hsl(var(--hue), 70%, 65%);
-  background: linear-gradient(90deg, hsla(var(--hue), 70%, 50%, 0.18), transparent 70%);
+  position: relative;
+  display: grid;
+  grid-template-columns: auto auto 1fr;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 18px;
+  border-radius: 12px;
+  background:
+    radial-gradient(ellipse 60% 90% at 0% 50%, hsla(var(--hue), 75%, 50%, 0.22), transparent 70%),
+    linear-gradient(90deg, hsla(var(--hue), 60%, 22%, 0.4), rgba(0, 0, 0, 0.18));
+  border: 1px solid hsla(var(--hue), 65%, 55%, 0.32);
+  box-shadow: inset 0 1px 0 hsla(var(--hue), 80%, 70%, 0.12);
+  overflow: hidden;
 }
+
+.mana-callout::after {
+  content: '';
+  position: absolute;
+  inset: -40% -10% auto auto;
+  width: 60%;
+  height: 200%;
+  background: radial-gradient(circle, hsla(var(--hue), 80%, 65%, 0.18), transparent 65%);
+  pointer-events: none;
+  filter: blur(30px);
+}
+
+.mana-callout__rune {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: hsla(var(--hue), 70%, 50%, 0.18);
+  color: hsl(var(--hue), 90%, 82%);
+  border: 1px solid hsla(var(--hue), 65%, 55%, 0.38);
+  flex-shrink: 0;
+  position: relative;
+  z-index: 1;
+}
+.mana-callout__rune svg { width: 18px; height: 18px; }
 
 .mana-callout__label {
   font-family: 'JetBrains Mono', ui-monospace, monospace;
-  font-size: 0.72rem;
-  letter-spacing: 0.22em;
-  color: hsl(var(--hue), 80%, 75%);
+  font-size: 0.74rem;
+  letter-spacing: 0.28em;
+  color: hsl(var(--hue), 80%, 78%);
+  position: relative;
+  z-index: 1;
 }
 
 .mana-callout__value {
+  justify-self: end;
   font-family: 'Cinzel', Georgia, serif;
-  font-size: 1.4rem;
+  font-size: 1.55rem;
   font-weight: 700;
   color: var(--text);
-  letter-spacing: 0.04em;
+  letter-spacing: 0.06em;
+  text-shadow: 0 0 18px hsla(var(--hue), 80%, 60%, 0.45);
+  position: relative;
+  z-index: 1;
 }
 
 .meta-list-items {
   list-style: none;
-  margin: 0;
+  margin: 4px 0 0;
   padding: 0;
   display: grid;
-  gap: 4px;
+  gap: 6px;
 }
 
 .meta-list-items li {
   position: relative;
-  padding-left: 14px;
+  padding-left: 16px;
   color: var(--text);
-  font-size: 0.92rem;
+  font-size: 0.94rem;
+  line-height: 1.5;
 }
 
 .meta-list-items li::before {
   content: '';
   position: absolute;
-  left: 0;
-  top: 0.55em;
-  width: 5px;
-  height: 5px;
+  left: 2px;
+  top: 0.65em;
+  width: 6px;
+  height: 6px;
   border-radius: 50%;
   background: hsl(var(--hue), 70%, 65%);
+  box-shadow: 0 0 8px hsla(var(--hue), 80%, 60%, 0.6);
+}
+
+/* Raridade promovida no tagline (na linha de tags) — chip maior e brilhante */
+.entry__tagline .rarity-chip {
+  font-size: 0.78rem;
+  padding: 5px 14px;
+  background: rgba(0, 0, 0, 0.45);
+  box-shadow: 0 0 0 1px currentColor, 0 6px 20px rgba(0, 0, 0, 0.4);
+  letter-spacing: 0.06em;
+}
+.entry__tagline .rarity-chip::before {
+  width: 8px;
+  height: 8px;
+  box-shadow: 0 0 12px currentColor;
+}
+
+/* Emblema decorativo de Raça (estrela de 5 pontas) */
+.entry__subtype-emblem--race {
+  top: 24px;
+  right: 32px;
+  width: 120px;
+  height: 120px;
+  opacity: 0.06;
 }
 
 @media (max-width: 720px) {
