@@ -1097,10 +1097,9 @@
     const theme = themeOf(e.tab);
     const fieldKeys = Object.keys(e.fields || {});
     const tags = sanitizeTags(e.tags);
-    const portrait = isPortrait(e.tab);
     const subtypeName = e.subtype ? subtypeLabel(e.subtype) : null;
     return `
-      <a href="#/${e.tab}/${e.id}" class="entry-card ${portrait ? 'entry-card--portrait' : ''}" style="--hue:${theme.hue};--delay:${i * 40}ms">
+      <a href="#/${e.tab}/${e.id}" class="entry-card" style="--hue:${theme.hue};--delay:${i * 40}ms">
         <div class="entry-card__media">
           ${e.image ? `<img loading="lazy" src="${e.image}" alt="" onerror="this.parentElement.classList.add('is-fallback')">` : ''}
           <div class="entry-card__fallback">${iconOf(e.tab)}</div>
@@ -1366,14 +1365,37 @@
            </div>`
         : '';
 
+    const subtypeIcon = (e.subtype && ITEM_SUBTYPES[e.subtype]) ? ITEM_SUBTYPES[e.subtype].icon : '';
+
+    function dossierValueHTML(key, value) {
+      if (key === 'Raridade') {
+        const k = normalize(value);
+        let cls = 'rarity-chip rarity-chip--default';
+        if (/comum/.test(k) && !/inco/.test(k)) cls = 'rarity-chip rarity-chip--common';
+        else if (/incomum/.test(k)) cls = 'rarity-chip rarity-chip--uncommon';
+        else if (/raro|rara/.test(k)) cls = 'rarity-chip rarity-chip--rare';
+        else if (/epico|epica/.test(k)) cls = 'rarity-chip rarity-chip--epic';
+        else if (/lendar/.test(k)) cls = 'rarity-chip rarity-chip--legendary';
+        else if (/unico|unica/.test(k)) cls = 'rarity-chip rarity-chip--unique';
+        return `<span class="${cls}">${escapeHtml(value)}</span>`;
+      }
+      return escapeHtml(value);
+    }
+
     const dossierMarkup = fields.length ? `
       <aside class="entry__dossier-side">
-        <span class="section__eyebrow">DOSSIÊ</span>
+        <header class="entry__dossier-head">
+          ${subtypeIcon ? `<span class="entry__dossier-icon" aria-hidden="true">${subtypeIcon}</span>` : ''}
+          <div>
+            <span class="section__eyebrow">DOSSIÊ</span>
+            ${subtypeName ? `<span class="entry__dossier-subtype">${escapeHtml(subtypeName)}</span>` : ''}
+          </div>
+        </header>
         <dl class="meta-list">
           ${fields.map(([k, v]) => `
             <div class="meta-row">
               <dt>${escapeHtml(k)}</dt>
-              <dd>${escapeHtml(v)}</dd>
+              <dd>${dossierValueHTML(k, v)}</dd>
             </div>
           `).join('')}
         </dl>
@@ -1382,6 +1404,7 @@
 
     const heroPortrait = `
       <div class="entry__portrait-card" style="--hue:${theme.hue}">
+        ${subtypeIcon ? `<div class="entry__subtype-emblem" aria-hidden="true">${subtypeIcon}</div>` : ''}
         <header class="entry__portrait-header">
           <nav class="breadcrumb">
             <a href="#/">Codex</a>
@@ -1391,7 +1414,7 @@
             <span class="breadcrumb__current">${escapeHtml(e.title)}</span>
           </nav>
           <div class="entry__tagline">
-            ${subtypeName ? `<span class="entry__cat">${escapeHtml(subtypeName.toUpperCase())}</span>` : ''}
+            ${subtypeName ? `<span class="entry__cat entry__cat--subtype">${escapeHtml(subtypeName.toUpperCase())}</span>` : ''}
             ${tags.length
               ? tags.map((tag) => tagChipHTML(tag, 'story-tag story-tag--hero')).join('')
               : (subtypeName ? '' : `<span class="entry__cat">${escapeHtml(theme.label)}</span>`)}
@@ -1403,6 +1426,7 @@
           <div class="entry__portrait">
             ${e.image ? `<img class="entry__portrait-img" src="${e.image}" alt="" onerror="this.parentElement.classList.add('is-fallback')">` : ''}
             <div class="entry__portrait-fallback">${iconOf(tabId)}</div>
+            <div class="entry__portrait-shine" aria-hidden="true"></div>
           </div>
           ${dossierMarkup}
         </div>
