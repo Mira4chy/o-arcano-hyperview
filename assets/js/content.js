@@ -35,7 +35,7 @@ window.ARCANO_ARCHIVE = {
       id: "Itens",
       title: "Itens",
       tone: "Relíquias, armas, couraças e objetos contaminados por mana.",
-      template: ["Tipo", "Raridade", "Custo", "Efeito", "Revés"]
+      portrait: true
     },
     {
       id: "Magias",
@@ -100,57 +100,6 @@ window.ARCANO_ARCHIVE = {
   ],
 
   entries: [
-    {
-      id: "lamina-de-mana-morta",
-      tab: "Itens",
-      title: "Lâmina de Mana Morta",
-      image: "assets/images/crystal-forge.png",
-      summary: "Arma cristalúrgica criada para romper proteções arcanas.",
-      fields: {
-        Tipo: "Arma média ou longa",
-        Raridade: "Rara",
-        Custo: "Favor militar, cristal intacto ou dívida nobre",
-        Efeito: "Instabiliza magias sustentadas ao atingir o alvo",
-        Revés: "Cada trinca aumenta o risco de descarga no usuário"
-      },
-      body: [
-        "A lâmina não odeia magos. Ela apenas reconhece magia viva como diferença de pressão e tenta corrigir o mundo pela ferida."
-      ]
-    },
-    {
-      id: "couraca-de-cristal-ferido",
-      tab: "Itens",
-      title: "Couraça de Cristal Ferido",
-      image: "assets/images/crystal-forge.png",
-      summary: "Armadura pesada com veios de cristal morto.",
-      fields: {
-        Tipo: "Armadura pesada",
-        Raridade: "Muito rara",
-        Custo: "Reservada a arsenais de guerra",
-        Efeito: "Reduz impactos arcanos diretos",
-        Revés: "O usuário sonha memórias que não viveu"
-      },
-      body: [
-        "Muitos soldados preferem morrer sem ela. Outros vestem a couraça e deixam de responder ao próprio nome depois de algumas campanhas."
-      ]
-    },
-    {
-      id: "cristal-vivo",
-      tab: "Itens",
-      title: "O Cristal Vivo",
-      image: "assets/images/living-crystal.png",
-      summary: "Relíquia impossível que pulsa como coisa nascida.",
-      fields: {
-        Tipo: "Relíquia ou entidade",
-        Raridade: "Única",
-        Custo: "Nenhuma moeda compra algo que reescreve o comprador",
-        Efeito: "Pode alterar uma consequência recente",
-        Revés: "Cada uso torna incerta a versão do usuário"
-      },
-      body: [
-        "Alguns dizem que ele nasceu antes dos deuses dormirem. Outros dizem que é o cadáver de um destino recusado."
-      ]
-    },
     {
       id: "chama-da-febre-branca",
       tab: "Magias",

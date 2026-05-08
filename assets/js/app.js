@@ -9,8 +9,26 @@
   if (!ARCHIVE) return;
 
   /* Categorias em que o usuário pode criar histórias */
-  const CREATABLE_TABS = ['Cenarios', 'Eras', 'Sistemas', 'Mapa', 'Deuses', 'Grupos'];
+  const CREATABLE_TABS = ['Cenarios', 'Eras', 'Sistemas', 'Mapa', 'Deuses', 'Grupos', 'Itens'];
   const isCreatable = (id) => CREATABLE_TABS.includes(id);
+
+  /* Categorias com banner em retrato (3:4) ao invés de paisagem (16:9) */
+  const PORTRAIT_TABS = new Set(['Itens']);
+  const isPortrait = (id) => PORTRAIT_TABS.has(id);
+
+  /* Subtipos da categoria Itens com seus dossies. */
+  const ITEM_SUBTYPES = {
+    item:       { label: 'Item',       icon: '📜', fields: ['Raridade', 'Valor'] },
+    equipavel:  { label: 'Equipável',  icon: '⚔️', fields: ['Raridade', 'Valor', 'Efeito', 'Slot'] },
+    consumivel: { label: 'Consumível', icon: '🧪', fields: ['Raridade', 'Valor', 'Efeito'] }
+  };
+  const ITEM_SUBTYPE_KEYS = Object.keys(ITEM_SUBTYPES);
+  function subtypeFieldsFor(subtype) {
+    return (ITEM_SUBTYPES[subtype] || ITEM_SUBTYPES.item).fields;
+  }
+  function subtypeLabel(subtype) {
+    return (ITEM_SUBTYPES[subtype] || ITEM_SUBTYPES.item).label;
+  }
 
   /* ── SUPABASE CLIENT ──────────────────────────── */
   const cfg = window.ARCANO_CONFIG || {};
@@ -596,6 +614,8 @@
       imagePath: row.image_path || '',
       bodyHtml: row.body_html || '',
       tags: sanitizeTags(row.tags || []),
+      subtype: row.subtype || '',
+      fields: (row.fields && typeof row.fields === 'object') ? row.fields : {},
       createdAt: row.created_at ? new Date(row.created_at).getTime() : Date.now(),
       isUserCreated: true
     };
@@ -639,7 +659,7 @@
 
   async function persistUserEntry(entry) {
     if (!sb) throw new Error('Supabase não configurado');
-    const { error } = await sb.from('stories').insert({
+    const payload = {
       id: entry.id,
       tab: entry.tab,
       title: entry.title,
@@ -647,12 +667,18 @@
       image: entry.image || '',
       image_path: entry.imagePath || '',
       body_html: entry.bodyHtml || '',
-      tags: sanitizeTags(entry.tags)
-    });
+      tags: sanitizeTags(entry.tags),
+      subtype: entry.subtype || null,
+      fields: entry.fields || {}
+    };
+    const { error } = await sb.from('stories').insert(payload);
     if (error) {
-      const missingTags = error.code === 'PGRST204' || /tags.*schema cache|schema cache.*tags/i.test(error.message || '');
-      if (missingTags) {
+      const msg = error.message || '';
+      if (error.code === 'PGRST204' || /tags.*schema cache|schema cache.*tags/i.test(msg)) {
         throw new Error('A coluna tags ainda não foi ativada no Supabase. Rode o arquivo supabase-tags.sql no SQL Editor e tente novamente.');
+      }
+      if (/subtype|fields/i.test(msg) && /column|schema cache/i.test(msg)) {
+        throw new Error('As colunas subtype/fields ainda não foram criadas. Rode o arquivo supabase-itens.sql no SQL Editor e tente novamente.');
       }
       throw error;
     }
@@ -1059,8 +1085,10 @@
     const theme = themeOf(e.tab);
     const fieldKeys = Object.keys(e.fields || {});
     const tags = sanitizeTags(e.tags);
+    const portrait = isPortrait(e.tab);
+    const subtypeName = e.subtype ? subtypeLabel(e.subtype) : null;
     return `
-      <a href="#/${e.tab}/${e.id}" class="entry-card" style="--hue:${theme.hue};--delay:${i * 40}ms">
+      <a href="#/${e.tab}/${e.id}" class="entry-card ${portrait ? 'entry-card--portrait' : ''}" style="--hue:${theme.hue};--delay:${i * 40}ms">
         <div class="entry-card__media">
           ${e.image ? `<img loading="lazy" src="${e.image}" alt="" onerror="this.parentElement.classList.add('is-fallback')">` : ''}
           <div class="entry-card__fallback">${iconOf(e.tab)}</div>
@@ -1068,7 +1096,7 @@
           <div class="entry-card__tags">
             ${tags.length
               ? tags.slice(0, 3).map((tag) => tagChipHTML(tag, 'story-tag story-tag--card')).join('')
-              : `<span class="entry-card__cat">${escapeHtml(theme.label)}</span>`}
+              : `<span class="entry-card__cat">${escapeHtml(subtypeName || theme.label)}</span>`}
           </div>
         </div>
         <div class="entry-card__body">
@@ -1144,27 +1172,48 @@
     const tab = tabById(tabId);
     if (!tab || !isCreatable(tabId)) return viewNotFound(tabId);
     const theme = themeOf(tabId);
+    const portrait = isPortrait(tabId);
+    const isItens = tabId === 'Itens';
+
+    const bannerLabel = portrait ? 'Banner (3:4)' : 'Banner (16:9)';
+    const bannerHint = portrait ? 'Proporção 3:4 (retrato) — JPG, PNG ou WebP' : 'Proporção 16:9 — JPG, PNG ou WebP';
 
     return `
       <section class="cat-hero" style="--hue:${theme.hue}">
         <div class="cat-hero__icon">${iconOf(tabId)}</div>
         <div class="cat-hero__body">
           <span class="cat-hero__eyebrow">CRIAR · ${escapeHtml(theme.label)}</span>
-          <h1 class="cat-hero__title">Nova história em ${escapeHtml(tab.title)}</h1>
-          <p class="cat-hero__tone">Preencha o banner, o título e o relato. Use a barra de ferramentas para formatar e colorir o texto.</p>
+          <h1 class="cat-hero__title">${isItens ? 'Novo item em ' : 'Nova história em '}${escapeHtml(tab.title)}</h1>
+          <p class="cat-hero__tone">${isItens
+            ? 'Escolha o tipo, anexe uma imagem retrato (3:4) e preencha o dossiê.'
+            : 'Preencha o banner, o título e o relato. Use a barra de ferramentas para formatar e colorir o texto.'}</p>
         </div>
       </section>
 
-      <form class="create-form" id="createForm" data-tab="${escapeHtml(tabId)}" style="--hue:${theme.hue}" novalidate>
+      <form class="create-form ${portrait ? 'create-form--portrait' : ''}" id="createForm" data-tab="${escapeHtml(tabId)}" style="--hue:${theme.hue}" novalidate>
+        ${isItens ? `
         <div class="create-form__field">
-          <label class="create-form__label">Banner (16:9)</label>
-          <div class="banner-drop" id="bannerDrop" tabindex="0" role="button" aria-label="Selecionar imagem do banner">
+          <label class="create-form__label">Tipo</label>
+          <div class="subtype-tabs" id="subtypeTabs" role="tablist">
+            ${ITEM_SUBTYPE_KEYS.map((key, i) => `
+              <button type="button" class="subtype-tab ${i === 0 ? 'is-active' : ''}" data-subtype="${key}" role="tab">
+                <span class="subtype-tab__icon">${ITEM_SUBTYPES[key].icon}</span>
+                <span class="subtype-tab__label">${escapeHtml(ITEM_SUBTYPES[key].label)}</span>
+              </button>
+            `).join('')}
+          </div>
+        </div>
+        ` : ''}
+
+        <div class="create-form__field">
+          <label class="create-form__label">${escapeHtml(bannerLabel)}</label>
+          <div class="banner-drop ${portrait ? 'banner-drop--portrait' : ''}" id="bannerDrop" tabindex="0" role="button" aria-label="Selecionar imagem do banner">
             <input type="file" accept="image/*" id="bannerInput" hidden>
             <div class="banner-drop__preview" id="bannerPreview" hidden></div>
             <div class="banner-drop__placeholder" id="bannerPlaceholder">
               <svg viewBox="0 0 24 24" width="42" height="42" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="8.5" cy="10.5" r="1.5"/><path d="M21 17l-5-5-9 9"/></svg>
               <strong>Clique ou arraste uma imagem</strong>
-              <span>Proporção 16:9 — JPG, PNG ou WebP</span>
+              <span>${escapeHtml(bannerHint)}</span>
             </div>
             <button type="button" class="banner-drop__clear" id="bannerClear" hidden aria-label="Remover imagem">
               <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
@@ -1173,14 +1222,21 @@
         </div>
 
         <div class="create-form__field">
-          <label class="create-form__label" for="titleInput">Título</label>
-          <input type="text" id="titleInput" class="create-form__input" placeholder="Dê um nome à sua história" maxlength="120" required>
+          <label class="create-form__label" for="titleInput">${isItens ? 'Nome' : 'Título'}</label>
+          <input type="text" id="titleInput" class="create-form__input" placeholder="${isItens ? 'Nome do item' : 'Dê um nome à sua história'}" maxlength="120" required>
         </div>
 
         <div class="create-form__field">
           <label class="create-form__label" for="summaryInput">Resumo (opcional)</label>
-          <input type="text" id="summaryInput" class="create-form__input" placeholder="Uma frase curta que descreve a história" maxlength="200">
+          <input type="text" id="summaryInput" class="create-form__input" placeholder="Uma frase curta que descreve ${isItens ? 'o item' : 'a história'}" maxlength="200">
         </div>
+
+        ${isItens ? `
+        <div class="create-form__field">
+          <label class="create-form__label">Dossiê</label>
+          <div class="dossier-fields" id="dossierFields"></div>
+        </div>
+        ` : ''}
 
         <div class="create-form__field">
           <label class="create-form__label">Tags</label>
@@ -1201,7 +1257,7 @@
         </div>
 
         <div class="create-form__field">
-          <label class="create-form__label">Texto</label>
+          <label class="create-form__label">${isItens ? 'Descrição' : 'Texto'}</label>
           ${editorToolbarHTML()}
         </div>
 
@@ -1209,7 +1265,7 @@
           <a href="#/${tabId}" class="btn btn-ghost">Cancelar</a>
           <button type="submit" class="btn btn-primary" id="createSave">
             <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>
-            <span>Salvar história</span>
+            <span>${isItens ? 'Salvar item' : 'Salvar história'}</span>
           </button>
         </div>
       </form>
@@ -1283,46 +1339,78 @@
     const fields = Object.entries(e.fields || {});
     const related = ARCHIVE.entries.filter((x) => x.tab === tabId && x.id !== e.id).slice(0, 3);
     const tags = sanitizeTags(e.tags);
+    const portrait = isPortrait(tabId);
+    const subtypeName = e.subtype ? subtypeLabel(e.subtype) : null;
 
     const bodyMarkup = e.bodyHtml
       ? `<div class="entry__body entry__body--rich">
-           <span class="section__eyebrow">RELATO</span>
+           <span class="section__eyebrow">${tabId === 'Itens' ? 'DESCRIÇÃO' : 'RELATO'}</span>
            <div class="rt-content">${sanitizeHtml(e.bodyHtml)}</div>
          </div>`
       : (e.body || []).length
         ? `<div class="entry__body">
-             <span class="section__eyebrow">RELATO</span>
+             <span class="section__eyebrow">${tabId === 'Itens' ? 'DESCRIÇÃO' : 'RELATO'}</span>
              ${e.body.map((p) => `<p>${escapeHtml(p)}</p>`).join('')}
            </div>`
         : '';
 
-    return `
-      <article class="entry" style="--hue:${theme.hue}">
-        <div class="entry__hero">
-          ${e.image ? `<img class="entry__img" src="${e.image}" alt="" onerror="this.parentElement.classList.add('is-fallback')">` : ''}
-          <div class="entry__fallback">${iconOf(tabId)}</div>
-          <div class="entry__shade"></div>
-          <div class="entry__hero-content">
-            <nav class="breadcrumb">
-              <a href="#/">Codex</a>
-              <span>/</span>
-              <a href="#/${tabId}">${escapeHtml(tab.title)}</a>
-              <span>/</span>
-              <span class="breadcrumb__current">${escapeHtml(e.title)}</span>
-            </nav>
-            <div class="entry__tagline">
-              ${tags.length
-                ? tags.map((tag) => tagChipHTML(tag, 'story-tag story-tag--hero')).join('')
-                : `<span class="entry__cat">${escapeHtml(theme.label)}</span>`}
-            </div>
-            <h1 class="entry__title" data-text-reveal>${escapeHtml(e.title)}</h1>
-            ${e.summary ? `<p class="entry__summary">${escapeHtml(e.summary)}</p>` : ''}
-          </div>
-          <div class="hero__scroll" aria-hidden="true">
-            <span>scroll</span>
-            <div class="hero__scrollLine"></div>
-          </div>
+    const heroPortrait = `
+      <div class="entry__split" style="--hue:${theme.hue}">
+        <div class="entry__portrait">
+          ${e.image ? `<img class="entry__portrait-img" src="${e.image}" alt="" onerror="this.parentElement.classList.add('is-fallback')">` : ''}
+          <div class="entry__portrait-fallback">${iconOf(tabId)}</div>
         </div>
+        <div class="entry__split-info">
+          <nav class="breadcrumb">
+            <a href="#/">Codex</a>
+            <span>/</span>
+            <a href="#/${tabId}">${escapeHtml(tab.title)}</a>
+            <span>/</span>
+            <span class="breadcrumb__current">${escapeHtml(e.title)}</span>
+          </nav>
+          <div class="entry__tagline">
+            ${subtypeName ? `<span class="entry__cat">${escapeHtml(subtypeName.toUpperCase())}</span>` : ''}
+            ${tags.length
+              ? tags.map((tag) => tagChipHTML(tag, 'story-tag story-tag--hero')).join('')
+              : (subtypeName ? '' : `<span class="entry__cat">${escapeHtml(theme.label)}</span>`)}
+          </div>
+          <h1 class="entry__title entry__title--portrait" data-text-reveal>${escapeHtml(e.title)}</h1>
+          ${e.summary ? `<p class="entry__summary">${escapeHtml(e.summary)}</p>` : ''}
+        </div>
+      </div>
+    `;
+
+    const heroLandscape = `
+      <div class="entry__hero">
+        ${e.image ? `<img class="entry__img" src="${e.image}" alt="" onerror="this.parentElement.classList.add('is-fallback')">` : ''}
+        <div class="entry__fallback">${iconOf(tabId)}</div>
+        <div class="entry__shade"></div>
+        <div class="entry__hero-content">
+          <nav class="breadcrumb">
+            <a href="#/">Codex</a>
+            <span>/</span>
+            <a href="#/${tabId}">${escapeHtml(tab.title)}</a>
+            <span>/</span>
+            <span class="breadcrumb__current">${escapeHtml(e.title)}</span>
+          </nav>
+          <div class="entry__tagline">
+            ${tags.length
+              ? tags.map((tag) => tagChipHTML(tag, 'story-tag story-tag--hero')).join('')
+              : `<span class="entry__cat">${escapeHtml(theme.label)}</span>`}
+          </div>
+          <h1 class="entry__title" data-text-reveal>${escapeHtml(e.title)}</h1>
+          ${e.summary ? `<p class="entry__summary">${escapeHtml(e.summary)}</p>` : ''}
+        </div>
+        <div class="hero__scroll" aria-hidden="true">
+          <span>scroll</span>
+          <div class="hero__scrollLine"></div>
+        </div>
+      </div>
+    `;
+
+    return `
+      <article class="entry ${portrait ? 'entry--portrait' : ''}" style="--hue:${theme.hue}">
+        ${portrait ? heroPortrait : heroLandscape}
 
         <div class="entry__layout">
           <div class="entry__main">
@@ -1642,6 +1730,70 @@
     return { getTags: () => sanitizeTags(tags) };
   }
 
+  /* Dossier dinâmico para a categoria Itens (subtype + campos). */
+  function bindDossierFields() {
+    const tabs = document.getElementById('subtypeTabs');
+    const wrap = document.getElementById('dossierFields');
+    if (!tabs || !wrap) return { getFields: () => ({}), getSubtype: () => null };
+
+    let current = ITEM_SUBTYPE_KEYS[0];
+    const cache = {};
+    Object.keys(ITEM_SUBTYPES).forEach((k) => {
+      cache[k] = {};
+      ITEM_SUBTYPES[k].fields.forEach((f) => { cache[k][f] = ''; });
+    });
+
+    function placeholderFor(field) {
+      switch (field) {
+        case 'Raridade': return 'Comum, Incomum, Raro, Único…';
+        case 'Valor': return 'Ex.: 30 moedas, Inestimável';
+        case 'Efeito': return 'O que ele faz quando usado';
+        case 'Slot': return 'Cabeça, Mão, Peito, Anel…';
+        default: return field;
+      }
+    }
+
+    function render() {
+      // salva valores atuais antes de re-renderizar
+      wrap.querySelectorAll('input[data-dossier-field]').forEach((inp) => {
+        const k = inp.dataset.dossierField;
+        if (cache[current]) cache[current][k] = inp.value;
+      });
+
+      const fields = subtypeFieldsFor(current);
+      wrap.innerHTML = fields.map((f) => `
+        <label class="dossier-field">
+          <span>${escapeHtml(f)}</span>
+          <input type="text" class="create-form__input" data-dossier-field="${escapeHtml(f)}"
+                 placeholder="${escapeHtml(placeholderFor(f))}"
+                 value="${escapeHtml(cache[current][f] || '')}" maxlength="120">
+        </label>
+      `).join('');
+    }
+
+    tabs.addEventListener('click', (e) => {
+      const btn = e.target.closest('.subtype-tab');
+      if (!btn) return;
+      tabs.querySelectorAll('.subtype-tab').forEach((b) => b.classList.toggle('is-active', b === btn));
+      current = btn.dataset.subtype;
+      render();
+    });
+
+    render();
+
+    return {
+      getSubtype: () => current,
+      getFields: () => {
+        const out = {};
+        wrap.querySelectorAll('input[data-dossier-field]').forEach((inp) => {
+          const v = inp.value.trim();
+          if (v) out[inp.dataset.dossierField] = v;
+        });
+        return out;
+      }
+    };
+  }
+
   function bindEditor() {
     const editor = document.getElementById('rtEditor');
     const toolbar = document.getElementById('editorToolbar');
@@ -1696,6 +1848,7 @@
     const banner = bindBannerDrop();
     const tagBuilder = bindTagBuilder();
     const editor = bindEditor();
+    const dossier = (tabId === 'Itens') ? bindDossierFields() : { getFields: () => ({}), getSubtype: () => null };
 
     form.addEventListener('submit', async (e) => {
       e.preventDefault();
@@ -1731,9 +1884,12 @@
           imageUrl = up.url;
           imagePath = up.path;
         }
+        const subtype = dossier.getSubtype();
+        const fields = dossier.getFields();
         const newEntry = {
           id, tab: tabId, title, summary,
           image: imageUrl, imagePath, bodyHtml, tags,
+          subtype, fields,
           createdAt: Date.now(), isUserCreated: true
         };
         await persistUserEntry(newEntry);
