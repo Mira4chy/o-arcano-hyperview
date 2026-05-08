@@ -2924,6 +2924,34 @@ img { display: block; max-width: 100%; }
   mix-blend-mode: overlay;
 }
 
+/* ── Rarity picker (formulário de Itens) ───────── */
+.rarity-picker {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 6px 0;
+}
+
+.rarity-pick {
+  cursor: pointer;
+  font-family: inherit;
+  background: rgba(0, 0, 0, 0.32);
+  opacity: 0.55;
+  transition: opacity 200ms var(--ease), transform 200ms var(--ease), box-shadow 200ms var(--ease), background 200ms var(--ease);
+}
+
+.rarity-pick:hover {
+  opacity: 0.92;
+  transform: translateY(-1px);
+}
+
+.rarity-pick.is-selected {
+  opacity: 1;
+  transform: scale(1.04);
+  background: rgba(0, 0, 0, 0.5);
+  box-shadow: 0 0 0 1px currentColor, 0 6px 18px rgba(0, 0, 0, 0.45);
+}
+
 /* ── Rarity chips ──────────────────────────────── */
 .rarity-chip {
   display: inline-flex;

@@ -42,6 +42,16 @@
     return (ITEM_SUBTYPES[subtype] || ITEM_SUBTYPES.item).label;
   }
 
+  /* Raridades possiveis em ordem crescente. As classes CSS batem com .rarity-chip--<x>. */
+  const RARITY_OPTIONS = [
+    { value: 'Comum',     cssClass: 'rarity-chip--common' },
+    { value: 'Incomum',   cssClass: 'rarity-chip--uncommon' },
+    { value: 'Raro',      cssClass: 'rarity-chip--rare' },
+    { value: 'Épico',     cssClass: 'rarity-chip--epic' },
+    { value: 'Lendário',  cssClass: 'rarity-chip--legendary' },
+    { value: 'Único',     cssClass: 'rarity-chip--unique' }
+  ];
+
   /* ── SUPABASE CLIENT ──────────────────────────── */
   const cfg = window.ARCANO_CONFIG || {};
   const supabaseConfigured =
@@ -1098,6 +1108,9 @@
     const fieldKeys = Object.keys(e.fields || {});
     const tags = sanitizeTags(e.tags);
     const subtypeName = e.subtype ? subtypeLabel(e.subtype) : null;
+    // Em itens (com subtype) os campos do dossie sao fixos por tipo,
+    // entao mostrar como chips no card e redundante.
+    const showChips = fieldKeys.length && !e.subtype;
     return `
       <a href="#/${e.tab}/${e.id}" class="entry-card" style="--hue:${theme.hue};--delay:${i * 40}ms">
         <div class="entry-card__media">
@@ -1113,7 +1126,7 @@
         <div class="entry-card__body">
           <h3 class="entry-card__title">${escapeHtml(e.title)}</h3>
           <p class="entry-card__summary">${escapeHtml(e.summary || '')}</p>
-          ${fieldKeys.length ? `
+          ${showChips ? `
             <div class="entry-card__chips">
               ${fieldKeys.slice(0, 3).map((k) => `<span class="chip">${escapeHtml(k)}</span>`).join('')}
             </div>
@@ -1819,7 +1832,6 @@
 
     function placeholderFor(field) {
       switch (field) {
-        case 'Raridade': return 'Comum, Incomum, Raro, Único…';
         case 'Valor': return 'Ex.: 30 moedas, Inestimável';
         case 'Efeito': return 'O que ele faz quando usado';
         case 'Slot': return 'Cabeça, Mão, Peito, Anel…';
@@ -1827,22 +1839,53 @@
       }
     }
 
-    function render() {
-      // salva valores atuais antes de re-renderizar
-      wrap.querySelectorAll('input[data-dossier-field]').forEach((inp) => {
-        const k = inp.dataset.dossierField;
-        if (cache[current]) cache[current][k] = inp.value;
-      });
+    function readValue(el) {
+      if (!el) return '';
+      if (el.classList && el.classList.contains('rarity-picker')) return el.dataset.value || '';
+      return (el.value || '').toString();
+    }
 
-      const fields = subtypeFieldsFor(current);
-      wrap.innerHTML = fields.map((f) => `
+    function persistCurrent() {
+      wrap.querySelectorAll('[data-dossier-field]').forEach((el) => {
+        const k = el.dataset.dossierField;
+        if (cache[current]) cache[current][k] = readValue(el);
+      });
+    }
+
+    function fieldHTML(field) {
+      const value = cache[current][field] || '';
+      if (field === 'Raridade') {
+        return `
+          <div class="dossier-field">
+            <span>${escapeHtml(field)}</span>
+            <div class="rarity-picker" data-dossier-field="${escapeHtml(field)}" data-value="${escapeHtml(value)}" role="radiogroup" aria-label="Raridade">
+              ${RARITY_OPTIONS.map((opt) => `
+                <button type="button"
+                        class="rarity-chip ${opt.cssClass} rarity-pick ${opt.value === value ? 'is-selected' : ''}"
+                        data-rarity="${escapeHtml(opt.value)}"
+                        role="radio"
+                        aria-checked="${opt.value === value ? 'true' : 'false'}">
+                  ${escapeHtml(opt.value)}
+                </button>
+              `).join('')}
+            </div>
+          </div>
+        `;
+      }
+      return `
         <label class="dossier-field">
-          <span>${escapeHtml(f)}</span>
-          <input type="text" class="create-form__input" data-dossier-field="${escapeHtml(f)}"
-                 placeholder="${escapeHtml(placeholderFor(f))}"
-                 value="${escapeHtml(cache[current][f] || '')}" maxlength="120">
+          <span>${escapeHtml(field)}</span>
+          <input type="text" class="create-form__input" data-dossier-field="${escapeHtml(field)}"
+                 placeholder="${escapeHtml(placeholderFor(field))}"
+                 value="${escapeHtml(value)}" maxlength="160">
         </label>
-      `).join('');
+      `;
+    }
+
+    function render() {
+      persistCurrent();
+      const fields = subtypeFieldsFor(current);
+      wrap.innerHTML = fields.map(fieldHTML).join('');
     }
 
     tabs.addEventListener('click', (e) => {
@@ -1853,15 +1896,32 @@
       render();
     });
 
+    // Delegacao: clique nos chips de raridade.
+    wrap.addEventListener('click', (e) => {
+      const btn = e.target.closest('.rarity-pick');
+      if (!btn) return;
+      e.preventDefault();
+      const picker = btn.closest('.rarity-picker');
+      if (!picker) return;
+      const value = btn.dataset.rarity || '';
+      const newValue = picker.dataset.value === value ? '' : value;
+      picker.dataset.value = newValue;
+      picker.querySelectorAll('.rarity-pick').forEach((b) => {
+        const active = b.dataset.rarity === newValue;
+        b.classList.toggle('is-selected', active);
+        b.setAttribute('aria-checked', active ? 'true' : 'false');
+      });
+    });
+
     render();
 
     return {
       getSubtype: () => current,
       getFields: () => {
         const out = {};
-        wrap.querySelectorAll('input[data-dossier-field]').forEach((inp) => {
-          const v = inp.value.trim();
-          if (v) out[inp.dataset.dossierField] = v;
+        wrap.querySelectorAll('[data-dossier-field]').forEach((el) => {
+          const v = readValue(el).trim();
+          if (v) out[el.dataset.dossierField] = v;
         });
         return out;
       }
