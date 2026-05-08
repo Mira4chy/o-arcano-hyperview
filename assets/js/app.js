@@ -9,12 +9,31 @@
   if (!ARCHIVE) return;
 
   /* Categorias em que o usuário pode criar histórias */
-  const CREATABLE_TABS = ['Cenarios', 'Eras', 'Sistemas', 'Mapa', 'Deuses', 'Grupos', 'Itens'];
+  const CREATABLE_TABS = ['Cenarios', 'Eras', 'Sistemas', 'Mapa', 'Deuses', 'Grupos', 'Itens', 'Racas'];
   const isCreatable = (id) => CREATABLE_TABS.includes(id);
 
-  /* Categorias com banner em retrato (3:4) ao invés de paisagem (16:9) */
-  const PORTRAIT_TABS = new Set(['Itens']);
+  /* Categorias com layout alternativo (imagem ao lado do dossiê).
+     O aspect-ratio do banner muda por categoria. */
+  const PORTRAIT_TABS = new Set(['Itens', 'Racas']);
   const isPortrait = (id) => PORTRAIT_TABS.has(id);
+
+  const BANNER_ASPECT = {
+    Itens: '4 / 3',
+    Racas: '2 / 3'
+  };
+  function bannerAspectFor(tabId) {
+    return BANNER_ASPECT[tabId] || '16 / 9';
+  }
+  function bannerLabelFor(tabId) {
+    if (tabId === 'Itens') return { label: 'Banner (4:3)', hint: 'Proporção 4:3 (paisagem) — JPG, PNG ou WebP' };
+    if (tabId === 'Racas') return { label: 'Banner (2:3)', hint: 'Proporção 2:3 (retrato) — JPG, PNG ou WebP' };
+    return { label: 'Banner (16:9)', hint: 'Proporção 16:9 — JPG, PNG ou WebP' };
+  }
+  function bannerStyleFor(tabId) {
+    if (tabId === 'Itens') return 'aspect-ratio: 4 / 3; max-width: 480px;';
+    if (tabId === 'Racas') return 'aspect-ratio: 2 / 3; max-width: 360px;';
+    return '';
+  }
 
   /* Subtipos da categoria Itens com seus dossies. */
   const ITEM_SUBTYPES = {
@@ -51,6 +70,54 @@
     { value: 'Lendário',  cssClass: 'rarity-chip--legendary' },
     { value: 'Único',     cssClass: 'rarity-chip--unique' }
   ];
+
+  /* Estrutura do dossie de Racas (3 secoes). */
+  const RACE_HP_PARTS = ['Cabeça', 'Peito', 'Abdômen', 'Braço Direito', 'Braço Esquerdo', 'Perna Direita', 'Perna Esquerda'];
+  const RACE_SECTIONS = [
+    {
+      id: 'surgimento',
+      title: 'Surgimento',
+      fields: [
+        { key: 'Raridade', type: 'rarity' },
+        { key: 'Modificador', type: 'text', placeholder: 'Ex.: +1 Força, -1 Destreza' },
+        { key: 'Origem', type: 'text', placeholder: 'Ex.: Continente Norte' },
+        { key: 'Ponto forte', type: 'text', placeholder: 'Resistência ao frio…' },
+        { key: 'Ponto fraco', type: 'text', placeholder: 'Vulnerável ao fogo…' }
+      ]
+    },
+    {
+      id: 'biologia',
+      title: 'Biologia',
+      fields: [
+        { key: 'Talento racial', type: 'text', placeholder: 'Talento que define a raça' },
+        { key: 'Passivas', type: 'list', placeholder: 'Digite uma passiva e Enter…' },
+        { key: 'Penalidade', type: 'text', placeholder: 'Limitação inata' }
+      ]
+    },
+    {
+      id: 'hpmp',
+      title: 'HP / MP Base',
+      fields: [
+        ...RACE_HP_PARTS.map((p) => ({ key: p, type: 'hp', default: defaultHpFor(p) })),
+        { key: 'Mana', type: 'mana', default: '15/15' }
+      ]
+    }
+  ];
+  function defaultHpFor(part) {
+    if (part === 'Peito') return '85';
+    if (part === 'Abdômen') return '75';
+    if (part === 'Cabeça') return '55';
+    return '65';
+  }
+  function isRaceSectionField(key) {
+    return RACE_SECTIONS.some((s) => s.fields.some((f) => f.key === key));
+  }
+  function raceFieldDef(key) {
+    for (const s of RACE_SECTIONS) {
+      for (const f of s.fields) if (f.key === key) return f;
+    }
+    return null;
+  }
 
   /* ── SUPABASE CLIENT ──────────────────────────── */
   const cfg = window.ARCANO_CONFIG || {};
@@ -1198,19 +1265,29 @@
     const theme = themeOf(tabId);
     const portrait = isPortrait(tabId);
     const isItens = tabId === 'Itens';
+    const isRacas = tabId === 'Racas';
 
-    const bannerLabel = portrait ? 'Banner (4:3)' : 'Banner (16:9)';
-    const bannerHint = portrait ? 'Proporção 4:3 (paisagem) — JPG, PNG ou WebP' : 'Proporção 16:9 — JPG, PNG ou WebP';
+    const banner = bannerLabelFor(tabId);
+    const bannerStyle = bannerStyleFor(tabId);
+    const titleLabel = (isItens || isRacas) ? 'Nome' : 'Título';
+    const titlePlaceholder = isItens ? 'Nome do item' : (isRacas ? 'Nome da raça' : 'Dê um nome à sua história');
+    const summaryPlaceholder = `Uma frase curta que descreve ${isItens ? 'o item' : (isRacas ? 'a raça' : 'a história')}`;
+    const descLabel = (isItens || isRacas) ? 'Descrição' : 'Texto';
+    const saveLabel = isItens ? 'Salvar item' : (isRacas ? 'Salvar raça' : 'Salvar história');
+    const heroSubtitle = isItens
+      ? 'Escolha o tipo, anexe uma imagem 4:3 e preencha o dossiê.'
+      : isRacas
+        ? 'Anexe uma imagem 2:3, preencha as três seções do dossiê e descreva a raça.'
+        : 'Preencha o banner, o título e o relato. Use a barra de ferramentas para formatar e colorir o texto.';
+    const heroH1 = isItens ? 'Novo item em ' : (isRacas ? 'Nova raça em ' : 'Nova história em ');
 
     return `
       <section class="cat-hero" style="--hue:${theme.hue}">
         <div class="cat-hero__icon">${iconOf(tabId)}</div>
         <div class="cat-hero__body">
           <span class="cat-hero__eyebrow">CRIAR · ${escapeHtml(theme.label)}</span>
-          <h1 class="cat-hero__title">${isItens ? 'Novo item em ' : 'Nova história em '}${escapeHtml(tab.title)}</h1>
-          <p class="cat-hero__tone">${isItens
-            ? 'Escolha o tipo, anexe uma imagem 4:3 e preencha o dossiê.'
-            : 'Preencha o banner, o título e o relato. Use a barra de ferramentas para formatar e colorir o texto.'}</p>
+          <h1 class="cat-hero__title">${heroH1}${escapeHtml(tab.title)}</h1>
+          <p class="cat-hero__tone">${escapeHtml(heroSubtitle)}</p>
         </div>
       </section>
 
@@ -1230,14 +1307,16 @@
         ` : ''}
 
         <div class="create-form__field">
-          <label class="create-form__label">${escapeHtml(bannerLabel)}</label>
-          <div class="banner-drop ${portrait ? 'banner-drop--portrait' : ''}" id="bannerDrop" tabindex="0" role="button" aria-label="Selecionar imagem do banner">
+          <label class="create-form__label">${escapeHtml(banner.label)}</label>
+          <div class="banner-drop ${portrait ? 'banner-drop--portrait' : ''}" id="bannerDrop"
+               style="${bannerStyle}"
+               tabindex="0" role="button" aria-label="Selecionar imagem do banner">
             <input type="file" accept="image/*" id="bannerInput" hidden>
             <div class="banner-drop__preview" id="bannerPreview" hidden></div>
             <div class="banner-drop__placeholder" id="bannerPlaceholder">
               <svg viewBox="0 0 24 24" width="42" height="42" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="8.5" cy="10.5" r="1.5"/><path d="M21 17l-5-5-9 9"/></svg>
               <strong>Clique ou arraste uma imagem</strong>
-              <span>${escapeHtml(bannerHint)}</span>
+              <span>${escapeHtml(banner.hint)}</span>
             </div>
             <button type="button" class="banner-drop__clear" id="bannerClear" hidden aria-label="Remover imagem">
               <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
@@ -1246,19 +1325,26 @@
         </div>
 
         <div class="create-form__field">
-          <label class="create-form__label" for="titleInput">${isItens ? 'Nome' : 'Título'}</label>
-          <input type="text" id="titleInput" class="create-form__input" placeholder="${isItens ? 'Nome do item' : 'Dê um nome à sua história'}" maxlength="120" required>
+          <label class="create-form__label" for="titleInput">${escapeHtml(titleLabel)}</label>
+          <input type="text" id="titleInput" class="create-form__input" placeholder="${escapeHtml(titlePlaceholder)}" maxlength="120" required>
         </div>
 
         <div class="create-form__field">
           <label class="create-form__label" for="summaryInput">Resumo (opcional)</label>
-          <input type="text" id="summaryInput" class="create-form__input" placeholder="Uma frase curta que descreve ${isItens ? 'o item' : 'a história'}" maxlength="200">
+          <input type="text" id="summaryInput" class="create-form__input" placeholder="${escapeHtml(summaryPlaceholder)}" maxlength="200">
         </div>
 
         ${isItens ? `
         <div class="create-form__field">
           <label class="create-form__label">Dossiê</label>
           <div class="dossier-fields" id="dossierFields"></div>
+        </div>
+        ` : ''}
+
+        ${isRacas ? `
+        <div class="create-form__field">
+          <label class="create-form__label">Dossiê</label>
+          ${raceDossierFormHTML({})}
         </div>
         ` : ''}
 
@@ -1281,7 +1367,7 @@
         </div>
 
         <div class="create-form__field">
-          <label class="create-form__label">${isItens ? 'Descrição' : 'Texto'}</label>
+          <label class="create-form__label">${escapeHtml(descLabel)}</label>
           ${editorToolbarHTML()}
         </div>
 
@@ -1289,7 +1375,7 @@
           <a href="#/${tabId}" class="btn btn-ghost">Cancelar</a>
           <button type="submit" class="btn btn-primary" id="createSave">
             <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>
-            <span>${isItens ? 'Salvar item' : 'Salvar história'}</span>
+            <span>${escapeHtml(saveLabel)}</span>
           </button>
         </div>
       </form>
@@ -1379,6 +1465,7 @@
         : '';
 
     const subtypeIcon = (e.subtype && ITEM_SUBTYPES[e.subtype]) ? ITEM_SUBTYPES[e.subtype].icon : '';
+    const isRacas = tabId === 'Racas';
 
     function dossierValueHTML(key, value) {
       if (key === 'Raridade') {
@@ -1395,28 +1482,108 @@
       return escapeHtml(value);
     }
 
-    const dossierMarkup = fields.length ? `
-      <aside class="entry__dossier-side">
-        <header class="entry__dossier-head">
-          ${subtypeIcon ? `<span class="entry__dossier-icon" aria-hidden="true">${subtypeIcon}</span>` : ''}
-          <div>
-            <span class="section__eyebrow">DOSSIÊ</span>
-            ${subtypeName ? `<span class="entry__dossier-subtype">${escapeHtml(subtypeName)}</span>` : ''}
-          </div>
-        </header>
-        <dl class="meta-list">
-          ${fields.map(([k, v]) => `
-            <div class="meta-row">
-              <dt>${escapeHtml(k)}</dt>
-              <dd>${dossierValueHTML(k, v)}</dd>
+    function renderItensDossier() {
+      if (!fields.length) return '';
+      return `
+        <aside class="entry__dossier-side">
+          <header class="entry__dossier-head">
+            ${subtypeIcon ? `<span class="entry__dossier-icon" aria-hidden="true">${subtypeIcon}</span>` : ''}
+            <div>
+              <span class="section__eyebrow">DOSSIÊ</span>
+              ${subtypeName ? `<span class="entry__dossier-subtype">${escapeHtml(subtypeName)}</span>` : ''}
             </div>
-          `).join('')}
-        </dl>
-      </aside>
-    ` : '';
+          </header>
+          <dl class="meta-list">
+            ${fields.map(([k, v]) => `
+              <div class="meta-row">
+                <dt>${escapeHtml(k)}</dt>
+                <dd>${dossierValueHTML(k, v)}</dd>
+              </div>
+            `).join('')}
+          </dl>
+        </aside>
+      `;
+    }
+
+    function renderRaceDossierView(rawFields) {
+      const data = rawFields || {};
+      return `
+        <div class="race-dossier-view">
+          ${RACE_SECTIONS.map((section) => {
+            if (section.id === 'hpmp') {
+              const hasAny = RACE_HP_PARTS.some((p) => data[p]) || data['Mana'];
+              if (!hasAny) return '';
+              return `
+                <aside class="entry__dossier-side dossier-card--hpmp">
+                  <header class="entry__dossier-head">
+                    <span class="section__eyebrow">${escapeHtml(section.title.toUpperCase())}</span>
+                  </header>
+                  ${RACE_HP_PARTS.some((p) => data[p]) ? `
+                    <div class="hp-grid">
+                      ${RACE_HP_PARTS.filter((p) => data[p]).map((p) => `
+                        <div class="hp-part">
+                          <span class="hp-part__name">${escapeHtml(p)}</span>
+                          <span class="hp-part__value">${escapeHtml(data[p])}<em>HP</em></span>
+                        </div>
+                      `).join('')}
+                    </div>
+                  ` : ''}
+                  ${data['Mana'] ? `
+                    <div class="mana-callout">
+                      <span class="mana-callout__label">MANA</span>
+                      <strong class="mana-callout__value">${escapeHtml(data['Mana'])}</strong>
+                    </div>
+                  ` : ''}
+                </aside>
+              `;
+            }
+            const visible = section.fields.filter((f) => {
+              const v = data[f.key];
+              if (f.type === 'list') return Array.isArray(v) && v.length > 0;
+              return v != null && v !== '';
+            });
+            if (!visible.length) return '';
+            return `
+              <aside class="entry__dossier-side">
+                <header class="entry__dossier-head">
+                  <span class="section__eyebrow">${escapeHtml(section.title.toUpperCase())}</span>
+                </header>
+                <dl class="meta-list">
+                  ${visible.map((f) => {
+                    const v = data[f.key];
+                    if (f.type === 'list') {
+                      return `
+                        <div class="meta-row">
+                          <dt>${escapeHtml(f.key)}</dt>
+                          <dd>
+                            <ul class="meta-list-items">
+                              ${v.map((item) => `<li>${escapeHtml(item)}</li>`).join('')}
+                            </ul>
+                          </dd>
+                        </div>
+                      `;
+                    }
+                    return `
+                      <div class="meta-row">
+                        <dt>${escapeHtml(f.key)}</dt>
+                        <dd>${dossierValueHTML(f.key, v)}</dd>
+                      </div>
+                    `;
+                  }).join('')}
+                </dl>
+              </aside>
+            `;
+          }).join('')}
+        </div>
+      `;
+    }
+
+    const dossierMarkup = isRacas
+      ? renderRaceDossierView(e.fields)
+      : renderItensDossier();
 
     const heroPortrait = `
-      <div class="entry__portrait-card" style="--hue:${theme.hue}">
+      <div class="entry__portrait-card ${isRacas ? 'entry__portrait-card--tall' : ''}" style="--hue:${theme.hue}">
         ${subtypeIcon ? `<div class="entry__subtype-emblem" aria-hidden="true">${subtypeIcon}</div>` : ''}
         <header class="entry__portrait-header">
           <nav class="breadcrumb">
@@ -1436,7 +1603,7 @@
           ${e.summary ? `<p class="entry__summary">${escapeHtml(e.summary)}</p>` : ''}
         </header>
         <div class="entry__portrait-grid">
-          <div class="entry__portrait">
+          <div class="entry__portrait" style="aspect-ratio: ${bannerAspectFor(tabId)};">
             ${e.image ? `<img class="entry__portrait-img" src="${e.image}" alt="" onerror="this.parentElement.classList.add('is-fallback')">` : ''}
             <div class="entry__portrait-fallback">${iconOf(tabId)}</div>
             <div class="entry__portrait-shine" aria-hidden="true"></div>
@@ -1928,6 +2095,211 @@
     };
   }
 
+  /* Dossier sectioned (Racas): 3 secoes com diferentes tipos de campo. */
+  function raceDossierFormHTML(values) {
+    const v = values || {};
+    return `
+      <div class="race-dossier" id="raceDossier">
+        ${RACE_SECTIONS.map((section) => `
+          <div class="dossier-section">
+            <header class="dossier-section__head">
+              <span class="section__eyebrow">${escapeHtml(section.title.toUpperCase())}</span>
+            </header>
+            ${section.id === 'hpmp'
+              ? raceHpFormHTML(v)
+              : `<div class="dossier-section__fields">
+                   ${section.fields.map((f) => raceFieldFormHTML(f, v[f.key])).join('')}
+                 </div>`}
+          </div>
+        `).join('')}
+      </div>
+    `;
+  }
+
+  function raceFieldFormHTML(field, value) {
+    const v = value != null ? value : (field.default || '');
+    if (field.type === 'rarity') {
+      return `
+        <div class="dossier-field">
+          <span>${escapeHtml(field.key)}</span>
+          <div class="rarity-picker" data-dossier-field="${escapeHtml(field.key)}" data-value="${escapeHtml(v)}" role="radiogroup" aria-label="${escapeHtml(field.key)}">
+            ${RARITY_OPTIONS.map((opt) => `
+              <button type="button"
+                      class="rarity-chip ${opt.cssClass} rarity-pick ${opt.value === v ? 'is-selected' : ''}"
+                      data-rarity="${escapeHtml(opt.value)}"
+                      role="radio"
+                      aria-checked="${opt.value === v ? 'true' : 'false'}">
+                ${escapeHtml(opt.value)}
+              </button>
+            `).join('')}
+          </div>
+        </div>
+      `;
+    }
+    if (field.type === 'list') {
+      const items = Array.isArray(v) ? v : [];
+      return `
+        <div class="dossier-field dossier-field--list">
+          <span>${escapeHtml(field.key)}</span>
+          <div class="list-builder" data-dossier-field="${escapeHtml(field.key)}" data-items='${escapeHtml(JSON.stringify(items))}'>
+            <div class="list-builder__row">
+              <input type="text" class="create-form__input list-builder__input" placeholder="${escapeHtml(field.placeholder || '')}" maxlength="120">
+              <button type="button" class="btn btn-ghost list-builder__add">
+                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+                <span>Adicionar</span>
+              </button>
+            </div>
+            <div class="list-builder__items" aria-live="polite">
+              ${items.map((item, i) => listBuilderItemHTML(item, i)).join('')}
+            </div>
+          </div>
+        </div>
+      `;
+    }
+    return `
+      <label class="dossier-field">
+        <span>${escapeHtml(field.key)}</span>
+        <input type="text" class="create-form__input" data-dossier-field="${escapeHtml(field.key)}"
+               placeholder="${escapeHtml(field.placeholder || field.default || '')}"
+               value="${escapeHtml(v)}" maxlength="200">
+      </label>
+    `;
+  }
+
+  function listBuilderItemHTML(item, index) {
+    return `
+      <span class="list-builder__item">
+        ${escapeHtml(item)}
+        <button type="button" class="list-builder__remove" data-remove-list="${index}" aria-label="Remover ${escapeHtml(item)}">
+          <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
+        </button>
+      </span>
+    `;
+  }
+
+  function raceHpFormHTML(values) {
+    return `
+      <div class="hp-form">
+        ${RACE_HP_PARTS.map((p) => `
+          <label class="hp-form__row">
+            <span class="hp-form__name">${escapeHtml(p)}</span>
+            <input type="text" inputmode="numeric" class="create-form__input hp-form__input"
+                   data-dossier-field="${escapeHtml(p)}"
+                   value="${escapeHtml(values[p] != null ? values[p] : defaultHpFor(p))}"
+                   maxlength="6">
+            <span class="hp-form__suffix">HP</span>
+          </label>
+        `).join('')}
+      </div>
+      <label class="dossier-field dossier-field--mana">
+        <span>Mana</span>
+        <input type="text" class="create-form__input" data-dossier-field="Mana"
+               value="${escapeHtml(values['Mana'] != null ? values['Mana'] : '15/15')}"
+               placeholder="15/15" maxlength="20">
+      </label>
+    `;
+  }
+
+  function bindRaceDossier() {
+    const root = document.getElementById('raceDossier');
+    if (!root) return { getFields: () => ({}) };
+
+    function readListItems(builder) {
+      try { return JSON.parse(builder.dataset.items || '[]') || []; } catch { return []; }
+    }
+
+    function refreshListItems(builder, items) {
+      builder.dataset.items = JSON.stringify(items);
+      const list = builder.querySelector('.list-builder__items');
+      list.innerHTML = items.map((item, i) => listBuilderItemHTML(item, i)).join('');
+    }
+
+    function addItemFrom(input) {
+      const builder = input.closest('.list-builder');
+      if (!builder) return;
+      const v = (input.value || '').trim();
+      if (!v) { input.focus(); return; }
+      const items = readListItems(builder);
+      const lower = v.toLowerCase();
+      if (items.some((x) => x.toLowerCase() === lower)) {
+        input.value = '';
+        input.focus();
+        return;
+      }
+      if (items.length >= 12) {
+        alert('Máximo de 12 itens por lista.');
+        return;
+      }
+      items.push(v);
+      refreshListItems(builder, items);
+      input.value = '';
+      input.focus();
+    }
+
+    root.addEventListener('click', (e) => {
+      const rarityBtn = e.target.closest('.rarity-pick');
+      if (rarityBtn) {
+        e.preventDefault();
+        const picker = rarityBtn.closest('.rarity-picker');
+        if (picker) {
+          const value = rarityBtn.dataset.rarity || '';
+          const newValue = picker.dataset.value === value ? '' : value;
+          picker.dataset.value = newValue;
+          picker.querySelectorAll('.rarity-pick').forEach((b) => {
+            const active = b.dataset.rarity === newValue;
+            b.classList.toggle('is-selected', active);
+            b.setAttribute('aria-checked', active ? 'true' : 'false');
+          });
+        }
+        return;
+      }
+      const addBtn = e.target.closest('.list-builder__add');
+      if (addBtn) {
+        e.preventDefault();
+        const input = addBtn.parentElement.querySelector('.list-builder__input');
+        if (input) addItemFrom(input);
+        return;
+      }
+      const removeBtn = e.target.closest('[data-remove-list]');
+      if (removeBtn) {
+        e.preventDefault();
+        const builder = removeBtn.closest('.list-builder');
+        if (!builder) return;
+        const idx = Number(removeBtn.dataset.removeList);
+        const items = readListItems(builder);
+        items.splice(idx, 1);
+        refreshListItems(builder, items);
+      }
+    });
+
+    root.addEventListener('keydown', (e) => {
+      if (e.target.classList.contains('list-builder__input') && e.key === 'Enter') {
+        e.preventDefault();
+        addItemFrom(e.target);
+      }
+    });
+
+    return {
+      getFields: () => {
+        const out = {};
+        root.querySelectorAll('input[data-dossier-field]').forEach((inp) => {
+          const k = inp.dataset.dossierField;
+          const v = (inp.value || '').trim();
+          if (v) out[k] = v;
+        });
+        root.querySelectorAll('.rarity-picker[data-dossier-field]').forEach((el) => {
+          const v = (el.dataset.value || '').trim();
+          if (v) out[el.dataset.dossierField] = v;
+        });
+        root.querySelectorAll('.list-builder[data-dossier-field]').forEach((el) => {
+          const items = readListItems(el).map((s) => String(s).trim()).filter(Boolean);
+          if (items.length) out[el.dataset.dossierField] = items;
+        });
+        return out;
+      }
+    };
+  }
+
   function bindEditor() {
     const editor = document.getElementById('rtEditor');
     const toolbar = document.getElementById('editorToolbar');
@@ -1982,7 +2354,15 @@
     const banner = bindBannerDrop();
     const tagBuilder = bindTagBuilder();
     const editor = bindEditor();
-    const dossier = (tabId === 'Itens') ? bindDossierFields() : { getFields: () => ({}), getSubtype: () => null };
+    let dossier;
+    if (tabId === 'Itens') {
+      dossier = bindDossierFields();
+    } else if (tabId === 'Racas') {
+      const r = bindRaceDossier();
+      dossier = { getFields: r.getFields, getSubtype: () => null };
+    } else {
+      dossier = { getFields: () => ({}), getSubtype: () => null };
+    }
 
     form.addEventListener('submit', async (e) => {
       e.preventDefault();

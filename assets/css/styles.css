@@ -2732,19 +2732,13 @@ img { display: block; max-width: 100%; }
   color: hsl(var(--hue), 70%, 75%);
 }
 
-/* ── Banner 4:3 (Itens) ────────────────────────── */
-.create-form--portrait .banner-drop {
-  aspect-ratio: 4 / 3;
-  width: min(480px, 100%);
-  justify-self: center;
-  min-height: 240px; /* fallback caso aspect-ratio nao seja respeitado */
-}
-
+/* ── Banner em formato alternativo (Itens 4:3, Raças 2:3) ── */
+/* O aspect-ratio e max-width agora vem inline pelo JS por categoria. */
+.create-form--portrait .banner-drop,
 .banner-drop--portrait {
-  aspect-ratio: 4 / 3 !important;
-  width: min(480px, 100%);
+  width: 100%;
   justify-self: center;
-  min-height: 240px;
+  min-height: 200px;
 }
 
 /* ── Entry retrato (Itens) ─────────────────────── */
@@ -2802,6 +2796,10 @@ img { display: block; max-width: 100%; }
   grid-template-columns: minmax(0, 1.25fr) minmax(280px, 1fr);
   gap: 28px;
   align-items: start;
+}
+
+.entry__portrait-card--tall .entry__portrait-grid {
+  grid-template-columns: minmax(260px, 340px) minmax(0, 1fr);
 }
 
 .entry__portrait {
@@ -2926,6 +2924,246 @@ img { display: block; max-width: 100%; }
   pointer-events: none;
   background: linear-gradient(135deg, rgba(255,255,255,0.08) 0%, transparent 35%, transparent 65%, rgba(255,255,255,0.04) 100%);
   mix-blend-mode: overlay;
+}
+
+/* ── List builder (Passivas em Raças) ──────────── */
+.list-builder {
+  display: grid;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: rgba(0, 0, 0, 0.18);
+}
+
+.list-builder__row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.list-builder__input {
+  flex: 1;
+}
+
+.list-builder__add {
+  flex-shrink: 0;
+  padding: 9px 14px;
+  font-size: 0.84rem;
+}
+
+.list-builder__items {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-height: 4px;
+}
+
+.list-builder__item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 6px 5px 12px;
+  border-radius: 99px;
+  border: 1px solid hsla(var(--hue), 60%, 55%, 0.32);
+  background: hsla(var(--hue), 60%, 30%, 0.22);
+  color: var(--text);
+  font-size: 0.84rem;
+  letter-spacing: 0.02em;
+}
+
+.list-builder__remove {
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.32);
+  color: var(--muted);
+  transition: all 160ms var(--ease);
+}
+
+.list-builder__remove:hover {
+  background: var(--crimson);
+  color: #fff;
+}
+
+/* ── HP form (Raças) ───────────────────────────── */
+.hp-form {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px 14px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: rgba(0, 0, 0, 0.18);
+}
+
+.hp-form__row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 78px auto;
+  align-items: center;
+  gap: 8px;
+}
+
+.hp-form__name {
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-size: 0.7rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.hp-form__input {
+  text-align: center;
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-weight: 600;
+  padding: 8px 10px;
+}
+
+.hp-form__suffix {
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-size: 0.74rem;
+  color: hsl(var(--hue), 80%, 75%);
+  letter-spacing: 0.1em;
+}
+
+.dossier-field--mana { margin-top: 12px; }
+
+@media (max-width: 720px) {
+  .hp-form { grid-template-columns: 1fr; }
+}
+
+/* ── Race dossier sections (form) ──────────────── */
+.race-dossier {
+  display: grid;
+  gap: 22px;
+}
+
+.dossier-section {
+  display: grid;
+  gap: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+.dossier-section:first-child { padding-top: 0; border-top: 0; }
+
+.dossier-section__head .section__eyebrow {
+  letter-spacing: 0.28em;
+  color: hsl(var(--hue), 80%, 78%);
+}
+
+.dossier-section__fields {
+  display: grid;
+  gap: 12px;
+}
+
+.dossier-field--list { gap: 8px; }
+
+/* ── Race dossier (entry detail) ───────────────── */
+.race-dossier-view {
+  display: grid;
+  gap: 16px;
+  align-content: start;
+  min-width: 0;
+}
+
+.dossier-card--hpmp { display: grid; gap: 14px; }
+
+.hp-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px 14px;
+}
+
+.hp-part {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.32);
+  border: 1px solid hsla(var(--hue), 60%, 55%, 0.18);
+}
+
+.hp-part__name {
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-size: 0.66rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.hp-part__value {
+  font-family: 'Cinzel', Georgia, serif;
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: hsl(var(--hue), 80%, 80%);
+}
+
+.hp-part__value em {
+  font-style: normal;
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-size: 0.62rem;
+  letter-spacing: 0.14em;
+  margin-left: 4px;
+  color: var(--muted);
+  font-weight: 500;
+}
+
+.mana-callout {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  padding: 12px 16px;
+  border-radius: 10px;
+  border-left: 3px solid hsl(var(--hue), 70%, 65%);
+  background: linear-gradient(90deg, hsla(var(--hue), 70%, 50%, 0.18), transparent 70%);
+}
+
+.mana-callout__label {
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-size: 0.72rem;
+  letter-spacing: 0.22em;
+  color: hsl(var(--hue), 80%, 75%);
+}
+
+.mana-callout__value {
+  font-family: 'Cinzel', Georgia, serif;
+  font-size: 1.4rem;
+  font-weight: 700;
+  color: var(--text);
+  letter-spacing: 0.04em;
+}
+
+.meta-list-items {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.meta-list-items li {
+  position: relative;
+  padding-left: 14px;
+  color: var(--text);
+  font-size: 0.92rem;
+}
+
+.meta-list-items li::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0.55em;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: hsl(var(--hue), 70%, 65%);
+}
+
+@media (max-width: 720px) {
+  .hp-grid { grid-template-columns: 1fr; }
 }
 
 /* ── Rarity picker (formulário de Itens) ───────── */

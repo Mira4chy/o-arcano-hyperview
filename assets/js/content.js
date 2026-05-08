@@ -84,8 +84,7 @@ window.ARCANO_ARCHIVE = {
     {
       id: "Racas",
       title: "Raças",
-      tone: "Povos jogáveis, linhagens, culturas e marcas de origem.",
-      template: ["Origem", "Traço", "Cultura", "Conflito", "Rumor"]
+      tone: "Povos jogáveis, linhagens, culturas e marcas de origem."
     },
     {
       id: "Mapa",
