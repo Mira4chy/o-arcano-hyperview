@@ -18,9 +18,21 @@
 
   /* Subtipos da categoria Itens com seus dossies. */
   const ITEM_SUBTYPES = {
-    item:       { label: 'Item',       icon: '📜', fields: ['Raridade', 'Valor'] },
-    equipavel:  { label: 'Equipável',  icon: '⚔️', fields: ['Raridade', 'Valor', 'Efeito', 'Slot'] },
-    consumivel: { label: 'Consumível', icon: '🧪', fields: ['Raridade', 'Valor', 'Efeito'] }
+    item: {
+      label: 'Item',
+      icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M15 12h-5"/><path d="M15 8h-5"/><path d="M19 17V5a2 2 0 0 0-2-2H4"/><path d="M8 21h12a2 2 0 0 0 2-2v-1a1 1 0 0 0-1-1H11a1 1 0 0 0-1 1v1a2 2 0 1 1-4 0V5a2 2 0 1 0-4 0v2a1 1 0 0 0 1 1h3"/></svg>',
+      fields: ['Raridade', 'Valor']
+    },
+    equipavel: {
+      label: 'Equipável',
+      icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><polyline points="14.5 17.5 3 6 3 3 6 3 17.5 14.5"/><line x1="13" x2="19" y1="19" y2="13"/><line x1="16" x2="20" y1="16" y2="20"/><line x1="19" x2="21" y1="21" y2="19"/></svg>',
+      fields: ['Raridade', 'Valor', 'Efeito', 'Slot']
+    },
+    consumivel: {
+      label: 'Consumível',
+      icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M10 2v7.31"/><path d="M14 9.3V1.99"/><path d="M8.5 2h7"/><path d="M14 9.3a6.5 6.5 0 1 1-4 0"/></svg>',
+      fields: ['Raridade', 'Valor', 'Efeito']
+    }
   };
   const ITEM_SUBTYPE_KEYS = Object.keys(ITEM_SUBTYPES);
   function subtypeFieldsFor(subtype) {
@@ -1354,13 +1366,23 @@
            </div>`
         : '';
 
+    const dossierMarkup = fields.length ? `
+      <aside class="entry__dossier-side">
+        <span class="section__eyebrow">DOSSIÊ</span>
+        <dl class="meta-list">
+          ${fields.map(([k, v]) => `
+            <div class="meta-row">
+              <dt>${escapeHtml(k)}</dt>
+              <dd>${escapeHtml(v)}</dd>
+            </div>
+          `).join('')}
+        </dl>
+      </aside>
+    ` : '';
+
     const heroPortrait = `
-      <div class="entry__split" style="--hue:${theme.hue}">
-        <div class="entry__portrait">
-          ${e.image ? `<img class="entry__portrait-img" src="${e.image}" alt="" onerror="this.parentElement.classList.add('is-fallback')">` : ''}
-          <div class="entry__portrait-fallback">${iconOf(tabId)}</div>
-        </div>
-        <div class="entry__split-info">
+      <div class="entry__portrait-card" style="--hue:${theme.hue}">
+        <header class="entry__portrait-header">
           <nav class="breadcrumb">
             <a href="#/">Codex</a>
             <span>/</span>
@@ -1376,6 +1398,13 @@
           </div>
           <h1 class="entry__title entry__title--portrait" data-text-reveal>${escapeHtml(e.title)}</h1>
           ${e.summary ? `<p class="entry__summary">${escapeHtml(e.summary)}</p>` : ''}
+        </header>
+        <div class="entry__portrait-grid">
+          <div class="entry__portrait">
+            ${e.image ? `<img class="entry__portrait-img" src="${e.image}" alt="" onerror="this.parentElement.classList.add('is-fallback')">` : ''}
+            <div class="entry__portrait-fallback">${iconOf(tabId)}</div>
+          </div>
+          ${dossierMarkup}
         </div>
       </div>
     `;
@@ -1408,28 +1437,57 @@
       </div>
     `;
 
+    const relatedMarkup = related.length ? `
+      <div class="related">
+        <span class="section__eyebrow">VEJA TAMBÉM</span>
+        <div class="related__grid">
+          ${related.map((r, i) => `
+            <a href="#/${r.tab}/${r.id}" class="related__card" style="--delay:${i * 60}ms">
+              <span class="related__title">${escapeHtml(r.title)}</span>
+              <span class="related__summary">${escapeHtml(r.summary || '')}</span>
+              <span class="related__arrow">→</span>
+            </a>
+          `).join('')}
+        </div>
+      </div>
+    ` : '';
+
+    const deleteButton = (e.isUserCreated && auth.isAdmin) ? `
+      <button type="button" class="back-link back-link--danger" data-delete-entry="${escapeHtml(e.id)}">
+        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"/></svg>
+        Apagar ${tabId === 'Itens' ? 'item' : 'história'}
+      </button>
+    ` : '';
+
+    const backLink = `
+      <a href="#/${tabId}" class="back-link">
+        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+        Voltar a ${escapeHtml(tab.title)}
+      </a>
+    `;
+
+    if (portrait) {
+      return `
+        <article class="entry entry--portrait" style="--hue:${theme.hue}">
+          ${heroPortrait}
+          ${bodyMarkup ? `<div class="entry__main entry__main--full">${bodyMarkup}</div>` : ''}
+          ${relatedMarkup ? `<div class="entry__main entry__main--full">${relatedMarkup}</div>` : ''}
+          <div class="entry__actions-row">
+            ${deleteButton}
+            ${backLink}
+          </div>
+        </article>
+      `;
+    }
+
     return `
-      <article class="entry ${portrait ? 'entry--portrait' : ''}" style="--hue:${theme.hue}">
-        ${portrait ? heroPortrait : heroLandscape}
+      <article class="entry" style="--hue:${theme.hue}">
+        ${heroLandscape}
 
         <div class="entry__layout">
           <div class="entry__main">
             ${bodyMarkup}
-
-            ${related.length ? `
-              <div class="related">
-                <span class="section__eyebrow">VEJA TAMBÉM</span>
-                <div class="related__grid">
-                  ${related.map((r, i) => `
-                    <a href="#/${r.tab}/${r.id}" class="related__card" style="--delay:${i * 60}ms">
-                      <span class="related__title">${escapeHtml(r.title)}</span>
-                      <span class="related__summary">${escapeHtml(r.summary || '')}</span>
-                      <span class="related__arrow">→</span>
-                    </a>
-                  `).join('')}
-                </div>
-              </div>
-            ` : ''}
+            ${relatedMarkup}
           </div>
 
           <aside class="entry__aside">
@@ -1446,16 +1504,8 @@
                 </dl>
               </div>
             ` : ''}
-            ${(e.isUserCreated && auth.isAdmin) ? `
-              <button type="button" class="back-link back-link--danger" data-delete-entry="${escapeHtml(e.id)}">
-                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"/></svg>
-                Apagar história
-              </button>
-            ` : ''}
-            <a href="#/${tabId}" class="back-link">
-              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
-              Voltar a ${escapeHtml(tab.title)}
-            </a>
+            ${deleteButton}
+            ${backLink}
           </aside>
         </div>
       </article>

@@ -2699,7 +2699,15 @@ img { display: block; max-width: 100%; }
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.15), 0 4px 16px hsla(var(--hue), 60%, 35%, 0.25);
 }
 
-.subtype-tab__icon { font-size: 1.05rem; line-height: 1; }
+.subtype-tab__icon {
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  color: hsl(var(--hue), 80%, 75%);
+}
+.subtype-tab__icon svg { width: 18px; height: 18px; }
+.subtype-tab.is-active .subtype-tab__icon { color: #fff; }
 
 @media (max-width: 540px) {
   .subtype-tabs { grid-template-columns: 1fr; }
@@ -2724,37 +2732,48 @@ img { display: block; max-width: 100%; }
   color: hsl(var(--hue), 70%, 75%);
 }
 
-/* ── Banner retrato (3:4) ─────────────────────── */
+/* ── Banner 4:3 (Itens) ────────────────────────── */
 .create-form--portrait .banner-drop {
-  aspect-ratio: 3 / 4;
-  max-width: 360px;
+  aspect-ratio: 4 / 3;
+  max-width: 480px;
   margin: 0 auto;
 }
 
 .banner-drop--portrait {
-  aspect-ratio: 3 / 4 !important;
+  aspect-ratio: 4 / 3 !important;
 }
 
 /* ── Entry retrato (Itens) ─────────────────────── */
 .entry--portrait { gap: 28px; }
 
-.entry__split {
+.entry__portrait-card {
   display: grid;
-  grid-template-columns: minmax(280px, 360px) minmax(0, 1fr);
-  gap: 36px;
-  padding: 32px;
+  gap: 22px;
+  padding: 30px 32px;
   border: 1px solid var(--line);
   border-radius: var(--radius-xl);
   background:
-    radial-gradient(ellipse 60% 70% at 80% 20%, hsla(var(--hue), 70%, 35%, 0.18), transparent 70%),
+    radial-gradient(ellipse 70% 70% at 80% 0%, hsla(var(--hue), 70%, 35%, 0.18), transparent 70%),
     var(--surface-1);
-  align-items: start;
   animation: fadeUp 700ms var(--ease) both;
+}
+
+.entry__portrait-header {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
+
+.entry__portrait-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.25fr) minmax(280px, 1fr);
+  gap: 28px;
+  align-items: start;
 }
 
 .entry__portrait {
   position: relative;
-  aspect-ratio: 3 / 4;
+  aspect-ratio: 4 / 3;
   border-radius: var(--radius-lg);
   overflow: hidden;
   border: 1px solid hsla(var(--hue), 60%, 55%, 0.4);
@@ -2784,11 +2803,33 @@ img { display: block; max-width: 100%; }
 .entry__portrait.is-fallback .entry__portrait-fallback { opacity: 1; }
 .entry__portrait.is-fallback .entry__portrait-fallback svg { width: 80px; height: 80px; }
 
-.entry__split-info {
+.entry__dossier-side {
   display: grid;
   gap: 14px;
-  align-content: start;
-  min-width: 0;
+  padding: 22px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--surface-2);
+  position: relative;
+  overflow: hidden;
+  align-self: stretch;
+}
+
+.entry__dossier-side::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, hsl(var(--hue), 80%, 65%), transparent);
+}
+
+.entry__dossier-side .meta-list {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
 }
 
 .entry__title--portrait {
@@ -2796,18 +2837,34 @@ img { display: block; max-width: 100%; }
   line-height: 1;
 }
 
-@media (max-width: 900px) {
-  .entry__split {
-    grid-template-columns: 1fr;
-    padding: 22px;
-    gap: 22px;
-  }
-  .entry__portrait { max-width: 320px; margin: 0 auto; }
+.entry__main--full { display: grid; gap: 22px; }
+
+.entry__actions-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  justify-content: flex-end;
 }
 
-/* ── Card retrato (Itens) ──────────────────────── */
+.entry__actions-row .back-link { font-family: inherit; }
+
+@media (max-width: 900px) {
+  .entry__portrait-card {
+    padding: 22px;
+    gap: 18px;
+  }
+  .entry__portrait-grid {
+    grid-template-columns: 1fr;
+    gap: 18px;
+  }
+  .entry__portrait { max-width: 100%; }
+  .entry__actions-row { justify-content: stretch; }
+  .entry__actions-row .back-link { flex: 1; justify-content: center; }
+}
+
+/* ── Card 4:3 (Itens) ──────────────────────────── */
 .entry-card--portrait .entry-card__media {
-  aspect-ratio: 3 / 4;
+  aspect-ratio: 4 / 3;
 }
 
 /* ── Auth gate (tela de login) ─────────────────── */
