@@ -297,7 +297,7 @@
         setAuthState(data.session);
         gate.classList.add('is-gone');
         setTimeout(() => gate.remove(), 500);
-        await Promise.all([loadIndexCustom(), loadUserEntries()]);
+        await Promise.all([loadIndexCustom(), loadUserEntries(), loadMasterPalette()]);
         renderRoleBadge();
         render(true);
       } catch (err) {
@@ -421,7 +421,7 @@
 
       gate.classList.add('is-gone');
       setTimeout(() => gate.remove(), 500);
-      await Promise.all([loadIndexCustom(), loadUserEntries()]);
+      await Promise.all([loadIndexCustom(), loadUserEntries(), loadMasterPalette()]);
       renderRoleBadge();
       render(true);
     }
@@ -779,6 +779,32 @@
     }
   }
 
+  async function updateUserEntry(entry) {
+    if (!sb) throw new Error('Supabase não configurado');
+    const payload = {
+      tab: entry.tab,
+      title: entry.title,
+      summary: entry.summary || '',
+      image: entry.image || '',
+      image_path: entry.imagePath || '',
+      body_html: entry.bodyHtml || '',
+      tags: sanitizeTags(entry.tags),
+      subtype: entry.subtype || null,
+      fields: entry.fields || {}
+    };
+    const { error } = await sb.from('stories').update(payload).eq('id', entry.id);
+    if (error) {
+      const msg = error.message || '';
+      if (error.code === 'PGRST204' || /tags.*schema cache|schema cache.*tags/i.test(msg)) {
+        throw new Error('A coluna tags ainda não foi ativada no Supabase. Rode o arquivo supabase-tags.sql no SQL Editor e tente novamente.');
+      }
+      if (/subtype|fields/i.test(msg) && /column|schema cache/i.test(msg)) {
+        throw new Error('As colunas subtype/fields ainda não foram criadas. Rode o arquivo supabase-itens.sql no SQL Editor e tente novamente.');
+      }
+      throw error;
+    }
+  }
+
   async function deleteUserEntry(entry) {
     if (!sb) throw new Error('Supabase não configurado');
     const { error } = await sb.from('stories').delete().eq('id', entry.id);
@@ -805,6 +831,50 @@
     if (data.manifesto_html) ARCHIVE.index.manifestoHtml = data.manifesto_html;
   }
 
+  /* ── PALETA DE CORES PERSONALIZADA DO MESTRE ──── */
+  const masterPalette = { loaded: false, colors: [] };
+  const MAX_PALETTE = 16;
+
+  async function loadMasterPalette() {
+    if (!sb || !auth.user) return;
+    try {
+      const { data, error } = await sb
+        .from('master_palette')
+        .select('colors')
+        .eq('user_id', auth.user.id)
+        .maybeSingle();
+      if (error && error.code !== 'PGRST116') {
+        // PGRST116 = no rows; ignora; outros loga
+        if (!/master_palette.*does not exist|relation .*master_palette/i.test(error.message || '')) {
+          console.warn('[O Arcano] Falha ao carregar paleta:', error);
+        }
+        masterPalette.loaded = true;
+        return;
+      }
+      const raw = Array.isArray(data?.colors) ? data.colors : [];
+      masterPalette.colors = raw.map((c) => safeTagColor(c)).filter((c, i, arr) => arr.indexOf(c) === i).slice(0, MAX_PALETTE);
+      masterPalette.loaded = true;
+    } catch (err) {
+      console.warn('[O Arcano] Erro paleta:', err);
+      masterPalette.loaded = true;
+    }
+  }
+
+  async function saveMasterPalette(colors) {
+    if (!sb || !auth.user) throw new Error('Sessão indisponível');
+    const clean = (colors || []).map((c) => safeTagColor(c)).filter((c, i, arr) => arr.indexOf(c) === i).slice(0, MAX_PALETTE);
+    const { error } = await sb
+      .from('master_palette')
+      .upsert({ user_id: auth.user.id, colors: clean, updated_at: new Date().toISOString() }, { onConflict: 'user_id' });
+    if (error) {
+      if (/master_palette.*does not exist|relation .*master_palette/i.test(error.message || '')) {
+        throw new Error('A tabela master_palette ainda não foi criada. Rode o arquivo supabase-master-palette.sql no SQL Editor.');
+      }
+      throw error;
+    }
+    masterPalette.colors = clean;
+  }
+
   async function persistIndexCustom(patch) {
     if (!sb) throw new Error('Supabase não configurado');
     const row = { id: 1, updated_at: new Date().toISOString() };
@@ -819,11 +889,16 @@
 
   /* ── HTML SANITIZATION (rich text) ────────────── */
   /* Permite apenas tags e atributos básicos de formatação. */
-  const ALLOWED_TAGS = new Set(['B','STRONG','I','EM','U','S','STRIKE','BR','P','DIV','SPAN','UL','OL','LI','H1','H2','H3','H4','BLOCKQUOTE']);
-  const ALLOWED_ATTRS = new Set(['style']);
+  const ALLOWED_TAGS = new Set(['B','STRONG','I','EM','U','S','STRIKE','BR','HR','P','DIV','SPAN','UL','OL','LI','H1','H2','H3','H4','BLOCKQUOTE','CODE','PRE','A']);
+  const ALLOWED_ATTRS_BY_TAG = {
+    A: new Set(['href','data-arcano-link','data-link-tab','data-link-entry','class']),
+    DEFAULT: new Set(['style'])
+  };
   const STYLE_RE = /^(color|background-color|font-weight|font-style|text-decoration|text-align)\s*:\s*[^;]+$/i;
   const COLOR_VALUE_RE = /^(#[0-9a-f]{3,8}|rgba?\([^)]+\)|hsla?\([^)]+\)|[a-z]+)$/i;
   const ALIGN_VALUE_RE = /^(left|right|center|justify)$/i;
+  /* Apenas links internos (rota hash) sao aceitos. Bloqueia javascript:, data:, http externo, etc. */
+  const INTERNAL_HREF_RE = /^#\/[A-Za-z0-9_\-%/.]+$/;
 
   function sanitizeHtml(html) {
     const tpl = document.createElement('template');
@@ -842,19 +917,38 @@
             node.removeChild(child);
             continue;
           }
+          const allowedForTag = ALLOWED_ATTRS_BY_TAG[child.tagName] || ALLOWED_ATTRS_BY_TAG.DEFAULT;
           // limpar atributos
           for (const attr of Array.from(child.attributes)) {
-            if (!ALLOWED_ATTRS.has(attr.name.toLowerCase())) {
+            const name = attr.name.toLowerCase();
+            if (!allowedForTag.has(name)) {
               child.removeAttribute(attr.name);
-            } else if (attr.name.toLowerCase() === 'style') {
+              continue;
+            }
+            if (name === 'style') {
               const cleaned = attr.value.split(';')
                 .map((s) => s.trim())
                 .filter((s) => s && STYLE_RE.test(s))
                 .join('; ');
               if (cleaned) child.setAttribute('style', cleaned);
               else child.removeAttribute('style');
+            } else if (name === 'href') {
+              const v = (attr.value || '').trim();
+              if (!INTERNAL_HREF_RE.test(v)) {
+                // href invalido: desembrulha e descarta a tag <a>
+                while (child.firstChild) node.insertBefore(child.firstChild, child);
+                node.removeChild(child);
+                child = null;
+                break;
+              }
+            } else if (name === 'class') {
+              // Permite somente a classe usada por links internos
+              const allowed = attr.value.split(/\s+/).filter((c) => c === 'rt-internal-link').join(' ');
+              if (allowed) child.setAttribute('class', allowed);
+              else child.removeAttribute('class');
             }
           }
+          if (!child) continue;
           walk(child);
         } else if (child.nodeType !== Node.TEXT_NODE) {
           node.removeChild(child);
@@ -877,6 +971,13 @@
         el = span;
       }
 
+      if (el.tagName === 'A') {
+        // Garante a classe de link interno e remove qualquer target/rel deixado por colagem.
+        el.setAttribute('class', 'rt-internal-link');
+        el.removeAttribute('target');
+        el.removeAttribute('rel');
+      }
+
       const align = (el.getAttribute('align') || '').trim().toLowerCase();
       if (align && ALIGN_VALUE_RE.test(align)) {
         const current = el.getAttribute('style') || '';
@@ -890,10 +991,18 @@
   /* ── ROUTE PARSING ────────────────────────────── */
   function parseHash() {
     const raw = (location.hash || '#/').replace(/^#\/?/, '');
-    if (!raw) return { tab: 'Index', entry: null };
-    const [t, ...rest] = raw.split('/').filter(Boolean);
-    if (!t) return { tab: 'Index', entry: null };
-    return { tab: canonicalTabId(decodeURIComponent(t)), entry: rest.length ? decodeURIComponent(rest.join('/')) : null };
+    if (!raw) return { tab: 'Index', entry: null, action: null };
+    const parts = raw.split('/').filter(Boolean);
+    if (!parts.length) return { tab: 'Index', entry: null, action: null };
+    const tab = canonicalTabId(decodeURIComponent(parts[0]));
+    if (parts.length === 1) return { tab, entry: null, action: null };
+    // Última parte pode ser uma action (criar/editar). Caso contrário é parte do id.
+    const last = decodeURIComponent(parts[parts.length - 1]);
+    if (parts.length >= 2 && (last === 'criar' || last === 'editar')) {
+      const middle = parts.slice(1, -1).map(decodeURIComponent).join('/');
+      return { tab, entry: middle || null, action: last };
+    }
+    return { tab, entry: parts.slice(1).map(decodeURIComponent).join('/'), action: null };
   }
 
   /* ── SIDEBAR NAV ──────────────────────────────── */
@@ -1230,11 +1339,18 @@
           <button type="button" class="rt-btn" data-cmd="underline" title="Sublinhado (Ctrl+U)"><span style="text-decoration:underline">U</span></button>
           <button type="button" class="rt-btn" data-cmd="strikeThrough" title="Tachado"><span style="text-decoration:line-through">S</span></button>
           <span class="rt-sep"></span>
-          <button type="button" class="rt-btn" data-cmd="formatBlock" data-arg="H2" title="Título">H</button>
+          <button type="button" class="rt-btn rt-btn--text" data-cmd="formatBlock" data-arg="H2" title="Título grande">H2</button>
+          <button type="button" class="rt-btn rt-btn--text" data-cmd="formatBlock" data-arg="H3" title="Título médio">H3</button>
           <button type="button" class="rt-btn" data-cmd="formatBlock" data-arg="P" title="Parágrafo">¶</button>
+          <button type="button" class="rt-btn" data-cmd="formatBlock" data-arg="BLOCKQUOTE" title="Citação">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 7h4v6H5v-3a3 3 0 0 1 3-3zM17 7h4v6h-6v-3a3 3 0 0 1 3-3z"/></svg>
+          </button>
           <span class="rt-sep"></span>
-          <button type="button" class="rt-btn" data-cmd="insertUnorderedList" title="Lista">
+          <button type="button" class="rt-btn" data-cmd="insertUnorderedList" title="Lista com marcadores">
             <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="5" cy="6" r="1" fill="currentColor"/><circle cx="5" cy="12" r="1" fill="currentColor"/><circle cx="5" cy="18" r="1" fill="currentColor"/><path d="M10 6h11M10 12h11M10 18h11"/></svg>
+          </button>
+          <button type="button" class="rt-btn" data-cmd="insertOrderedList" title="Lista numerada">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 6h11M10 12h11M10 18h11M4 6h2M4 18h3M4 12h3v0a2 2 0 0 1-2 2H4"/></svg>
           </button>
           <button type="button" class="rt-btn" data-cmd="justifyLeft" title="Alinhar à esquerda">
             <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 6h18M3 12h12M3 18h18"/></svg>
@@ -1242,6 +1358,14 @@
           <button type="button" class="rt-btn" data-cmd="justifyCenter" title="Centralizar">
             <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 6h18M6 12h12M3 18h18"/></svg>
           </button>
+          <span class="rt-sep"></span>
+          <button type="button" class="rt-btn" data-rt-action="link" title="Link para outra história">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg>
+          </button>
+          <button type="button" class="rt-btn" data-rt-action="hr" title="Linha separadora">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 12h18M6 6l-2 2M18 6l2 2M6 18l-2-2M18 18l2-2"/></svg>
+          </button>
+          <button type="button" class="rt-btn rt-btn--text" data-rt-action="code" title="Código">&lt;/&gt;</button>
           <span class="rt-sep"></span>
           <label class="rt-color" title="Cor do texto">
             <span class="rt-color__swatch" id="rtColorSwatch" style="background:#c4b5fd"></span>
@@ -1253,6 +1377,13 @@
               <button type="button" class="rt-swatch" data-color="${c}" style="background:${c}" title="${c}" aria-label="Aplicar cor ${c}"></button>
             `).join('')}
           </div>
+          <div class="rt-saved" aria-label="Cores salvas">
+            <span class="rt-saved__sep" aria-hidden="true"></span>
+            <div class="rt-saved__list" id="rtSavedColors" data-empty-label="Nenhuma cor salva"></div>
+            <button type="button" class="rt-btn rt-btn--save" id="rtSaveColor" title="Salvar a cor atual">
+              <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+            </button>
+          </div>
           <span class="rt-sep"></span>
           <button type="button" class="rt-btn" data-cmd="removeFormat" title="Limpar formatação">
             <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 5l14 14M5 19l8-8M11 5h8l-3 8"/></svg>
@@ -1263,11 +1394,18 @@
     `;
   }
 
-  /* ── CREATE VIEW ──────────────────────────────── */
-  function viewCreate(tabId) {
+  /* ── CREATE / EDIT VIEW ───────────────────────── */
+  function viewCreate(tabId, entryId) {
     if (!auth.isAdmin) return viewForbidden();
     const tab = tabById(tabId);
     if (!tab || !isCreatable(tabId)) return viewNotFound(tabId);
+
+    const editing = !!entryId;
+    const existingEntry = editing ? entryById(entryId) : null;
+    if (editing && (!existingEntry || canonicalTabId(existingEntry.tab) !== canonicalTabId(tabId))) {
+      return viewNotFound(entryId);
+    }
+
     const theme = themeOf(tabId);
     const portrait = isPortrait(tabId);
     const isItens = tabId === 'Itens';
@@ -1279,31 +1417,59 @@
     const titlePlaceholder = isItens ? 'Nome do item' : (isRacas ? 'Nome da raça' : 'Dê um nome à sua história');
     const summaryPlaceholder = `Uma frase curta que descreve ${isItens ? 'o item' : (isRacas ? 'a raça' : 'a história')}`;
     const descLabel = (isItens || isRacas) ? 'Descrição' : 'Texto';
-    const saveLabel = isItens ? 'Salvar item' : (isRacas ? 'Salvar raça' : 'Salvar história');
-    const heroSubtitle = isItens
-      ? 'Escolha o tipo, anexe uma imagem 4:3 e preencha o dossiê.'
-      : isRacas
-        ? 'Anexe uma imagem 2:3, preencha as três seções do dossiê e descreva a raça.'
-        : 'Preencha o banner, o título e o relato. Use a barra de ferramentas para formatar e colorir o texto.';
-    const heroH1 = isItens ? 'Novo item em ' : (isRacas ? 'Nova raça em ' : 'Nova história em ');
+
+    const saveLabel = editing
+      ? (isItens ? 'Salvar alterações' : (isRacas ? 'Salvar alterações' : 'Salvar alterações'))
+      : (isItens ? 'Salvar item' : (isRacas ? 'Salvar raça' : 'Salvar história'));
+    const heroSubtitle = editing
+      ? 'Atualize os campos e salve para sobrescrever esta entrada.'
+      : (isItens
+          ? 'Escolha o tipo, anexe uma imagem 4:3 e preencha o dossiê.'
+          : isRacas
+            ? 'Anexe uma imagem 2:3, preencha as três seções do dossiê e descreva a raça.'
+            : 'Preencha o banner, o título e o relato. Use a barra de ferramentas para formatar e colorir o texto.');
+    const heroH1 = editing
+      ? `Editar ${isItens ? 'item' : (isRacas ? 'raça' : 'história')} · `
+      : (isItens ? 'Novo item em ' : (isRacas ? 'Nova raça em ' : 'Nova história em '));
+    const heroEyebrow = editing ? `EDITAR · ${theme.label}` : `CRIAR · ${theme.label}`;
+    const cancelHref = editing ? `#/${tabId}/${entryId}` : `#/${tabId}`;
+
+    const initial = editing ? {
+      title: existingEntry.title || '',
+      summary: existingEntry.summary || '',
+      bodyHtml: existingEntry.bodyHtml || (existingEntry.body || []).map((p) => `<p>${escapeHtml(p)}</p>`).join(''),
+      tags: existingEntry.tags || [],
+      image: existingEntry.image || '',
+      imagePath: existingEntry.imagePath || '',
+      subtype: existingEntry.subtype || '',
+      fields: existingEntry.fields || {}
+    } : null;
+
+    const subtypeActiveKey = editing && initial.subtype ? initial.subtype : ITEM_SUBTYPE_KEYS[0];
+    const previewStyle = editing && initial.image
+      ? `background-image:url('${initial.image}')`
+      : '';
 
     return `
       <section class="cat-hero" style="--hue:${theme.hue}">
         <div class="cat-hero__icon">${iconOf(tabId)}</div>
         <div class="cat-hero__body">
-          <span class="cat-hero__eyebrow">CRIAR · ${escapeHtml(theme.label)}</span>
-          <h1 class="cat-hero__title">${heroH1}${escapeHtml(tab.title)}</h1>
+          <span class="cat-hero__eyebrow">${escapeHtml(heroEyebrow)}</span>
+          <h1 class="cat-hero__title">${escapeHtml(heroH1)}${escapeHtml(editing ? existingEntry.title : tab.title)}</h1>
           <p class="cat-hero__tone">${escapeHtml(heroSubtitle)}</p>
         </div>
       </section>
 
-      <form class="create-form ${portrait ? 'create-form--portrait' : ''}" id="createForm" data-tab="${escapeHtml(tabId)}" style="--hue:${theme.hue}" novalidate>
+      <form class="create-form ${portrait ? 'create-form--portrait' : ''}" id="createForm"
+            data-tab="${escapeHtml(tabId)}"
+            ${editing ? `data-edit-id="${escapeHtml(entryId)}"` : ''}
+            style="--hue:${theme.hue}" novalidate>
         ${isItens ? `
         <div class="create-form__field">
           <label class="create-form__label">Tipo</label>
           <div class="subtype-tabs" id="subtypeTabs" role="tablist">
-            ${ITEM_SUBTYPE_KEYS.map((key, i) => `
-              <button type="button" class="subtype-tab ${i === 0 ? 'is-active' : ''}" data-subtype="${key}" role="tab">
+            ${ITEM_SUBTYPE_KEYS.map((key) => `
+              <button type="button" class="subtype-tab ${key === subtypeActiveKey ? 'is-active' : ''}" data-subtype="${key}" role="tab">
                 <span class="subtype-tab__icon">${ITEM_SUBTYPES[key].icon}</span>
                 <span class="subtype-tab__label">${escapeHtml(ITEM_SUBTYPES[key].label)}</span>
               </button>
@@ -1318,13 +1484,13 @@
                style="${bannerStyle}"
                tabindex="0" role="button" aria-label="Selecionar imagem do banner">
             <input type="file" accept="image/*" id="bannerInput" hidden>
-            <div class="banner-drop__preview" id="bannerPreview" hidden></div>
-            <div class="banner-drop__placeholder" id="bannerPlaceholder">
+            <div class="banner-drop__preview" id="bannerPreview" ${editing && initial.image ? '' : 'hidden'} style="${previewStyle}"></div>
+            <div class="banner-drop__placeholder" id="bannerPlaceholder" ${editing && initial.image ? 'hidden' : ''}>
               <svg viewBox="0 0 24 24" width="42" height="42" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="8.5" cy="10.5" r="1.5"/><path d="M21 17l-5-5-9 9"/></svg>
               <strong>Clique ou arraste uma imagem</strong>
               <span>${escapeHtml(banner.hint)}</span>
             </div>
-            <button type="button" class="banner-drop__clear" id="bannerClear" hidden aria-label="Remover imagem">
+            <button type="button" class="banner-drop__clear" id="bannerClear" ${editing && initial.image ? '' : 'hidden'} aria-label="Remover imagem">
               <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
             </button>
           </div>
@@ -1332,12 +1498,12 @@
 
         <div class="create-form__field">
           <label class="create-form__label" for="titleInput">${escapeHtml(titleLabel)}</label>
-          <input type="text" id="titleInput" class="create-form__input" placeholder="${escapeHtml(titlePlaceholder)}" maxlength="120" required>
+          <input type="text" id="titleInput" class="create-form__input" placeholder="${escapeHtml(titlePlaceholder)}" maxlength="120" required value="${editing ? escapeHtml(initial.title) : ''}">
         </div>
 
         <div class="create-form__field">
           <label class="create-form__label" for="summaryInput">Resumo (opcional)</label>
-          <input type="text" id="summaryInput" class="create-form__input" placeholder="${escapeHtml(summaryPlaceholder)}" maxlength="200">
+          <input type="text" id="summaryInput" class="create-form__input" placeholder="${escapeHtml(summaryPlaceholder)}" maxlength="200" value="${editing ? escapeHtml(initial.summary) : ''}">
         </div>
 
         ${isItens ? `
@@ -1350,7 +1516,7 @@
         ${isRacas ? `
         <div class="create-form__field">
           <label class="create-form__label">Dossiê</label>
-          ${raceDossierFormHTML({})}
+          ${raceDossierFormHTML(editing ? initial.fields : {})}
         </div>
         ` : ''}
 
@@ -1358,27 +1524,28 @@
           <label class="create-form__label">Tags</label>
           <div class="tag-builder" id="tagBuilder">
             <div class="tag-builder__row">
-              <input type="text" id="tagNameInput" class="create-form__input tag-builder__name" placeholder="Ex.: Tempo, Fome, Reino" maxlength="32">
-              <label class="tag-builder__color" title="Cor da tag">
+              <input type="text" id="tagNameInput" class="create-form__input tag-builder__name" placeholder="Ex.: Tempo, Fome, Reino" maxlength="32" autocomplete="off">
+              <label class="tag-builder__color" title="Cor da nova tag">
                 <span id="tagColorPreview" style="background:${DEFAULT_TAG_COLOR}"></span>
-                <input type="color" id="tagColorInput" value="${DEFAULT_TAG_COLOR}" aria-label="Cor da tag">
+                <input type="color" id="tagColorInput" value="${DEFAULT_TAG_COLOR}" aria-label="Cor da nova tag">
               </label>
               <button type="button" class="btn btn-ghost tag-builder__add" id="tagAddBtn">
                 <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
                 <span>Adicionar</span>
               </button>
             </div>
+            <div class="tag-builder__suggestions tag-suggest" id="tagSuggestions" aria-live="polite"></div>
             <div class="tag-builder__list" id="tagList" aria-live="polite"></div>
           </div>
         </div>
 
         <div class="create-form__field">
           <label class="create-form__label">${escapeHtml(descLabel)}</label>
-          ${editorToolbarHTML()}
+          ${editorToolbarHTML(editing ? initial.bodyHtml : '')}
         </div>
 
         <div class="create-form__actions">
-          <a href="#/${tabId}" class="btn btn-ghost">Cancelar</a>
+          <a href="${cancelHref}" class="btn btn-ghost">Cancelar</a>
           <button type="submit" class="btn btn-primary" id="createSave">
             <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>
             <span>${escapeHtml(saveLabel)}</span>
@@ -1682,10 +1849,17 @@
       </div>
     ` : '';
 
+    const editButton = (e.isUserCreated && auth.isAdmin) ? `
+      <a class="back-link back-link--edit" href="#/${tabId}/${encodeURIComponent(e.id)}/editar">
+        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 1 1 3 3L7 19l-4 1 1-4 12.5-12.5z"/></svg>
+        Editar ${tabId === 'Itens' ? 'item' : (tabId === 'Racas' ? 'raça' : 'história')}
+      </a>
+    ` : '';
+
     const deleteButton = (e.isUserCreated && auth.isAdmin) ? `
       <button type="button" class="back-link back-link--danger" data-delete-entry="${escapeHtml(e.id)}">
         <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"/></svg>
-        Apagar ${tabId === 'Itens' ? 'item' : 'história'}
+        Apagar ${tabId === 'Itens' ? 'item' : (tabId === 'Racas' ? 'raça' : 'história')}
       </button>
     ` : '';
 
@@ -1703,6 +1877,7 @@
           ${bodyMarkup ? `<div class="entry__main entry__main--full">${bodyMarkup}</div>` : ''}
           ${relatedMarkup ? `<div class="entry__main entry__main--full">${relatedMarkup}</div>` : ''}
           <div class="entry__actions-row">
+            ${editButton}
             ${deleteButton}
             ${backLink}
           </div>
@@ -1734,6 +1909,7 @@
                 </dl>
               </div>
             ` : ''}
+            ${editButton}
             ${deleteButton}
             ${backLink}
           </aside>
@@ -1769,17 +1945,18 @@
   /* ── RENDER ───────────────────────────────────── */
   let lastRoute = '';
   function render(force) {
-    const { tab, entry } = parseHash();
-    const routeKey = `${tab}|${entry || ''}`;
+    const { tab, entry, action } = parseHash();
+    const routeKey = `${tab}|${entry || ''}|${action || ''}`;
     if (!force && routeKey === lastRoute) return;
     lastRoute = routeKey;
 
     renderSidenav(tab);
 
     let html;
-    if (tab === 'Index' && !entry) html = viewHome();
-    else if (tab === 'Index' && entry === 'editar') html = viewEditIndex();
-    else if (entry === 'criar') html = viewCreate(tab);
+    if (tab === 'Index' && !entry && !action) html = viewHome();
+    else if (tab === 'Index' && action === 'editar') html = viewEditIndex();
+    else if (action === 'criar' && !entry) html = viewCreate(tab);
+    else if (action === 'editar' && entry) html = viewCreate(tab, entry);
     else if (entry) html = viewEntry(tab, entry);
     else {
       const state = categoryState[tab] || {};
@@ -1946,7 +2123,7 @@
     };
   }
 
-  function bindTagBuilder() {
+  function bindTagBuilder({ tabId = '', initialTags = [], excludeEntryId = '' } = {}) {
     const root = document.getElementById('tagBuilder');
     if (!root) return { getTags: () => [] };
 
@@ -1955,7 +2132,30 @@
     const colorPreview = document.getElementById('tagColorPreview');
     const addBtn = document.getElementById('tagAddBtn');
     const list = document.getElementById('tagList');
-    let tags = [];
+    const suggestions = document.getElementById('tagSuggestions');
+    let tags = sanitizeTags(initialTags);
+
+    /* Coleta tags ja usadas em outras entries da mesma categoria.
+       Cada sugestao tem {label, color, count} e a cor mais recente. */
+    function collectKnownTags() {
+      if (!tabId) return [];
+      const map = new Map();
+      ARCHIVE.entries.forEach((entry) => {
+        if (entry.id === excludeEntryId) return;
+        if (canonicalTabId(entry.tab) !== canonicalTabId(tabId)) return;
+        sanitizeTags(entry.tags).forEach((t) => {
+          const key = tagKey(t.label);
+          const cur = map.get(key) || { label: t.label, color: t.color, count: 0, key };
+          cur.count += 1;
+          // Atualiza para a cor mais recente vista (entries vem em ordem de criação desc).
+          cur.color = t.color;
+          map.set(key, cur);
+        });
+      });
+      return [...map.values()].sort((a, b) => b.count - a.count || a.label.localeCompare(b.label, 'pt-BR'));
+    }
+
+    const known = collectKnownTags();
 
     function renderTags() {
       list.innerHTML = tags.length
@@ -1970,57 +2170,109 @@
         : '<span class="tag-builder__empty">Nenhuma tag adicionada</span>';
     }
 
-    function addTag() {
+    function activeKeys() {
+      return new Set(tags.map((t) => tagKey(t.label)));
+    }
+
+    function renderSuggestions() {
+      if (!suggestions) return;
+      const used = activeKeys();
+      const q = normalize(nameInput.value || '').trim();
+      const pool = known.filter((s) => !used.has(s.key));
+      const filtered = q
+        ? pool.filter((s) => normalize(s.label).includes(q)).slice(0, 12)
+        : pool.slice(0, 12);
+      if (!filtered.length) {
+        suggestions.innerHTML = q
+          ? `<span class="tag-suggest__empty">Nenhuma tag existente. Pressione Adicionar para criar “${escapeHtml(q.slice(0, 32))}”.</span>`
+          : (known.length
+              ? '<span class="tag-suggest__empty">Todas as tags da categoria já foram usadas aqui.</span>'
+              : '<span class="tag-suggest__empty">Sem tags ainda nesta categoria. Crie a primeira ao lado.</span>');
+        return;
+      }
+      suggestions.innerHTML = `
+        <span class="tag-suggest__label">Tags da categoria</span>
+        <div class="tag-suggest__list">
+          ${filtered.map((s) => `
+            <button type="button" class="story-tag story-tag--suggest" data-suggest-label="${escapeHtml(s.label)}" data-suggest-color="${s.color}" style="--tag:${s.color}" title="Usar tag existente">
+              ${escapeHtml(s.label)}
+              ${s.count > 1 ? `<em class="tag-suggest__count">${s.count}</em>` : ''}
+            </button>
+          `).join('')}
+        </div>
+      `;
+    }
+
+    function addFromInputs() {
       const label = cleanTagLabel(nameInput.value);
       if (!label) {
         nameInput.focus();
         return;
       }
+      const knownMatch = known.find((s) => s.key === tagKey(label));
+      const color = knownMatch ? knownMatch.color : safeTagColor(colorInput.value);
+      addTag(label, color);
+    }
+
+    function addTag(label, color) {
       const key = tagKey(label);
       const existing = tags.find((tag) => tagKey(tag.label) === key);
-      if (existing) existing.color = safeTagColor(colorInput.value);
-      else if (tags.length < 8) tags.push({ label, color: safeTagColor(colorInput.value) });
+      if (existing) existing.color = safeTagColor(color);
+      else if (tags.length < 8) tags.push({ label, color: safeTagColor(color) });
       else {
         alert('Use no máximo 8 tags por história.');
         return;
       }
       nameInput.value = '';
       renderTags();
+      renderSuggestions();
       nameInput.focus();
     }
 
     colorInput.addEventListener('input', () => {
       colorPreview.style.background = safeTagColor(colorInput.value);
     });
-    addBtn.addEventListener('click', addTag);
+    addBtn.addEventListener('click', addFromInputs);
     nameInput.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') {
         e.preventDefault();
-        addTag();
+        addFromInputs();
       }
     });
+    nameInput.addEventListener('input', renderSuggestions);
     list.addEventListener('click', (e) => {
       const btn = e.target.closest('[data-remove-tag]');
       if (!btn) return;
       tags.splice(Number(btn.dataset.removeTag), 1);
       renderTags();
+      renderSuggestions();
     });
+    if (suggestions) {
+      suggestions.addEventListener('click', (e) => {
+        const btn = e.target.closest('[data-suggest-label]');
+        if (!btn) return;
+        addTag(btn.dataset.suggestLabel, btn.dataset.suggestColor);
+      });
+    }
 
     renderTags();
+    renderSuggestions();
     return { getTags: () => sanitizeTags(tags) };
   }
 
   /* Dossier dinâmico para a categoria Itens (subtype + campos). */
-  function bindDossierFields() {
+  function bindDossierFields({ subtype = '', fields = {} } = {}) {
     const tabs = document.getElementById('subtypeTabs');
     const wrap = document.getElementById('dossierFields');
     if (!tabs || !wrap) return { getFields: () => ({}), getSubtype: () => null };
 
-    let current = ITEM_SUBTYPE_KEYS[0];
+    let current = (subtype && ITEM_SUBTYPES[subtype]) ? subtype : ITEM_SUBTYPE_KEYS[0];
     const cache = {};
     Object.keys(ITEM_SUBTYPES).forEach((k) => {
       cache[k] = {};
-      ITEM_SUBTYPES[k].fields.forEach((f) => { cache[k][f] = ''; });
+      ITEM_SUBTYPES[k].fields.forEach((f) => {
+        cache[k][f] = (k === current && fields && fields[f] != null) ? String(fields[f]) : '';
+      });
     });
 
     function placeholderFor(field) {
@@ -2326,63 +2578,387 @@
     };
   }
 
+  /* ── ENTRY LINK PICKER (modal) ────────────────── */
+  function openEntryLinkPicker({ suggestedQuery = '', onSelect }) {
+    const existing = document.getElementById('entryLinkPicker');
+    if (existing) existing.remove();
+
+    const overlay = document.createElement('div');
+    overlay.id = 'entryLinkPicker';
+    overlay.className = 'link-picker';
+    overlay.innerHTML = `
+      <div class="link-picker__backdrop" data-link-close></div>
+      <div class="link-picker__panel" role="dialog" aria-modal="true" aria-label="Escolher história para linkar">
+        <header class="link-picker__head">
+          <span class="section__eyebrow">LINKAR PARA</span>
+          <button type="button" class="link-picker__close" data-link-close aria-label="Fechar">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
+          </button>
+        </header>
+        <div class="link-picker__searchwrap">
+          <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><circle cx="11" cy="11" r="7" stroke="currentColor" stroke-width="2" fill="none"/><path d="M21 21l-4.3-4.3" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+          <input type="search" class="link-picker__search" id="linkPickerSearch" placeholder="Buscar por título, categoria ou tag…" autocomplete="off">
+        </div>
+        <div class="link-picker__results" id="linkPickerResults" role="listbox" aria-label="Resultados"></div>
+        <footer class="link-picker__foot">
+          <span>Enter ou clique para inserir o link</span>
+        </footer>
+      </div>
+    `;
+    document.body.appendChild(overlay);
+    document.body.classList.add('is-modal-open');
+
+    const search = overlay.querySelector('#linkPickerSearch');
+    const results = overlay.querySelector('#linkPickerResults');
+    const allEntries = ARCHIVE.entries.slice();
+    let activeIdx = 0;
+    let filtered = [];
+
+    function renderResults(query) {
+      const q = normalize(query || '').trim();
+      filtered = !q
+        ? allEntries.slice(0, 80)
+        : allEntries
+            .map((e) => {
+              const hayTitle = normalize(e.title);
+              const hayTab = normalize(tabById(e.tab)?.title || e.tab);
+              const haySummary = normalize(e.summary || '');
+              const hayTags = sanitizeTags(e.tags).map((t) => normalize(t.label)).join(' ');
+              let score = 0;
+              if (hayTitle.startsWith(q)) score += 100;
+              else if (hayTitle.includes(q)) score += 60;
+              if (hayTab.includes(q)) score += 12;
+              if (hayTags.includes(q)) score += 18;
+              if (haySummary.includes(q)) score += 6;
+              return { e, score };
+            })
+            .filter((x) => x.score > 0)
+            .sort((a, b) => b.score - a.score)
+            .slice(0, 80)
+            .map((x) => x.e);
+      activeIdx = 0;
+      if (!filtered.length) {
+        results.innerHTML = '<div class="link-picker__empty">Nenhuma história encontrada.</div>';
+        return;
+      }
+      results.innerHTML = filtered.map((e, i) => {
+        const tabTitle = tabById(e.tab)?.title || e.tab;
+        const theme = themeOf(e.tab);
+        return `
+          <button type="button" class="link-picker__item ${i === 0 ? 'is-active' : ''}" data-pick-index="${i}" style="--hue:${theme.hue}" role="option">
+            <span class="link-picker__icon">${iconOf(e.tab)}</span>
+            <span class="link-picker__body">
+              <span class="link-picker__title">${escapeHtml(e.title)}</span>
+              <span class="link-picker__meta">${escapeHtml(tabTitle)}${e.summary ? ' · ' + escapeHtml(e.summary.slice(0, 80)) : ''}</span>
+            </span>
+          </button>
+        `;
+      }).join('');
+    }
+
+    function highlight(idx) {
+      const items = results.querySelectorAll('.link-picker__item');
+      items.forEach((it, i) => it.classList.toggle('is-active', i === idx));
+      const target = items[idx];
+      if (target) target.scrollIntoView({ block: 'nearest' });
+    }
+
+    function commitSelection(idx) {
+      const entry = filtered[idx];
+      if (!entry) return;
+      close();
+      onSelect(entry);
+    }
+
+    function close() {
+      document.body.classList.remove('is-modal-open');
+      overlay.remove();
+      document.removeEventListener('keydown', onKeydown, true);
+    }
+
+    function onKeydown(e) {
+      if (e.key === 'Escape') { e.preventDefault(); close(); return; }
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        activeIdx = Math.min(filtered.length - 1, activeIdx + 1);
+        highlight(activeIdx);
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        activeIdx = Math.max(0, activeIdx - 1);
+        highlight(activeIdx);
+      } else if (e.key === 'Enter' && document.activeElement === search) {
+        e.preventDefault();
+        commitSelection(activeIdx);
+      }
+    }
+
+    overlay.addEventListener('click', (e) => {
+      if (e.target.closest('[data-link-close]')) { close(); return; }
+      const item = e.target.closest('[data-pick-index]');
+      if (item) commitSelection(Number(item.dataset.pickIndex));
+    });
+
+    search.addEventListener('input', (e) => {
+      renderResults(e.target.value);
+    });
+
+    document.addEventListener('keydown', onKeydown, true);
+    renderResults(suggestedQuery);
+    setTimeout(() => {
+      search.value = suggestedQuery;
+      search.focus();
+      search.select();
+    }, 0);
+  }
+
   function bindEditor() {
     const editor = document.getElementById('rtEditor');
     const toolbar = document.getElementById('editorToolbar');
     const colorInput = document.getElementById('rtColor');
     const colorSwatch = document.getElementById('rtColorSwatch');
+    const savedList = document.getElementById('rtSavedColors');
+    const saveBtn = document.getElementById('rtSaveColor');
     if (!editor || !toolbar) return null;
 
     /* Configurar editor: <p> ao pressionar Enter */
     try { document.execCommand('defaultParagraphSeparator', false, 'p'); } catch {}
 
+    let lastRange = null;
+    function captureSelection() {
+      const sel = window.getSelection();
+      if (sel && sel.rangeCount && editor.contains(sel.anchorNode)) {
+        lastRange = sel.getRangeAt(0).cloneRange();
+      }
+    }
+    function restoreSelection() {
+      if (!lastRange) return false;
+      const sel = window.getSelection();
+      sel.removeAllRanges();
+      sel.addRange(lastRange);
+      return true;
+    }
+    editor.addEventListener('keyup', captureSelection);
+    editor.addEventListener('mouseup', captureSelection);
+    editor.addEventListener('blur', captureSelection);
+
+    function applyColor(color) {
+      restoreSelection();
+      editor.focus();
+      restoreSelection();
+      document.execCommand('foreColor', false, color);
+      colorInput.value = color;
+      colorSwatch.style.background = color;
+      captureSelection();
+    }
+
+    function renderSavedPalette() {
+      if (!savedList) return;
+      const colors = masterPalette.colors;
+      if (!colors.length) {
+        savedList.innerHTML = `<span class="rt-saved__empty">${escapeHtml(savedList.dataset.emptyLabel || '')}</span>`;
+        return;
+      }
+      savedList.innerHTML = colors.map((c) => `
+        <span class="rt-saved__chip" data-saved-color="${c}">
+          <button type="button" class="rt-swatch rt-swatch--saved" data-color="${c}" style="background:${c}" title="${c}" aria-label="Aplicar cor salva ${c}"></button>
+          <button type="button" class="rt-saved__remove" data-remove-color="${c}" aria-label="Remover cor salva ${c}" title="Remover">
+            <svg viewBox="0 0 24 24" width="9" height="9" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
+          </button>
+        </span>
+      `).join('');
+    }
+
+    function toggleInlineWrap(tagName) {
+      // Quebra envolvendo a seleção atual em <tagName>...</tagName>.
+      // Se a seleção já está dentro de um <tagName>, remove (toggle).
+      const sel = window.getSelection();
+      if (!sel || !sel.rangeCount) return;
+      const range = sel.getRangeAt(0);
+      const ancestor = range.commonAncestorContainer.nodeType === Node.ELEMENT_NODE
+        ? range.commonAncestorContainer
+        : range.commonAncestorContainer.parentElement;
+      if (!ancestor || !editor.contains(ancestor)) return;
+
+      const existing = ancestor.closest(tagName.toLowerCase());
+      if (existing && editor.contains(existing) && range.toString() === existing.textContent) {
+        // toggle off
+        const parent = existing.parentNode;
+        while (existing.firstChild) parent.insertBefore(existing.firstChild, existing);
+        parent.removeChild(existing);
+        return;
+      }
+      if (range.collapsed) return;
+      const wrapper = document.createElement(tagName);
+      try {
+        wrapper.appendChild(range.extractContents());
+        range.insertNode(wrapper);
+        sel.removeAllRanges();
+        const newRange = document.createRange();
+        newRange.selectNodeContents(wrapper);
+        sel.addRange(newRange);
+      } catch { /* noop */ }
+    }
+
+    function insertHorizontalRule() {
+      editor.focus();
+      restoreSelection();
+      document.execCommand('insertHorizontalRule');
+    }
+
+    function openLinkPicker() {
+      const sel = window.getSelection();
+      const text = sel && sel.rangeCount ? sel.toString() : '';
+      if (!text || !text.trim()) {
+        alert('Selecione o texto que vai virar o link.');
+        editor.focus();
+        return;
+      }
+      captureSelection();
+      openEntryLinkPicker({
+        suggestedQuery: text.trim(),
+        onSelect: (entry) => {
+          editor.focus();
+          if (!restoreSelection()) return;
+          const href = `#/${entry.tab}/${entry.id}`;
+          // execCommand('createLink') aceita URL direta e mantem a seleção textual.
+          document.execCommand('createLink', false, href);
+          // Aplica classe e data-attrs no <a> recem-criado.
+          const sel2 = window.getSelection();
+          if (sel2 && sel2.rangeCount) {
+            const node = sel2.getRangeAt(0).commonAncestorContainer;
+            const a = (node.nodeType === Node.ELEMENT_NODE ? node : node.parentElement)?.closest('a');
+            if (a) {
+              a.setAttribute('class', 'rt-internal-link');
+              a.setAttribute('data-arcano-link', '');
+              a.setAttribute('data-link-tab', entry.tab);
+              a.setAttribute('data-link-entry', entry.id);
+              a.removeAttribute('target');
+              a.removeAttribute('rel');
+            }
+          }
+          captureSelection();
+        }
+      });
+    }
+
     toolbar.addEventListener('mousedown', (e) => {
       if (e.target.closest('input[type="color"]')) return;
+      // mantem a seleção do editor ao clicar na toolbar
+      captureSelection();
       e.preventDefault();
     });
     toolbar.addEventListener('click', (e) => {
-      const btn = e.target.closest('.rt-btn');
-      if (btn) {
-        const cmd = btn.dataset.cmd;
-        const arg = btn.dataset.arg || null;
-        editor.focus();
-        document.execCommand(cmd, false, arg);
+      const removeBtn = e.target.closest('[data-remove-color]');
+      if (removeBtn) {
+        const color = removeBtn.dataset.removeColor;
+        const next = masterPalette.colors.filter((c) => c !== color);
+        const previous = masterPalette.colors.slice();
+        masterPalette.colors = next;
+        renderSavedPalette();
+        saveMasterPalette(next).catch((err) => {
+          console.error(err);
+          alert('Erro ao remover cor: ' + (err.message || err));
+          masterPalette.colors = previous;
+          renderSavedPalette();
+        });
         return;
       }
       const swatch = e.target.closest('.rt-swatch');
       if (swatch) {
-        const color = swatch.dataset.color;
+        applyColor(swatch.dataset.color);
+        return;
+      }
+      const saveColorBtn = e.target.closest('#rtSaveColor');
+      if (saveColorBtn) {
+        const color = safeTagColor(colorInput.value);
+        if (masterPalette.colors.includes(color)) return;
+        if (masterPalette.colors.length >= MAX_PALETTE) {
+          alert(`Máximo de ${MAX_PALETTE} cores salvas. Remova alguma antes de adicionar uma nova.`);
+          return;
+        }
+        const next = [...masterPalette.colors, color];
+        const previous = masterPalette.colors.slice();
+        masterPalette.colors = next;
+        renderSavedPalette();
+        saveMasterPalette(next).catch((err) => {
+          console.error(err);
+          alert('Erro ao salvar cor: ' + (err.message || err));
+          masterPalette.colors = previous;
+          renderSavedPalette();
+        });
+        return;
+      }
+      const actionBtn = e.target.closest('[data-rt-action]');
+      if (actionBtn) {
+        const action = actionBtn.dataset.rtAction;
+        if (action === 'link') openLinkPicker();
+        else if (action === 'hr') insertHorizontalRule();
+        else if (action === 'code') { editor.focus(); restoreSelection(); toggleInlineWrap('CODE'); captureSelection(); }
+        return;
+      }
+      const btn = e.target.closest('.rt-btn');
+      if (btn && btn.dataset.cmd) {
+        const cmd = btn.dataset.cmd;
+        const arg = btn.dataset.arg || null;
         editor.focus();
-        document.execCommand('foreColor', false, color);
-        colorInput.value = color;
-        colorSwatch.style.background = color;
+        restoreSelection();
+        document.execCommand(cmd, false, arg);
+        captureSelection();
       }
     });
     colorInput.addEventListener('input', (e) => {
-      colorSwatch.style.background = e.target.value;
-      editor.focus();
-      document.execCommand('foreColor', false, e.target.value);
+      const color = e.target.value;
+      colorSwatch.style.background = color;
+      applyColor(color);
     });
+
+    /* Navegação ao clicar em link interno dentro do editor (Ctrl/Cmd+click). */
+    editor.addEventListener('click', (e) => {
+      const link = e.target.closest('a.rt-internal-link');
+      if (!link) return;
+      if (e.ctrlKey || e.metaKey) {
+        e.preventDefault();
+        const href = link.getAttribute('href');
+        if (href) location.hash = href;
+      }
+    });
+
+    // Render inicial da paleta + load assíncrono se ainda não carregou
+    renderSavedPalette();
+    if (!masterPalette.loaded && sb && auth.user) {
+      loadMasterPalette().then(renderSavedPalette);
+    }
 
     return editor;
   }
 
-  /* ── CREATE FORM ──────────────────────────────── */
+  /* ── CREATE / EDIT FORM ───────────────────────── */
   function attachCreateForm() {
     const form = document.getElementById('createForm');
     if (!form || form.dataset.bound) return;
     form.dataset.bound = '1';
 
     const tabId = form.dataset.tab;
+    const editId = form.dataset.editId || '';
+    const editing = !!editId;
+    const existing = editing ? entryById(editId) : null;
+
     const titleInput = document.getElementById('titleInput');
     const summaryInput = document.getElementById('summaryInput');
     const submitBtn = form.querySelector('[type="submit"]');
-    const banner = bindBannerDrop();
-    const tagBuilder = bindTagBuilder();
+    const banner = bindBannerDrop({ initialUrl: existing?.image || '' });
+    const tagBuilder = bindTagBuilder({
+      tabId,
+      initialTags: existing?.tags || [],
+      excludeEntryId: editId
+    });
     const editor = bindEditor();
     let dossier;
     if (tabId === 'Itens') {
-      dossier = bindDossierFields();
+      dossier = bindDossierFields({
+        subtype: existing?.subtype || '',
+        fields: existing?.fields || {}
+      });
     } else if (tabId === 'Racas') {
       const r = bindRaceDossier();
       dossier = { getFields: r.getFields, getSubtype: () => null };
@@ -2408,39 +2984,101 @@
       const summary = summaryInput.value.trim();
       const tags = tagBuilder.getTags();
       const bodyHtml = sanitizeHtml(editor.innerHTML).trim();
-      const baseId = slugify(title);
-      const id = uniqueId(baseId);
+      const subtype = dossier.getSubtype();
+      const fields = dossier.getFields();
 
       submitBtn.disabled = true;
       const originalLabel = submitBtn.innerHTML;
       submitBtn.innerHTML = '<span>Salvando…</span>';
 
-      let imageUrl = '';
-      let imagePath = '';
-      try {
-        const file = banner.getFile();
-        if (file) {
-          const up = await uploadBanner(file, `stories/${id}`);
-          imageUrl = up.url;
-          imagePath = up.path;
+      if (editing) {
+        await handleEditSubmit({ existing, title, summary, tags, bodyHtml, subtype, fields });
+      } else {
+        await handleCreateSubmit({ title, summary, tags, bodyHtml, subtype, fields });
+      }
+
+      async function handleCreateSubmit(payload) {
+        let imageUrl = '';
+        let imagePath = '';
+        const id = uniqueId(slugify(payload.title));
+        try {
+          const file = banner.getFile();
+          if (file) {
+            const up = await uploadBanner(file, `stories/${id}`);
+            imageUrl = up.url;
+            imagePath = up.path;
+          }
+          const newEntry = {
+            id, tab: tabId,
+            title: payload.title, summary: payload.summary,
+            image: imageUrl, imagePath,
+            bodyHtml: payload.bodyHtml, tags: payload.tags,
+            subtype: payload.subtype, fields: payload.fields,
+            createdAt: Date.now(), isUserCreated: true
+          };
+          await persistUserEntry(newEntry);
+          ARCHIVE.entries.push(newEntry);
+          location.hash = `#/${tabId}/${id}`;
+        } catch (err) {
+          console.error(err);
+          alert('Erro ao salvar: ' + (err.message || err));
+          submitBtn.disabled = false;
+          submitBtn.innerHTML = originalLabel;
+          if (imagePath) await removeBanner(imagePath);
         }
-        const subtype = dossier.getSubtype();
-        const fields = dossier.getFields();
-        const newEntry = {
-          id, tab: tabId, title, summary,
-          image: imageUrl, imagePath, bodyHtml, tags,
-          subtype, fields,
-          createdAt: Date.now(), isUserCreated: true
-        };
-        await persistUserEntry(newEntry);
-        ARCHIVE.entries.push(newEntry);
-        location.hash = `#/${tabId}/${id}`;
-      } catch (err) {
-        console.error(err);
-        alert('Erro ao salvar a história: ' + (err.message || err));
-        submitBtn.disabled = false;
-        submitBtn.innerHTML = originalLabel;
-        if (imagePath) await removeBanner(imagePath);
+      }
+
+      async function handleEditSubmit(payload) {
+        const file = banner.getFile();
+        const currentDataUrl = banner.getDataUrl();
+        let nextImage = payload.existing.image || '';
+        let nextImagePath = payload.existing.imagePath || '';
+        let uploadedPath = '';
+        const oldPathToRemove = [];
+
+        try {
+          if (file) {
+            // nova imagem foi carregada — substitui
+            const up = await uploadBanner(file, `stories/${payload.existing.id}`);
+            uploadedPath = up.path;
+            if (payload.existing.imagePath) oldPathToRemove.push(payload.existing.imagePath);
+            nextImage = up.url;
+            nextImagePath = up.path;
+          } else if (!currentDataUrl && payload.existing.image) {
+            // usuário removeu a imagem (preview limpo)
+            if (payload.existing.imagePath) oldPathToRemove.push(payload.existing.imagePath);
+            nextImage = '';
+            nextImagePath = '';
+          }
+
+          const updated = {
+            ...payload.existing,
+            tab: tabId,
+            title: payload.title,
+            summary: payload.summary,
+            image: nextImage,
+            imagePath: nextImagePath,
+            bodyHtml: payload.bodyHtml,
+            tags: payload.tags,
+            subtype: payload.subtype || payload.existing.subtype || '',
+            fields: payload.fields
+          };
+          await updateUserEntry(updated);
+
+          // commit em memória (mantém referência)
+          Object.assign(payload.existing, updated);
+
+          // remove imagens antigas só após persistir com sucesso
+          for (const p of oldPathToRemove) await removeBanner(p);
+          location.hash = `#/${tabId}/${payload.existing.id}`;
+          render(true);
+        } catch (err) {
+          console.error(err);
+          alert('Erro ao salvar alterações: ' + (err.message || err));
+          submitBtn.disabled = false;
+          submitBtn.innerHTML = originalLabel;
+          if (uploadedPath) await removeBanner(uploadedPath);
+        }
       }
     });
   }
@@ -2678,7 +3316,7 @@
 
     // Logado: carrega dados e renderiza
     try {
-      await Promise.all([loadIndexCustom(), loadUserEntries()]);
+      await Promise.all([loadIndexCustom(), loadUserEntries(), loadMasterPalette()]);
     } catch (err) {
       console.error('Erro ao sincronizar com Supabase:', err);
     }
