@@ -8,9 +8,15 @@
   const ARCHIVE = window.ARCANO_ARCHIVE;
   if (!ARCHIVE) return;
 
+  const TAB_ALIASES = { Grupos: 'Historias' };
+  const canonicalTabId = (id) => TAB_ALIASES[id] || id;
+  (ARCHIVE.entries || []).forEach((entry) => {
+    entry.tab = canonicalTabId(entry.tab);
+  });
+
   /* Categorias em que o usuário pode criar histórias */
-  const CREATABLE_TABS = ['Cenarios', 'Eras', 'Sistemas', 'Mapa', 'Deuses', 'Grupos', 'Itens', 'Racas'];
-  const isCreatable = (id) => CREATABLE_TABS.includes(id);
+  const CREATABLE_TABS = ['Cenarios', 'Eras', 'Sistemas', 'Mapa', 'Deuses', 'Historias', 'Itens', 'Racas'];
+  const isCreatable = (id) => CREATABLE_TABS.includes(canonicalTabId(id));
 
   /* Categorias com layout alternativo (imagem ao lado do dossiê).
      O aspect-ratio do banner muda por categoria. */
@@ -577,7 +583,7 @@
     Eras:      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>',
     Sistemas:  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M2 12h3M19 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1"/></svg>',
     Persona:   '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 4-7 8-7s8 3 8 7"/></svg>',
-    Grupos:    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3"/><circle cx="17" cy="9" r="2.5"/><path d="M3 20c0-3 3-5 6-5s6 2 6 5M14 20c0-2 2-3.5 4.5-3.5S22 18 22 20"/></svg>',
+    Historias: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3"/><circle cx="17" cy="9" r="2.5"/><path d="M3 20c0-3 3-5 6-5s6 2 6 5M14 20c0-2 2-3.5 4.5-3.5S22 18 22 20"/></svg>',
     Racas:     '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="7" cy="7" r="3"/><circle cx="17" cy="7" r="3"/><circle cx="12" cy="17" r="3"/><path d="M7 10v3M17 10v3M9 15l1.5-1M15 15l-1.5-1"/></svg>',
     Mapa:      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6l6-2 6 2 6-2v14l-6 2-6-2-6 2V6z"/><line x1="9" y1="4" x2="9" y2="18"/><line x1="15" y1="6" x2="15" y2="20"/></svg>',
     Deuses:    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l2.4 6.6L21 9.5l-5 4.3 1.4 6.7L12 17l-5.4 3.5L8 13.8l-5-4.3 6.6-.9L12 2z"/></svg>',
@@ -594,7 +600,7 @@
     Eras:      { hue: 45,  label: 'TEMPO' },
     Sistemas:  { hue: 160, label: 'REGRAS' },
     Persona:   { hue: 320, label: 'PESSOAS' },
-    Grupos:    { hue: 250, label: 'FACÇÕES' },
+    Historias: { hue: 250, label: 'HISTÓRIAS' },
     Racas:     { hue: 130, label: 'POVOS' },
     Mapa:      { hue: 195, label: 'MUNDO' },
     Deuses:    { hue: 50,  label: 'DIVINO' },
@@ -618,12 +624,12 @@
   const normalize = (s) => String(s ?? '').toLowerCase()
     .normalize('NFD').replace(/[̀-ͯ]/g, '');
 
-  const tabById = (id) => ARCHIVE.tabs.find((t) => t.id === id);
-  const entriesIn = (tabId) => ARCHIVE.entries.filter((e) => e.tab === tabId);
+  const tabById = (id) => ARCHIVE.tabs.find((t) => t.id === canonicalTabId(id));
+  const entriesIn = (tabId) => ARCHIVE.entries.filter((e) => canonicalTabId(e.tab) === canonicalTabId(tabId));
   const entryById = (id) => ARCHIVE.entries.find((e) => e.id === id);
 
-  const themeOf = (id) => THEMES[id] || { hue: 268, label: 'CODEX' };
-  const iconOf = (id) => ICONS[id] || ICONS.Index;
+  const themeOf = (id) => THEMES[canonicalTabId(id)] || { hue: 268, label: 'CODEX' };
+  const iconOf = (id) => ICONS[canonicalTabId(id)] || ICONS.Index;
   const TAG_COLOR_RE = /^#[0-9a-f]{6}$/i;
   const DEFAULT_TAG_COLOR = '#f59e0b';
   const categoryState = {};
@@ -696,7 +702,7 @@
   function rowToEntry(row) {
     return {
       id: row.id,
-      tab: row.tab,
+      tab: canonicalTabId(row.tab),
       title: row.title,
       summary: row.summary || '',
       image: row.image || '',
@@ -887,7 +893,7 @@
     if (!raw) return { tab: 'Index', entry: null };
     const [t, ...rest] = raw.split('/').filter(Boolean);
     if (!t) return { tab: 'Index', entry: null };
-    return { tab: decodeURIComponent(t), entry: rest.length ? decodeURIComponent(rest.join('/')) : null };
+    return { tab: canonicalTabId(decodeURIComponent(t)), entry: rest.length ? decodeURIComponent(rest.join('/')) : null };
   }
 
   /* ── SIDEBAR NAV ──────────────────────────────── */

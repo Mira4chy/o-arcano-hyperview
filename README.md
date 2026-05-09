@@ -23,7 +23,7 @@ A pagina inicial fica em `index`. Cada registro fica em `entries` e usa uma aba 
 - `Eras`
 - `Sistemas`
 - `Persona`
-- `Grupos`
+- `Historias`
 - `Racas`
 - `Mapa`
 - `Deuses`

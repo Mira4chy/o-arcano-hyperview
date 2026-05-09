@@ -77,9 +77,9 @@ window.ARCANO_ARCHIVE = {
       template: ["Papel", "Desejo", "Método", "Ferida", "Cena"]
     },
     {
-      id: "Grupos",
-      title: "Grupos",
-      tone: "Ordens, facções, cultos, casas e bandos."
+      id: "Historias",
+      title: "Histórias",
+      tone: "Crônicas, relatos, campanhas e acontecimentos marcantes."
     },
     {
       id: "Racas",
