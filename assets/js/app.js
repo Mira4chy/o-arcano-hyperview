@@ -894,9 +894,29 @@
     A: new Set(['href','data-arcano-link','data-link-tab','data-link-entry','class']),
     DEFAULT: new Set(['style'])
   };
-  const STYLE_RE = /^(color|background-color|font-weight|font-style|text-decoration|text-align)\s*:\s*[^;]+$/i;
   const COLOR_VALUE_RE = /^(#[0-9a-f]{3,8}|rgba?\([^)]+\)|hsla?\([^)]+\)|[a-z]+)$/i;
   const ALIGN_VALUE_RE = /^(left|right|center|justify)$/i;
+  const FONT_SIZE_RE = /^\d+(\.\d+)?(em|rem|px|%)$/i;
+  /* Famílias permitidas: somente fontes carregadas via Google Fonts no index.html. */
+  const ALLOWED_FONT_FAMILIES = new Set(['inter','cinzel','cormorant garamond','medievalsharp','jetbrains mono','georgia','serif','sans-serif','monospace']);
+  /* Validador de gradients simples para a cor da linha divisora (HR).
+     Aceita "linear-gradient(NUM[unit], <stop>, <stop>...)" onde cada stop é cor opcionalmente seguida de % e os tokens são limitados. */
+  const SAFE_GRADIENT_RE = /^linear-gradient\(\s*\d+(?:\.\d+)?(?:deg|rad|turn|grad)?\s*(?:,\s*(?:transparent|#[0-9a-f]{3,8}|rgba?\([^)]+\)|hsla?\([^)]+\))(?:\s+\d+(?:\.\d+)?%)?\s*){2,6}\)$/i;
+  /* Validadores por propriedade. Tudo o que não casar é descartado. */
+  const STYLE_PROP_VALIDATORS = {
+    'color': (v) => COLOR_VALUE_RE.test(v),
+    'background-color': (v) => COLOR_VALUE_RE.test(v),
+    'background': (v) => SAFE_GRADIENT_RE.test(v) || COLOR_VALUE_RE.test(v),
+    'font-weight': (v) => /^(bold|bolder|lighter|normal|[1-9]00)$/i.test(v),
+    'font-style': (v) => /^(italic|normal|oblique)$/i.test(v),
+    'font-size': (v) => FONT_SIZE_RE.test(v),
+    'font-family': (v) => {
+      const cleaned = v.replace(/['"]/g, '').split(',').map((p) => p.trim().toLowerCase()).filter(Boolean);
+      return cleaned.length > 0 && cleaned.every((p) => ALLOWED_FONT_FAMILIES.has(p));
+    },
+    'text-decoration': (v) => /^(underline|line-through|none|overline)( [a-z\-]+)*$/i.test(v),
+    'text-align': (v) => ALIGN_VALUE_RE.test(v)
+  };
   /* Apenas links internos (rota hash) sao aceitos. Bloqueia javascript:, data:, http externo, etc. */
   const INTERNAL_HREF_RE = /^#\/[A-Za-z0-9_\-%/.]+$/;
 
@@ -926,11 +946,20 @@
               continue;
             }
             if (name === 'style') {
-              const cleaned = attr.value.split(';')
+              const decls = attr.value.split(';')
                 .map((s) => s.trim())
-                .filter((s) => s && STYLE_RE.test(s))
-                .join('; ');
-              if (cleaned) child.setAttribute('style', cleaned);
+                .filter(Boolean)
+                .map((decl) => {
+                  const idx = decl.indexOf(':');
+                  if (idx < 0) return null;
+                  const prop = decl.slice(0, idx).trim().toLowerCase();
+                  const value = decl.slice(idx + 1).trim();
+                  const validator = STYLE_PROP_VALIDATORS[prop];
+                  if (!validator || !validator(value)) return null;
+                  return `${prop}: ${value}`;
+                })
+                .filter(Boolean);
+              if (decls.length) child.setAttribute('style', decls.join('; '));
               else child.removeAttribute('style');
             } else if (name === 'href') {
               const v = (attr.value || '').trim();
@@ -1329,6 +1358,29 @@
   }
 
   /* ── RICH-TEXT EDITOR (markup compartilhado) ──── */
+  /* Famílias de fonte disponíveis no dropdown do editor.
+     Os valores devem casar com ALLOWED_FONT_FAMILIES no sanitizer. */
+  const RT_FONT_FAMILIES = [
+    { id: '',                    label: 'Padrão',     css: '' },
+    { id: 'cinzel',              label: 'Decorativo', css: "'Cinzel', Georgia, serif" },
+    { id: 'cormorant-garamond',  label: 'Elegante',   css: "'Cormorant Garamond', Georgia, serif" },
+    { id: 'medievalsharp',       label: 'Medieval',   css: "'MedievalSharp', Cinzel, serif" },
+    { id: 'jetbrains-mono',      label: 'Mono',       css: "'JetBrains Mono', monospace" }
+  ];
+  /* Valores em em para escalar com o contexto. */
+  const RT_FONT_SIZES = [
+    { id: '0.8em',  label: 'XS' },
+    { id: '0.9em',  label: 'S' },
+    { id: '',       label: 'M' },
+    { id: '1.1em',  label: 'L' },
+    { id: '1.25em', label: 'XL' },
+    { id: '1.5em',  label: '2XL' },
+    { id: '2em',    label: '3XL' }
+  ];
+  /* Cores rápidas oferecidas no popover de cor da linha divisória.
+     '' = padrão da categoria (cor herdada do tema, sem inline style). */
+  const RT_HR_COLORS = ['', '#a78bfa', '#22d3ee', '#10b981', '#f59e0b', '#f43f5e', '#f3eefe'];
+
   function editorToolbarHTML(initialHtml) {
     const palette = ['#f3eefe','#a78bfa','#22d3ee','#10b981','#f59e0b','#f43f5e','#ec4899'];
     return `
@@ -1346,6 +1398,19 @@
             <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 7h4v6H5v-3a3 3 0 0 1 3-3zM17 7h4v6h-6v-3a3 3 0 0 1 3-3z"/></svg>
           </button>
           <span class="rt-sep"></span>
+          <label class="rt-select" title="Família da fonte">
+            <select id="rtFontFamily" class="rt-select__input" aria-label="Família da fonte">
+              ${RT_FONT_FAMILIES.map((f) => `<option value="${escapeHtml(f.id)}" style="${f.css ? `font-family:${f.css}` : ''}">${escapeHtml(f.label)}</option>`).join('')}
+            </select>
+            <svg viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
+          </label>
+          <label class="rt-select rt-select--size" title="Tamanho do texto">
+            <select id="rtFontSize" class="rt-select__input" aria-label="Tamanho do texto">
+              ${RT_FONT_SIZES.map((s) => `<option value="${escapeHtml(s.id)}">${escapeHtml(s.label)}</option>`).join('')}
+            </select>
+            <svg viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
+          </label>
+          <span class="rt-sep"></span>
           <button type="button" class="rt-btn" data-cmd="insertUnorderedList" title="Lista com marcadores">
             <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="5" cy="6" r="1" fill="currentColor"/><circle cx="5" cy="12" r="1" fill="currentColor"/><circle cx="5" cy="18" r="1" fill="currentColor"/><path d="M10 6h11M10 12h11M10 18h11"/></svg>
           </button>
@@ -1362,9 +1427,25 @@
           <button type="button" class="rt-btn" data-rt-action="link" title="Link para outra história">
             <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg>
           </button>
-          <button type="button" class="rt-btn" data-rt-action="hr" title="Linha separadora">
-            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 12h18M6 6l-2 2M18 6l2 2M6 18l-2-2M18 18l2-2"/></svg>
-          </button>
+          <span class="rt-hr" id="rtHrWrap">
+            <button type="button" class="rt-btn" data-rt-action="hr" title="Linha separadora (clique para escolher cor)">
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 12h18M6 6l-2 2M18 6l2 2M6 18l-2-2M18 18l2-2"/></svg>
+            </button>
+            <div class="rt-hr__popover" id="rtHrPopover" hidden role="dialog" aria-label="Cor da linha divisória">
+              <span class="rt-hr__label">Cor da linha</span>
+              <div class="rt-hr__swatches">
+                ${RT_HR_COLORS.map((c) => `
+                  <button type="button" class="rt-hr__swatch ${c ? '' : 'rt-hr__swatch--default'}" data-hr-color="${escapeHtml(c)}" style="${c ? `background:${c}` : ''}" title="${c || 'Padrão da categoria'}" aria-label="${c ? `Cor ${c}` : 'Padrão da categoria'}">
+                    ${c ? '' : '<svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M3 12h18"/></svg>'}
+                  </button>
+                `).join('')}
+                <label class="rt-hr__custom" title="Cor personalizada">
+                  <span class="rt-hr__custom-swatch" id="rtHrCustomSwatch" style="background:#a78bfa"></span>
+                  <input type="color" id="rtHrCustom" value="#a78bfa" aria-label="Cor personalizada">
+                </label>
+              </div>
+            </div>
+          </span>
           <button type="button" class="rt-btn rt-btn--text" data-rt-action="code" title="Código">&lt;/&gt;</button>
           <span class="rt-sep"></span>
           <label class="rt-color" title="Cor do texto">
@@ -2799,10 +2880,71 @@
       } catch { /* noop */ }
     }
 
-    function insertHorizontalRule() {
+    function insertHorizontalRule(color) {
       editor.focus();
       restoreSelection();
       document.execCommand('insertHorizontalRule');
+      if (!color) return;
+      // O execCommand insere o <hr> recente; localizo via seleção atual
+      const sel = window.getSelection();
+      if (!sel || !sel.rangeCount) return;
+      const node = sel.getRangeAt(0).startContainer;
+      const scope = node.nodeType === Node.ELEMENT_NODE ? node : node.parentElement;
+      // Acha o <hr> mais recente dentro do editor (último filho HR antes do cursor)
+      const hrs = editor.querySelectorAll('hr');
+      const last = hrs[hrs.length - 1];
+      if (last) {
+        last.setAttribute('style', `background: linear-gradient(90deg, transparent, ${color}, transparent)`);
+      }
+    }
+
+    function applyFontFamily(value) {
+      editor.focus();
+      restoreSelection();
+      const sel = window.getSelection();
+      if (!sel || !sel.rangeCount) return;
+      const range = sel.getRangeAt(0);
+      if (range.collapsed) return;
+      if (!value) {
+        // 'Padrão' = remove font-family de spans selecionados (best effort).
+        document.execCommand('removeFormat');
+        return;
+      }
+      const def = RT_FONT_FAMILIES.find((f) => f.id === value);
+      if (!def) return;
+      wrapSelectionStyle('font-family', def.css);
+    }
+
+    function applyFontSize(value) {
+      editor.focus();
+      restoreSelection();
+      const sel = window.getSelection();
+      if (!sel || !sel.rangeCount) return;
+      const range = sel.getRangeAt(0);
+      if (range.collapsed) return;
+      if (!value) {
+        document.execCommand('removeFormat');
+        return;
+      }
+      wrapSelectionStyle('font-size', value);
+    }
+
+    function wrapSelectionStyle(prop, val) {
+      const sel = window.getSelection();
+      if (!sel || !sel.rangeCount) return;
+      const range = sel.getRangeAt(0);
+      if (range.collapsed) return;
+      const span = document.createElement('span');
+      span.setAttribute('style', `${prop}: ${val}`);
+      try {
+        span.appendChild(range.extractContents());
+        range.insertNode(span);
+        sel.removeAllRanges();
+        const r = document.createRange();
+        r.selectNodeContents(span);
+        sel.addRange(r);
+        captureSelection();
+      } catch { /* noop */ }
     }
 
     function openLinkPicker() {
@@ -2841,13 +2983,45 @@
       });
     }
 
+    /* Popover de cor da linha divisória */
+    const hrPopover = document.getElementById('rtHrPopover');
+    const hrCustom = document.getElementById('rtHrCustom');
+    const hrCustomSwatch = document.getElementById('rtHrCustomSwatch');
+    function closeHrPopover() { if (hrPopover) hrPopover.hidden = true; }
+    function toggleHrPopover() {
+      if (!hrPopover) return;
+      hrPopover.hidden = !hrPopover.hidden;
+    }
+    document.addEventListener('click', (e) => {
+      if (!hrPopover || hrPopover.hidden) return;
+      if (e.target.closest('#rtHrWrap')) return;
+      closeHrPopover();
+    });
+    if (hrCustom) {
+      hrCustom.addEventListener('input', (e) => {
+        if (hrCustomSwatch) hrCustomSwatch.style.background = e.target.value;
+      });
+      hrCustom.addEventListener('change', (e) => {
+        insertHorizontalRule(e.target.value);
+        closeHrPopover();
+      });
+    }
+
     toolbar.addEventListener('mousedown', (e) => {
       if (e.target.closest('input[type="color"]')) return;
+      if (e.target.closest('select')) return;
       // mantem a seleção do editor ao clicar na toolbar
       captureSelection();
       e.preventDefault();
     });
     toolbar.addEventListener('click', (e) => {
+      const hrSwatch = e.target.closest('[data-hr-color]');
+      if (hrSwatch) {
+        const color = hrSwatch.dataset.hrColor || '';
+        insertHorizontalRule(color);
+        closeHrPopover();
+        return;
+      }
       const removeBtn = e.target.closest('[data-remove-color]');
       if (removeBtn) {
         const color = removeBtn.dataset.removeColor;
@@ -2892,7 +3066,7 @@
       if (actionBtn) {
         const action = actionBtn.dataset.rtAction;
         if (action === 'link') openLinkPicker();
-        else if (action === 'hr') insertHorizontalRule();
+        else if (action === 'hr') { captureSelection(); toggleHrPopover(); }
         else if (action === 'code') { editor.focus(); restoreSelection(); toggleInlineWrap('CODE'); captureSelection(); }
         return;
       }
@@ -2911,6 +3085,27 @@
       colorSwatch.style.background = color;
       applyColor(color);
     });
+
+    /* Selects de família e tamanho de fonte */
+    const fontFamilySelect = document.getElementById('rtFontFamily');
+    const fontSizeSelect = document.getElementById('rtFontSize');
+    if (fontFamilySelect) {
+      fontFamilySelect.addEventListener('change', (e) => {
+        applyFontFamily(e.target.value);
+        // Volta para "Padrão" para não persistir o estado visual da escolha;
+        // o usuário pode aplicar a mesma fonte de novo facilmente.
+        e.target.selectedIndex = 0;
+        captureSelection();
+      });
+    }
+    if (fontSizeSelect) {
+      fontSizeSelect.addEventListener('change', (e) => {
+        applyFontSize(e.target.value);
+        // Posição '' (Médio) é a 3ª opção (index 2) — deixa selecionada como neutra.
+        e.target.value = '';
+        captureSelection();
+      });
+    }
 
     /* Navegação ao clicar em link interno dentro do editor (Ctrl/Cmd+click). */
     editor.addEventListener('click', (e) => {

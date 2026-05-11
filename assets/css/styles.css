@@ -3769,6 +3769,139 @@ body.is-locked { overflow: hidden; }
   .link-picker__panel { width: calc(100vw - 28px); max-height: 86vh; }
 }
 
+/* ── Editor: dropdown de fonte / tamanho ─────── */
+.rt-select {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 30px;
+  padding: 0 6px 0 8px;
+  border-radius: 6px;
+  font-size: 0.74rem;
+  letter-spacing: 0.04em;
+  color: var(--text-2);
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid var(--line);
+  cursor: pointer;
+  transition: all 160ms var(--ease);
+}
+.rt-select:hover {
+  border-color: var(--line-strong);
+  color: var(--text);
+}
+.rt-select__input {
+  appearance: none;
+  -webkit-appearance: none;
+  background: transparent;
+  color: inherit;
+  border: 0;
+  outline: none;
+  font-family: inherit;
+  font-size: 0.78rem;
+  letter-spacing: 0.04em;
+  padding-right: 4px;
+  cursor: pointer;
+  min-width: 78px;
+}
+.rt-select--size .rt-select__input { min-width: 38px; text-align: center; }
+.rt-select__input option {
+  background: #14101e;
+  color: var(--text);
+}
+.rt-select svg { opacity: 0.7; }
+
+/* ── Popover de cor da linha divisória ─────────── */
+.rt-hr {
+  position: relative;
+  display: inline-flex;
+}
+.rt-hr__popover {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 50;
+  display: grid;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: linear-gradient(180deg, rgba(22,17,34,0.98), rgba(14,10,22,0.98));
+  border: 1px solid var(--line-strong);
+  box-shadow: 0 18px 40px rgba(0,0,0,0.5);
+  min-width: 200px;
+  animation: hrPopIn 140ms var(--ease);
+}
+@keyframes hrPopIn { from { opacity: 0; transform: translateX(-50%) translateY(-4px); } to { opacity: 1; transform: translateX(-50%); } }
+.rt-hr__popover[hidden] { display: none; }
+.rt-hr__popover::before {
+  content: '';
+  position: absolute;
+  top: -5px;
+  left: 50%;
+  transform: translateX(-50%) rotate(45deg);
+  width: 9px;
+  height: 9px;
+  background: rgba(22,17,34,0.98);
+  border-left: 1px solid var(--line-strong);
+  border-top: 1px solid var(--line-strong);
+}
+.rt-hr__label {
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-size: 0.62rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: hsl(var(--hue), 70%, 75%);
+}
+.rt-hr__swatches {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+.rt-hr__swatch {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.18);
+  cursor: pointer;
+  transition: transform 140ms var(--ease), box-shadow 140ms var(--ease);
+  display: grid;
+  place-items: center;
+  color: var(--text-2);
+}
+.rt-hr__swatch:hover {
+  transform: scale(1.12);
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.18);
+}
+.rt-hr__swatch--default {
+  background: linear-gradient(135deg, hsla(var(--hue), 60%, 35%, 0.5), hsla(var(--hue), 70%, 65%, 0.55));
+}
+.rt-hr__custom {
+  position: relative;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 1px dashed rgba(255, 255, 255, 0.32);
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+}
+.rt-hr__custom-swatch {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+}
+.rt-hr__custom input[type="color"] {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  cursor: pointer;
+  border: 0;
+}
+
 /* ── Editor: novos botões e paleta salva ─────── */
 .rt-btn--text {
   font-family: 'JetBrains Mono', ui-monospace, monospace;
