@@ -767,6 +767,10 @@ img { display: block; max-width: 100%; }
   opacity: 0;
   transform: translateY(40px) rotate(8deg);
   animation: charIn 800ms var(--ease) forwards;
+  background: inherit;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
 }
 
 @keyframes charIn {
@@ -1367,6 +1371,10 @@ img { display: block; max-width: 100%; }
   opacity: 0;
   transform: translateY(20px);
   animation: charIn 700ms var(--ease) forwards;
+  background: inherit;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
 }
 
 .cat-hero__tone {
@@ -1804,6 +1812,10 @@ img { display: block; max-width: 100%; }
   opacity: 0;
   transform: translateY(30px);
   animation: charIn 700ms var(--ease) forwards;
+  background: inherit;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
 }
 
 .entry__summary {
