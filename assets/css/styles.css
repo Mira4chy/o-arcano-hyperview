@@ -3802,9 +3802,9 @@ body.is-locked { overflow: hidden; }
   letter-spacing: 0.04em;
   padding-right: 4px;
   cursor: pointer;
-  min-width: 78px;
+  min-width: 92px;
 }
-.rt-select--size .rt-select__input { min-width: 38px; text-align: center; }
+.rt-select--size .rt-select__input { min-width: 36px; text-align: center; }
 .rt-select__input option {
   background: #14101e;
   color: var(--text);

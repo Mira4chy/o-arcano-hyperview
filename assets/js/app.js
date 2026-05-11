@@ -898,7 +898,11 @@
   const ALIGN_VALUE_RE = /^(left|right|center|justify)$/i;
   const FONT_SIZE_RE = /^\d+(\.\d+)?(em|rem|px|%)$/i;
   /* Famílias permitidas: somente fontes carregadas via Google Fonts no index.html. */
-  const ALLOWED_FONT_FAMILIES = new Set(['inter','cinzel','cormorant garamond','medievalsharp','jetbrains mono','georgia','serif','sans-serif','monospace']);
+  const ALLOWED_FONT_FAMILIES = new Set([
+    'inter','cinzel','cormorant garamond','medievalsharp','jetbrains mono',
+    'im fell english','uncial antiqua','eb garamond','unifrakturcook','spectral','pirata one',
+    'georgia','serif','sans-serif','monospace'
+  ]);
   /* Validador de gradients simples para a cor da linha divisora (HR).
      Aceita "linear-gradient(NUM[unit], <stop>, <stop>...)" onde cada stop é cor opcionalmente seguida de % e os tokens são limitados. */
   const SAFE_GRADIENT_RE = /^linear-gradient\(\s*\d+(?:\.\d+)?(?:deg|rad|turn|grad)?\s*(?:,\s*(?:transparent|#[0-9a-f]{3,8}|rgba?\([^)]+\)|hsla?\([^)]+\))(?:\s+\d+(?:\.\d+)?%)?\s*){2,6}\)$/i;
@@ -1364,18 +1368,26 @@
     { id: '',                    label: 'Padrão',     css: '' },
     { id: 'cinzel',              label: 'Decorativo', css: "'Cinzel', Georgia, serif" },
     { id: 'cormorant-garamond',  label: 'Elegante',   css: "'Cormorant Garamond', Georgia, serif" },
+    { id: 'eb-garamond',         label: 'Clássico',   css: "'EB Garamond', Georgia, serif" },
+    { id: 'spectral',            label: 'Refinado',   css: "'Spectral', Georgia, serif" },
+    { id: 'im-fell-english',     label: 'Manuscrito', css: "'IM Fell English', Georgia, serif" },
     { id: 'medievalsharp',       label: 'Medieval',   css: "'MedievalSharp', Cinzel, serif" },
+    { id: 'uncial-antiqua',      label: 'Antigo',     css: "'Uncial Antiqua', Cinzel, serif" },
+    { id: 'unifrakturcook',      label: 'Gótico',     css: "'UnifrakturCook', Cinzel, serif" },
+    { id: 'pirata-one',          label: 'Pirata',     css: "'Pirata One', Cinzel, serif" },
     { id: 'jetbrains-mono',      label: 'Mono',       css: "'JetBrains Mono', monospace" }
   ];
-  /* Valores em em para escalar com o contexto. */
+  /* Tamanhos absolutos em px para evitar composição em wraps aninhados. */
   const RT_FONT_SIZES = [
-    { id: '0.8em',  label: 'XS' },
-    { id: '0.9em',  label: 'S' },
-    { id: '',       label: 'M' },
-    { id: '1.1em',  label: 'L' },
-    { id: '1.25em', label: 'XL' },
-    { id: '1.5em',  label: '2XL' },
-    { id: '2em',    label: '3XL' }
+    { id: '10px', label: '10' },
+    { id: '12px', label: '12' },
+    { id: '14px', label: '14' },
+    { id: '',     label: '16' },
+    { id: '18px', label: '18' },
+    { id: '22px', label: '22' },
+    { id: '28px', label: '28' },
+    { id: '36px', label: '36' },
+    { id: '48px', label: '48' }
   ];
   /* Cores rápidas oferecidas no popover de cor da linha divisória.
      '' = padrão da categoria (cor herdada do tema, sem inline style). */
@@ -2934,10 +2946,21 @@
       if (!sel || !sel.rangeCount) return;
       const range = sel.getRangeAt(0);
       if (range.collapsed) return;
-      const span = document.createElement('span');
-      span.setAttribute('style', `${prop}: ${val}`);
       try {
-        span.appendChild(range.extractContents());
+        const fragment = range.extractContents();
+        // Remove qualquer inline style igual em spans descendentes para não aninhar.
+        Array.from(fragment.querySelectorAll('span[style]')).forEach((s) => {
+          s.style.removeProperty(prop);
+          const remaining = (s.getAttribute('style') || '').trim();
+          if (!remaining) {
+            const parent = s.parentNode;
+            while (s.firstChild) parent.insertBefore(s.firstChild, s);
+            parent.removeChild(s);
+          }
+        });
+        const span = document.createElement('span');
+        span.style.setProperty(prop, val);
+        span.appendChild(fragment);
         range.insertNode(span);
         sel.removeAllRanges();
         const r = document.createRange();
@@ -3086,23 +3109,19 @@
       applyColor(color);
     });
 
-    /* Selects de família e tamanho de fonte */
+    /* Selects de família e tamanho de fonte.
+       O dropdown mantém a opção escolhida visível; pra reverter, escolha 'Padrão' / '16'. */
     const fontFamilySelect = document.getElementById('rtFontFamily');
     const fontSizeSelect = document.getElementById('rtFontSize');
     if (fontFamilySelect) {
       fontFamilySelect.addEventListener('change', (e) => {
         applyFontFamily(e.target.value);
-        // Volta para "Padrão" para não persistir o estado visual da escolha;
-        // o usuário pode aplicar a mesma fonte de novo facilmente.
-        e.target.selectedIndex = 0;
         captureSelection();
       });
     }
     if (fontSizeSelect) {
       fontSizeSelect.addEventListener('change', (e) => {
         applyFontSize(e.target.value);
-        // Posição '' (Médio) é a 3ª opção (index 2) — deixa selecionada como neutra.
-        e.target.value = '';
         captureSelection();
       });
     }
