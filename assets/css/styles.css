@@ -3845,6 +3845,8 @@ body.is-overlay-open { overflow: hidden; }
   .hero__title { font-size: clamp(2rem, 9vw, 3.2rem); }
   .hero__subtitle { font-size: 0.95rem; line-height: 1.65; }
   .hero__scroll { display: none; }
+  /* Pausa o pan contínuo da imagem grande (caro no mobile) */
+  .hero__bg { animation: none; }
 
   /* Seções */
   .section { gap: 16px; }
@@ -3882,6 +3884,37 @@ body.is-overlay-open { overflow: hidden; }
   /* Sidenav: alvos de toque maiores */
   .sidenav__item { padding: 11px 11px; min-height: 44px; }
   .sidenav { padding: 6px 10px 16px; }
+
+  /* ── Performance: backdrop-filter (blur) é caríssimo no mobile.
+     Desligamos os blurs e usamos fundos sólidos no lugar. ── */
+  .topbar,
+  .sidebar,
+  .mobile-search,
+  .search,
+  .stat,
+  .feat,
+  .pillar,
+  .cat-card,
+  .search-results__inner,
+  .hero__edit,
+  .sidebar-backdrop,
+  .link-picker__backdrop,
+  .auth-gate {
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+  }
+
+  /* Overlays que cobrem conteúdo rolando precisam de fundo opaco */
+  .topbar { background: rgba(10, 8, 18, 0.96); }
+  .sidebar,
+  .mobile-search { background: rgba(11, 9, 20, 0.99); }
+  .search-results__inner { background: rgba(11, 9, 20, 0.99); }
+
+  /* Cards: fundos um pouco mais opacos já que não há mais blur */
+  .stat,
+  .feat,
+  .pillar,
+  .cat-card { background: rgba(20, 16, 34, 0.9); }
 }
 
 @media (max-width: 540px) {

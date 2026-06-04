@@ -10,14 +10,19 @@
   const ctx = canvas.getContext('2d');
   const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-  let W, H, dpr, raf;
+  let W, H, dpr, raf, mobile;
   let mx = 0, my = 0;       // mouse position normalized -1..1
   let tx = 0, ty = 0;       // smoothed parallax target
+
+  // Em telas pequenas (ou reduced-motion) desenhamos um único frame
+  // estático: o fundo continua bonito mas não consome CPU/GPU/bateria.
+  function isStatic() { return reduced || mobile; }
 
   function resize() {
     dpr = Math.min(window.devicePixelRatio || 1, 2);
     W = window.innerWidth;
     H = window.innerHeight;
+    mobile = W < 768;
     canvas.width = W * dpr;
     canvas.height = H * dpr;
     canvas.style.width = W + 'px';
@@ -29,7 +34,9 @@
   const stars = [];
   function initStars() {
     stars.length = 0;
-    const total = Math.min(380, Math.round(W * H / 4800));
+    const total = mobile
+      ? Math.min(110, Math.round(W * H / 9000))
+      : Math.min(380, Math.round(W * H / 4800));
     for (let i = 0; i < total; i++) {
       const depth = Math.random();
       const bright = Math.random() > 0.93;
@@ -58,7 +65,7 @@
       { hue: 38,  sat: 88, lum: 58 },  // gold
       { hue: 195, sat: 80, lum: 60 },  // cyan
     ];
-    const count = W < 900 ? 7 : 11;
+    const count = mobile ? 5 : (W < 900 ? 7 : 11);
     for (let i = 0; i < count; i++) {
       const p = palettes[i % palettes.length];
       const isAccent = p.hue === 38 || p.hue === 195;
@@ -83,7 +90,10 @@
   const nebulae = [];
   function initNebula() {
     nebulae.length = 0;
-    const seeds = [
+    const seeds = mobile ? [
+      { hue: 268, x: 0.20, y: 0.28, r: 300 },
+      { hue: 248, x: 0.80, y: 0.72, r: 320 },
+    ] : [
       { hue: 268, x: 0.18, y: 0.30, r: 320 },
       { hue: 285, x: 0.78, y: 0.24, r: 280 },
       { hue: 248, x: 0.55, y: 0.78, r: 360 },
@@ -214,7 +224,7 @@
       ctx.fill();
     }
 
-    if (!reduced) raf = requestAnimationFrame(draw);
+    if (!isStatic()) raf = requestAnimationFrame(draw);
   }
 
   /* ── EVENTS ────────────────────────────────────── */
