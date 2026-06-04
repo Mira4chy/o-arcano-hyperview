@@ -3445,12 +3445,89 @@
   }
 
   /* ── EVENT BINDINGS ───────────────────────────── */
+  function closeMobileSidebar() {
+    appShell.classList.remove('is-menu-open');
+    document.body.classList.remove('is-overlay-open');
+  }
+
+  function isMobileViewport() {
+    return window.innerWidth <= 900;
+  }
+
   function bindEvents() {
-    window.addEventListener('hashchange', () => render());
+    window.addEventListener('hashchange', () => {
+      if (isMobileViewport()) closeMobileSidebar();
+      render();
+    });
 
     menuBtn.addEventListener('click', () => {
-      appShell.classList.toggle('is-collapsed');
+      if (isMobileViewport()) {
+        const opening = !appShell.classList.contains('is-menu-open');
+        appShell.classList.toggle('is-menu-open');
+        document.body.classList.toggle('is-overlay-open', opening);
+      } else {
+        appShell.classList.toggle('is-collapsed');
+      }
     });
+
+    const sidebarBackdrop = document.getElementById('sidebarBackdrop');
+    if (sidebarBackdrop) {
+      sidebarBackdrop.addEventListener('click', closeMobileSidebar);
+    }
+
+    const sidenav = document.getElementById('sidenav');
+    if (sidenav) {
+      sidenav.addEventListener('click', (e) => {
+        if (e.target.closest('.sidenav__item') && isMobileViewport()) {
+          closeMobileSidebar();
+        }
+      });
+    }
+
+    const mobileSearchBtn = document.getElementById('mobileSearchBtn');
+    const mobileSearch = document.getElementById('mobileSearch');
+    const mobileSearchInput = document.getElementById('mobileSearchInput');
+    const mobileSearchClose = document.getElementById('mobileSearchClose');
+
+    if (mobileSearchBtn && mobileSearch) {
+      mobileSearchBtn.addEventListener('click', () => {
+        const opening = !mobileSearch.classList.contains('is-open');
+        mobileSearch.classList.toggle('is-open');
+        mobileSearch.setAttribute('aria-hidden', String(!opening));
+        if (opening && mobileSearchInput) {
+          setTimeout(() => mobileSearchInput.focus(), 60);
+        }
+      });
+    }
+
+    if (mobileSearchClose && mobileSearch) {
+      mobileSearchClose.addEventListener('click', () => {
+        mobileSearch.classList.remove('is-open');
+        mobileSearch.setAttribute('aria-hidden', 'true');
+        if (mobileSearchInput) {
+          mobileSearchInput.value = '';
+          const sr = document.getElementById('searchResults');
+          if (sr) sr.hidden = true;
+        }
+      });
+    }
+
+    if (mobileSearchInput) {
+      mobileSearchInput.addEventListener('input', (e) => {
+        const globalSearch = document.getElementById('globalSearch');
+        if (globalSearch) {
+          globalSearch.value = e.target.value;
+          globalSearch.dispatchEvent(new Event('input', { bubbles: true }));
+        }
+      });
+      mobileSearchInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') {
+          mobileSearch.classList.remove('is-open');
+          mobileSearch.setAttribute('aria-hidden', 'true');
+          mobileSearchInput.value = '';
+        }
+      });
+    }
 
     let st;
     globalSearch.addEventListener('input', (e) => {
