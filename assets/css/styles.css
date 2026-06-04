@@ -3803,8 +3803,9 @@ body.is-overlay-open { overflow: hidden; }
 
   .brand__text small { display: none; }
 
-  /* Layout: sidebar coluna zero, conteúdo full-width */
-  .layout { grid-template-columns: 0 1fr; }
+  /* Layout: coluna única — sidebar é overlay fixo fora do fluxo */
+  .layout { grid-template-columns: minmax(0, 1fr); }
+  .main { grid-column: 1; }
 
   /* Sidebar: overlay fixo, oculto por padrão */
   .sidebar {
