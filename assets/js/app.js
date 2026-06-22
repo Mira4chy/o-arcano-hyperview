@@ -2594,14 +2594,16 @@
                 const m = attrModifierFor(val, a, mod);
                 return `
                   <div class="attr-row" data-attr="${escapeHtml(a)}" data-racemod="${Number((mod && mod[a]) || 0)}">
-                    <span class="attr-row__name">${escapeHtml(a)}</span>
+                    <div class="attr-row__head">
+                      <span class="attr-row__name">${escapeHtml(a)}</span>
+                      <span class="attr-row__mod" data-attr-mod aria-label="Modificador">${fmtMod(m)}</span>
+                    </div>
                     <div class="attr-row__stepper">
                       <button type="button" class="attr-step" data-step="-1" aria-label="Diminuir ${escapeHtml(a)}">−</button>
                       <span class="attr-row__value" data-attr-value>${val}</span>
                       <button type="button" class="attr-step" data-step="1" aria-label="Aumentar ${escapeHtml(a)}">+</button>
                     </div>
                     <span class="attr-row__tag" data-attr-tag></span>
-                    <span class="attr-row__mod" data-attr-mod aria-label="Modificador">${fmtMod(m)}</span>
                   </div>
                 `;
               }).join('')}
@@ -4084,16 +4086,28 @@
   }
 
   /* ── O DESPERTAR (ritual com animação) ────────── */
-  const AWK_SIGIL = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2c1.7 3.6 4.6 6 8 7-3.4 1-6.3 3.4-8 7-1.7-3.6-4.6-6-8-7 3.4-1 6.3-3.4 8-7z"/><circle cx="12" cy="16" r="1.6"/></svg>';
+  const AWK_RINGS = '<span class="awk__ring" aria-hidden="true"></span><span class="awk__ring awk__ring--2" aria-hidden="true"></span><span class="awk__glow" aria-hidden="true"></span>';
 
   function awkIsAcceptedMage(a) { return a.resolved && a.mageRoll >= AWAKEN_MAGE_MIN && a.accepted; }
   function awkIsNonMage(a) { return a.resolved && !(a.mageRoll >= AWAKEN_MAGE_MIN && a.accepted); }
 
+  /* Um dado d100 estilizado. numId injeta um id no número (para a animação). */
+  function awkDieHTML({ value = '?', cls = '', numId = '', mark = 'd100', small = false } = {}) {
+    return `
+      <div class="awk__diewrap ${small ? 'awk__diewrap--sm' : ''}">
+        ${AWK_RINGS}
+        <div class="awk__die ${cls}">
+          <span class="awk__die-num" ${numId ? `id="${numId}"` : ''}>${value}</span>
+          <span class="awk__die-mark" aria-hidden="true">${escapeHtml(mark)}</span>
+        </div>
+      </div>
+    `;
+  }
+
   function awakeningRollingHTML(label) {
     return `
       <div class="awk awk--rolling">
-        <div class="awk__sigil is-spinning">${AWK_SIGIL}</div>
-        <div class="awk__die" id="awkDie">?</div>
+        ${awkDieHTML({ value: '00', cls: 'is-rolling', numId: 'awkDie' })}
         <p class="awk__caption">${escapeHtml(label)}</p>
       </div>
     `;
@@ -4107,9 +4121,10 @@
     if (!hasRolled) {
       return `
         <div class="awk awk--idle">
-          <div class="awk__sigil">${AWK_SIGIL}</div>
+          ${awkDieHTML({ value: '?', cls: 'awk__die--idle' })}
           <p class="awk__intro">O destino ainda não falou. Role <strong>1d100</strong> para saber se a Mana corre em você.</p>
           <button type="button" class="btn btn-primary awk__roll" data-awk="roll">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="4"/><circle cx="8" cy="8" r="1.3" fill="currentColor" stroke="none"/><circle cx="16" cy="8" r="1.3" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.3" fill="currentColor" stroke="none"/><circle cx="8" cy="16" r="1.3" fill="currentColor" stroke="none"/><circle cx="16" cy="16" r="1.3" fill="currentColor" stroke="none"/></svg>
             <span>Rolar o Despertar</span>
           </button>
           <span class="awk__attempts">${AWAKEN_MAX_ATTEMPTS} tentativas disponíveis</span>
@@ -4117,7 +4132,7 @@
       `;
     }
 
-    const dieBlock = `<div class="awk__die awk__die--final ${rolledMage ? 'is-mage' : 'is-mundane'}">${a.mageRoll}</div>`;
+    const dieBlock = awkDieHTML({ value: a.mageRoll, cls: 'awk__die--final ' + (rolledMage ? 'is-mage' : 'is-mundane') });
     const rerollBtn = attemptsLeft > 0 && !(rolledMage && a.accepted)
       ? `<button type="button" class="btn btn-ghost awk__reroll" data-awk="roll"><span>Rolar de novo</span> <small>(${attemptsLeft} ${attemptsLeft === 1 ? 'restante' : 'restantes'})</small></button>`
       : '';
@@ -4125,7 +4140,7 @@
     // Mago indeciso: precisa aceitar ou renunciar
     if (rolledMage && !a.accepted && !a.renounced) {
       return `
-        <div class="awk awk--result is-mage">
+        <div class="awk awk--result is-mage" style="--awk-hue:190">
           ${dieBlock}
           <div class="awk__verdict">
             <span class="awk__verdict-eyebrow">71–100 · A MANA DESPERTOU</span>
@@ -4147,8 +4162,8 @@
       return `
         <div class="awk awk--result is-mage awk--school" style="--awk-hue:${sc.hue}">
           <div class="awk__rolls">
-            ${dieBlock}
-            <div class="awk__die awk__die--final awk__die--school">${a.schoolRoll}</div>
+            ${awkDieHTML({ value: a.mageRoll, cls: 'awk__die--final is-mage', mark: 'mana', small: true })}
+            ${awkDieHTML({ value: a.schoolRoll, cls: 'awk__die--final awk__die--school', mark: 'escola' })}
           </div>
           <div class="awk__verdict">
             <span class="awk__verdict-eyebrow">ESCOLA DA MANA</span>
@@ -4165,7 +4180,7 @@
     const reason = a.renounced ? 'Você renunciou à Mana' : 'A Mana não respondeu';
     const eyebrow = a.renounced ? 'RENÚNCIA' : '1–70 · MUNDANO';
     return `
-      <div class="awk awk--result is-mundane">
+      <div class="awk awk--result is-mundane" style="--awk-hue:38">
         ${dieBlock}
         <div class="awk__verdict">
           <span class="awk__verdict-eyebrow">${eyebrow}</span>
