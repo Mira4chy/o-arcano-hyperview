@@ -73,8 +73,7 @@ window.ARCANO_ARCHIVE = {
     {
       id: "Persona",
       title: "Persona",
-      tone: "NPCs, arquétipos, patronos, rivais e sobreviventes.",
-      template: ["Papel", "Desejo", "Método", "Ferida", "Cena"]
+      tone: "Crie e gerencie suas fichas de personagem — raça, atributos e mais."
     },
     {
       id: "Historias",

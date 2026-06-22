@@ -125,6 +125,37 @@
     return null;
   }
 
+  /* ── FICHAS DE PERSONAGEM (aba Persona) ───────────
+     Atributos do sistema O Arcano. Para mudar a lista, edite só este array.
+     O point-buy parte de CHAR_ATTR_BASE em cada atributo e distribui
+     CHAR_POINT_POOL pontos, com teto de CHAR_ATTR_MAX por atributo.
+     O "Modificador" da raça (ex.: "+1 Força, -1 Destreza") soma por cima. */
+  const CHAR_ATTRIBUTES = ['Força', 'Destreza', 'Inteligência', 'Resistência', 'Carisma', 'Sabedoria'];
+  const CHAR_ATTR_BASE = 8;
+  const CHAR_POINT_POOL = 12;
+  const CHAR_ATTR_MAX = 18;
+
+  /* Interpreta o campo "Modificador" de uma raça em { atributo: delta }.
+     Aceita formatos como "+1 Força, -1 Destreza", "Força +2; Vontade -1". */
+  function parseRaceModifier(text) {
+    const out = {};
+    if (!text) return out;
+    const norm = (s) => normalize(s);
+    const lookup = {};
+    CHAR_ATTRIBUTES.forEach((a) => { lookup[norm(a)] = a; });
+    // Captura pares número↔atributo em qualquer ordem.
+    const re = /([+-]?\d+)\s*([a-zà-ú]+)|([a-zà-ú]+)\s*([+-]?\d+)/gi;
+    let m;
+    while ((m = re.exec(text)) !== null) {
+      const num = m[1] != null ? m[1] : m[4];
+      const word = (m[2] != null ? m[2] : m[3]) || '';
+      const attr = lookup[norm(word)];
+      const delta = parseInt(num, 10);
+      if (attr && !Number.isNaN(delta)) out[attr] = (out[attr] || 0) + delta;
+    }
+    return out;
+  }
+
   /* ── SUPABASE CLIENT ──────────────────────────── */
   const cfg = window.ARCANO_CONFIG || {};
   const supabaseConfigured =
@@ -297,7 +328,7 @@
         setAuthState(data.session);
         gate.classList.add('is-gone');
         setTimeout(() => gate.remove(), 500);
-        await Promise.all([loadIndexCustom(), loadUserEntries(), loadMasterPalette()]);
+        await Promise.all([loadIndexCustom(), loadUserEntries(), loadMasterPalette(), loadCharacters()]);
         renderRoleBadge();
         render(true);
       } catch (err) {
@@ -421,7 +452,7 @@
 
       gate.classList.add('is-gone');
       setTimeout(() => gate.remove(), 500);
-      await Promise.all([loadIndexCustom(), loadUserEntries(), loadMasterPalette()]);
+      await Promise.all([loadIndexCustom(), loadUserEntries(), loadMasterPalette(), loadCharacters()]);
       renderRoleBadge();
       render(true);
     }
@@ -627,6 +658,10 @@
   const tabById = (id) => ARCHIVE.tabs.find((t) => t.id === canonicalTabId(id));
   const entriesIn = (tabId) => ARCHIVE.entries.filter((e) => canonicalTabId(e.tab) === canonicalTabId(tabId));
   const entryById = (id) => ARCHIVE.entries.find((e) => e.id === id);
+  /* Persona conta fichas de personagem; demais abas contam entries. */
+  const tabCount = (id) => canonicalTabId(id) === 'Persona'
+    ? (auth.user ? CHARACTERS.filter((c) => auth.isAdmin || c.userId === auth.user.id).length : 0)
+    : entriesIn(id).length;
 
   const themeOf = (id) => THEMES[canonicalTabId(id)] || { hue: 268, label: 'CODEX' };
   const iconOf = (id) => ICONS[canonicalTabId(id)] || ICONS.Index;
@@ -810,6 +845,102 @@
     const { error } = await sb.from('stories').delete().eq('id', entry.id);
     if (error) throw error;
     if (entry.imagePath) await removeBanner(entry.imagePath);
+  }
+
+  /* ── FICHAS DE PERSONAGEM (CRUD) ──────────────── */
+  let CHARACTERS = [];
+  const characterById = (id) => CHARACTERS.find((c) => c.id === id);
+
+  function rowToCharacter(row) {
+    const safeObj = (v) => (v && typeof v === 'object' && !Array.isArray(v)) ? v : {};
+    const safeArr = (v) => Array.isArray(v) ? v : [];
+    return {
+      id: row.id,
+      userId: row.user_id,
+      name: row.name || '',
+      raceId: row.race_id || '',
+      raceName: row.race_name || '',
+      isMage: !!row.is_mage,
+      attributes: safeObj(row.attributes),
+      pointPool: row.point_pool || 0,
+      skills: safeArr(row.skills),
+      magic: safeObj(row.magic),
+      hp: safeObj(row.hp),
+      mana: row.mana || '',
+      identity: safeObj(row.identity),
+      image: row.image || '',
+      imagePath: row.image_path || '',
+      createdAt: row.created_at ? new Date(row.created_at).getTime() : Date.now()
+    };
+  }
+
+  function characterToRow(c) {
+    return {
+      user_id: auth.user ? auth.user.id : c.userId,
+      name: c.name,
+      race_id: c.raceId || null,
+      race_name: c.raceName || '',
+      is_mage: !!c.isMage,
+      attributes: c.attributes || {},
+      point_pool: c.pointPool || 0,
+      skills: Array.isArray(c.skills) ? c.skills : [],
+      magic: c.magic || {},
+      hp: c.hp || {},
+      mana: c.mana || '',
+      identity: c.identity || {},
+      image: c.image || '',
+      image_path: c.imagePath || ''
+    };
+  }
+
+  function characterTableMissing(error) {
+    const msg = (error && error.message) || '';
+    return /relation .*characters.* does not exist/i.test(msg) ||
+           /could not find the table 'public\.characters'/i.test(msg) ||
+           (error && error.code === '42P01');
+  }
+  const CHAR_TABLE_HINT = 'A tabela characters ainda não foi criada. Rode o arquivo supabase-characters.sql no SQL Editor do Supabase.';
+
+  async function loadCharacters() {
+    if (!sb || !auth.user) return;
+    const { data, error } = await sb
+      .from('characters')
+      .select('*')
+      .order('created_at', { ascending: false });
+    if (error) {
+      if (characterTableMissing(error)) console.warn('[O Arcano] ' + CHAR_TABLE_HINT);
+      else console.error('Erro ao carregar fichas:', error);
+      return;
+    }
+    CHARACTERS = (data || []).map(rowToCharacter);
+  }
+
+  async function persistCharacter(c) {
+    if (!sb) throw new Error('Supabase não configurado');
+    const { data, error } = await sb.from('characters').insert(characterToRow(c)).select().single();
+    if (error) {
+      if (characterTableMissing(error)) throw new Error(CHAR_TABLE_HINT);
+      throw error;
+    }
+    return rowToCharacter(data);
+  }
+
+  async function updateCharacter(c) {
+    if (!sb) throw new Error('Supabase não configurado');
+    const payload = { ...characterToRow(c), updated_at: new Date().toISOString() };
+    const { data, error } = await sb.from('characters').update(payload).eq('id', c.id).select().single();
+    if (error) {
+      if (characterTableMissing(error)) throw new Error(CHAR_TABLE_HINT);
+      throw error;
+    }
+    return rowToCharacter(data);
+  }
+
+  async function deleteCharacter(c) {
+    if (!sb) throw new Error('Supabase não configurado');
+    const { error } = await sb.from('characters').delete().eq('id', c.id);
+    if (error) throw error;
+    if (c.imagePath) await removeBanner(c.imagePath);
   }
 
   async function loadIndexCustom() {
@@ -1042,7 +1173,7 @@
   function renderSidenav(active) {
     sidebarCount.textContent = ARCHIVE.tabs.length;
     sidenav.innerHTML = ARCHIVE.tabs.map((t) => {
-      const count = t.id === 'Index' ? '' : `<span class="sidenav__count">${entriesIn(t.id).length}</span>`;
+      const count = t.id === 'Index' ? '' : `<span class="sidenav__count">${tabCount(t.id)}</span>`;
       const theme = themeOf(t.id);
       return `
         <a href="#/${t.id}" class="sidenav__item ${t.id === active ? 'is-active' : ''}" data-tab="${t.id}" style="--hue:${theme.hue}">
@@ -1163,7 +1294,7 @@
         <div class="cat-grid">
           ${ARCHIVE.tabs.filter((t) => t.id !== 'Index').map((t, i) => {
             const tt = themeOf(t.id);
-            const count = entriesIn(t.id).length;
+            const count = tabCount(t.id);
             return `
               <a href="#/${t.id}" class="cat-card" style="--hue:${tt.hue};--delay:${i * 50}ms">
                 <div class="cat-card__icon">${iconOf(t.id)}</div>
@@ -2011,6 +2142,470 @@
     `;
   }
 
+  /* ════════════════════════════════════════════════
+     FICHAS DE PERSONAGEM — views (aba Persona)
+     ════════════════════════════════════════════════ */
+
+  /* Lê o dossiê de uma raça (entry de Racas) e devolve { mod, hp, mana }. */
+  function raceDataFor(raceId) {
+    const race = raceId ? entryById(raceId) : null;
+    const fields = (race && race.fields) || {};
+    const hp = {};
+    RACE_HP_PARTS.forEach((p) => { if (fields[p] != null && fields[p] !== '') hp[p] = String(fields[p]); });
+    return {
+      race,
+      mod: parseRaceModifier(fields['Modificador'] || ''),
+      hp,
+      mana: fields['Mana'] || ''
+    };
+  }
+
+  /* Total final de um atributo = valor alocado (base + point-buy) + modificador da raça. */
+  function attrFinal(allocated, attr, mod) {
+    const base = Number(allocated && allocated[attr] != null ? allocated[attr] : CHAR_ATTR_BASE);
+    const bonus = Number((mod && mod[attr]) || 0);
+    return base + bonus;
+  }
+
+  function manaTagged(value) {
+    // "15/15" → mostra cheio; mantém o que veio do dossiê.
+    return value || '';
+  }
+
+  /* ── ROSTER (#/Persona) ───────────────────────── */
+  function viewPersonaRoster() {
+    const tab = tabById('Persona');
+    const theme = themeOf('Persona');
+    const mine = auth.user ? CHARACTERS.filter((c) => c.userId === auth.user.id) : [];
+    const others = auth.isAdmin && auth.user
+      ? CHARACTERS.filter((c) => c.userId !== auth.user.id)
+      : [];
+
+    const heroMine = `
+      <section class="entry-grid">
+        ${characterCreateCardHTML()}
+        ${mine.map((c, i) => characterCardHTML(c, i + 1)).join('')}
+      </section>
+    `;
+
+    const othersBlock = (auth.isAdmin && others.length) ? `
+      <section class="section">
+        <header class="section__head">
+          <div>
+            <span class="section__eyebrow">VISÃO DO MESTRE</span>
+            <h2 class="section__title">Fichas de outros jogadores</h2>
+          </div>
+        </header>
+        <div class="entry-grid">
+          ${others.map((c, i) => characterCardHTML(c, i, { showOwner: true })).join('')}
+        </div>
+      </section>
+    ` : '';
+
+    return `
+      <section class="cat-hero" style="--hue:${theme.hue}">
+        <div class="cat-hero__icon">${iconOf('Persona')}</div>
+        <div class="cat-hero__body">
+          <span class="cat-hero__eyebrow">${escapeHtml(theme.label)}</span>
+          <h1 class="cat-hero__title" data-text-reveal>Personas</h1>
+          <p class="cat-hero__tone">Crie e gerencie suas fichas de personagem. Cada ficha é vinculada à sua conta.</p>
+          <div class="cat-hero__meta">
+            <span class="badge"><strong>${mine.length}</strong> ${mine.length === 1 ? 'ficha sua' : 'fichas suas'}</span>
+            ${auth.isAdmin && others.length ? `<span class="badge badge-soft">${others.length} de outros</span>` : ''}
+          </div>
+        </div>
+      </section>
+      ${heroMine}
+      ${othersBlock}
+    `;
+  }
+
+  function characterCreateCardHTML() {
+    const theme = themeOf('Persona');
+    return `
+      <a href="#/Persona/criar" class="entry-card create-card" style="--hue:${theme.hue};--delay:0ms" aria-label="Criar nova ficha de personagem">
+        <div class="create-card__inner">
+          <div class="create-card__plus">
+            <svg viewBox="0 0 24 24" width="38" height="38" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+          </div>
+          <span class="create-card__label">Criar ficha</span>
+          <span class="create-card__hint">Nova persona</span>
+        </div>
+      </a>
+    `;
+  }
+
+  function characterCardHTML(c, i, opts = {}) {
+    const theme = themeOf('Persona');
+    const mageLabel = c.isMage ? 'Mago' : 'Não-mago';
+    const owner = opts.showOwner && c.identity && c.identity.ownerLabel ? c.identity.ownerLabel : '';
+    return `
+      <a href="#/Persona/${encodeURIComponent(c.id)}" class="entry-card char-card" style="--hue:${theme.hue};--delay:${i * 40}ms">
+        <div class="entry-card__media">
+          ${c.image ? `<img loading="lazy" src="${c.image}" alt="" onerror="this.parentElement.classList.add('is-fallback')">` : ''}
+          <div class="entry-card__fallback">${iconOf('Persona')}</div>
+          <div class="entry-card__shade"></div>
+          <div class="entry-card__tags">
+            <span class="char-badge char-badge--${c.isMage ? 'mage' : 'mundane'}">${mageLabel}</span>
+          </div>
+        </div>
+        <div class="entry-card__body">
+          <h3 class="entry-card__title">${escapeHtml(c.name || 'Sem nome')}</h3>
+          <p class="entry-card__summary">${escapeHtml(c.raceName || 'Raça não definida')}</p>
+          <div class="entry-card__chips">
+            ${owner ? `<span class="chip">${escapeHtml(owner)}</span>` : ''}
+            ${c.skills && c.skills.length ? `<span class="chip">${c.skills.length} ${c.skills.length === 1 ? 'perícia' : 'perícias'}</span>` : ''}
+          </div>
+        </div>
+      </a>
+    `;
+  }
+
+  /* ── FICHA (#/Persona/<id>) ───────────────────── */
+  function viewCharacterSheet(id) {
+    const c = characterById(id);
+    if (!c) return viewNotFound(id);
+    const canEdit = auth.isAdmin || (auth.user && c.userId === auth.user.id);
+    const theme = themeOf('Persona');
+    const tab = tabById('Persona');
+    const { mod } = raceDataFor(c.raceId);
+    const bodyHtml = (c.identity && c.identity.bodyHtml) || '';
+
+    const attrMarkup = `
+      <aside class="entry__dossier-side">
+        <header class="entry__dossier-head dossier-head--ornate">
+          <span class="section__eyebrow">ATRIBUTOS</span>
+          <span class="dossier-rule" aria-hidden="true"></span>
+        </header>
+        <div class="attr-grid attr-grid--view">
+          ${CHAR_ATTRIBUTES.map((a) => {
+            const bonus = Number((mod && mod[a]) || 0);
+            const total = attrFinal(c.attributes, a, mod);
+            return `
+              <div class="attr-cell">
+                <span class="attr-cell__name">${escapeHtml(a)}</span>
+                <span class="attr-cell__value">${total}</span>
+                ${bonus ? `<span class="attr-cell__bonus">${bonus > 0 ? '+' : ''}${bonus} raça</span>` : ''}
+              </div>
+            `;
+          }).join('')}
+        </div>
+      </aside>
+    `;
+
+    const hpEntries = RACE_HP_PARTS.filter((p) => c.hp && c.hp[p]);
+    const hpMarkup = (hpEntries.length || c.mana) ? `
+      <aside class="entry__dossier-side dossier-card--hpmp">
+        <header class="entry__dossier-head dossier-head--ornate">
+          <span class="section__eyebrow">HP / MANA</span>
+          <span class="dossier-rule" aria-hidden="true"></span>
+        </header>
+        ${hpEntries.length ? `
+          <div class="hp-grid">
+            ${hpEntries.map((p) => `
+              <div class="hp-part">
+                <span class="hp-part__name">${escapeHtml(p)}</span>
+                <span class="hp-part__value">${escapeHtml(c.hp[p])}<em>HP</em></span>
+              </div>
+            `).join('')}
+          </div>
+        ` : ''}
+        ${c.mana ? `
+          <div class="mana-callout">
+            <span class="mana-callout__rune" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2c1.5 3 4 5 7 6-3 1-5.5 3-7 6-1.5-3-4-5-7-6 3-1 5.5-3 7-6z"/><circle cx="12" cy="14" r="1.5"/></svg>
+            </span>
+            <span class="mana-callout__label">MANA</span>
+            <strong class="mana-callout__value">${escapeHtml(manaTagged(c.mana))}</strong>
+          </div>
+        ` : ''}
+      </aside>
+    ` : '';
+
+    const skillsMarkup = (c.skills && c.skills.length) ? `
+      <aside class="entry__dossier-side">
+        <header class="entry__dossier-head dossier-head--ornate">
+          <span class="section__eyebrow">PERÍCIAS / TALENTOS</span>
+          <span class="dossier-rule" aria-hidden="true"></span>
+        </header>
+        <ul class="meta-list-items">
+          ${c.skills.map((s) => `<li>${escapeHtml(s)}</li>`).join('')}
+        </ul>
+      </aside>
+    ` : '';
+
+    const magicMarkup = c.isMage ? `
+      <aside class="entry__dossier-side dossier-card--magic">
+        <header class="entry__dossier-head dossier-head--ornate">
+          <span class="section__eyebrow">MAGIA</span>
+          <span class="dossier-rule" aria-hidden="true"></span>
+        </header>
+        ${(c.magic && Array.isArray(c.magic.tradicoes) && c.magic.tradicoes.length) ? `
+          <dl class="meta-list">
+            <div class="meta-row"><dt>Tradições</dt><dd>${c.magic.tradicoes.map((t) => escapeHtml(t)).join(', ')}</dd></div>
+          </dl>
+        ` : '<p class="char-magic-empty">Trilha arcana ativa — detalhes de tradições e magias a definir.</p>'}
+      </aside>
+    ` : '';
+
+    const idFields = [];
+    const idn = c.identity || {};
+    if (idn.papel) idFields.push(['Papel', idn.papel]);
+    if (idn.desejo) idFields.push(['Desejo', idn.desejo]);
+    if (idn.ferida) idFields.push(['Ferida', idn.ferida]);
+    const identityMarkup = idFields.length ? `
+      <aside class="entry__dossier-side">
+        <header class="entry__dossier-head dossier-head--ornate">
+          <span class="section__eyebrow">IDENTIDADE</span>
+          <span class="dossier-rule" aria-hidden="true"></span>
+        </header>
+        <dl class="meta-list">
+          ${idFields.map(([k, v]) => `<div class="meta-row"><dt>${escapeHtml(k)}</dt><dd>${escapeHtml(v)}</dd></div>`).join('')}
+        </dl>
+      </aside>
+    ` : '';
+
+    const bodyMarkup = bodyHtml ? `
+      <div class="entry__body entry__body--rich">
+        <span class="section__eyebrow">HISTÓRIA</span>
+        <div class="rt-content">${sanitizeHtml(bodyHtml)}</div>
+      </div>
+    ` : '';
+
+    const editButton = canEdit ? `
+      <a class="back-link back-link--edit" href="#/Persona/${encodeURIComponent(c.id)}/editar">
+        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 1 1 3 3L7 19l-4 1 1-4 12.5-12.5z"/></svg>
+        Editar ficha
+      </a>
+    ` : '';
+    const deleteButton = canEdit ? `
+      <button type="button" class="back-link back-link--danger" data-delete-character="${escapeHtml(c.id)}">
+        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"/></svg>
+        Apagar ficha
+      </button>
+    ` : '';
+
+    return `
+      <article class="entry entry--portrait" style="--hue:${theme.hue}">
+        <div class="entry__portrait-card entry__portrait-card--tall" style="--hue:${theme.hue}">
+          <header class="entry__portrait-header">
+            <nav class="breadcrumb">
+              <a href="#/">Codex</a><span>/</span>
+              <a href="#/Persona">${escapeHtml(tab.title)}</a><span>/</span>
+              <span class="breadcrumb__current">${escapeHtml(c.name || 'Ficha')}</span>
+            </nav>
+            <div class="entry__tagline">
+              <span class="char-badge char-badge--${c.isMage ? 'mage' : 'mundane'}">${c.isMage ? 'Mago' : 'Não-mago'}</span>
+              ${c.raceName ? `<span class="entry__cat">${escapeHtml(c.raceName)}</span>` : ''}
+            </div>
+            <h1 class="entry__title entry__title--portrait" data-text-reveal>${escapeHtml(c.name || 'Sem nome')}</h1>
+          </header>
+          <div class="entry__portrait-grid">
+            <div class="entry__portrait" style="aspect-ratio: 2 / 3;">
+              ${c.image ? `<img class="entry__portrait-img" src="${c.image}" alt="" onerror="this.parentElement.classList.add('is-fallback')">` : ''}
+              <div class="entry__portrait-fallback">${iconOf('Persona')}</div>
+              <div class="entry__portrait-shine" aria-hidden="true"></div>
+            </div>
+            <div class="race-dossier-view">
+              ${attrMarkup}
+              ${hpMarkup}
+              ${identityMarkup}
+              ${skillsMarkup}
+              ${magicMarkup}
+            </div>
+          </div>
+        </div>
+        ${bodyMarkup ? `<div class="entry__main entry__main--full">${bodyMarkup}</div>` : ''}
+        <div class="entry__actions-row">
+          ${editButton}
+          ${deleteButton}
+          <a href="#/Persona" class="back-link">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+            Voltar às Personas
+          </a>
+        </div>
+      </article>
+    `;
+  }
+
+  /* ── FORMULÁRIO DA FICHA (#/Persona/criar|editar) ─ */
+  function viewCharacterForm(id) {
+    if (!auth.canRead) return viewForbidden();
+    const editing = !!id;
+    const existing = editing ? characterById(id) : null;
+    if (editing && !existing) return viewNotFound(id);
+    if (editing && !(auth.isAdmin || (auth.user && existing.userId === auth.user.id))) return viewForbidden();
+
+    const theme = themeOf('Persona');
+    const races = entriesIn('Racas');
+    const c = existing || {};
+    const idn = c.identity || {};
+    const allocated = c.attributes || {};
+    const selectedRaceId = c.raceId || '';
+    const { mod, hp: raceHp, mana: raceMana } = raceDataFor(selectedRaceId);
+    const hpValues = (existing && c.hp && Object.keys(c.hp).length) ? c.hp : raceHp;
+    const manaValue = (existing && c.mana) ? c.mana : raceMana;
+
+    const heroEyebrow = editing ? `EDITAR · ${theme.label}` : `CRIAR · ${theme.label}`;
+    const heroTitle = editing ? `Editar ${c.name || 'ficha'}` : 'Nova persona';
+    const saveLabel = editing ? 'Salvar alterações' : 'Salvar ficha';
+    const cancelHref = editing ? `#/Persona/${encodeURIComponent(id)}` : '#/Persona';
+
+    return `
+      <section class="cat-hero" style="--hue:${theme.hue}">
+        <div class="cat-hero__icon">${iconOf('Persona')}</div>
+        <div class="cat-hero__body">
+          <span class="cat-hero__eyebrow">${escapeHtml(heroEyebrow)}</span>
+          <h1 class="cat-hero__title">${escapeHtml(heroTitle)}</h1>
+          <p class="cat-hero__tone">Escolha a raça, distribua atributos, defina se é mago e descreva sua persona.</p>
+        </div>
+      </section>
+
+      <form class="create-form create-form--portrait" id="characterForm"
+            data-char-id="${editing ? escapeHtml(id) : ''}"
+            style="--hue:${theme.hue}" novalidate>
+
+        <div class="create-form__field">
+          <label class="create-form__label">Retrato (2:3)</label>
+          <div class="banner-drop banner-drop--portrait" id="bannerDrop" style="aspect-ratio: 2 / 3; max-width: 360px;"
+               tabindex="0" role="button" aria-label="Selecionar retrato">
+            <input type="file" accept="image/*" id="bannerInput" hidden>
+            <div class="banner-drop__preview" id="bannerPreview" ${c.image ? '' : 'hidden'} style="${c.image ? `background-image:url('${c.image}')` : ''}"></div>
+            <div class="banner-drop__placeholder" id="bannerPlaceholder" ${c.image ? 'hidden' : ''}>
+              <svg viewBox="0 0 24 24" width="42" height="42" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="8.5" cy="10.5" r="1.5"/><path d="M21 17l-5-5-9 9"/></svg>
+              <strong>Clique ou arraste uma imagem</strong>
+              <span>Proporção 2:3 (retrato) — JPG, PNG ou WebP</span>
+            </div>
+            <button type="button" class="banner-drop__clear" id="bannerClear" ${c.image ? '' : 'hidden'} aria-label="Remover imagem">
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
+            </button>
+          </div>
+        </div>
+
+        <div class="create-form__field">
+          <label class="create-form__label" for="charName">Nome</label>
+          <input type="text" id="charName" class="create-form__input" placeholder="Nome do personagem" maxlength="120" required value="${escapeHtml(c.name || '')}">
+        </div>
+
+        <div class="create-form__field">
+          <label class="create-form__label" for="charRace">Raça</label>
+          <select id="charRace" class="create-form__input char-select">
+            <option value="">— Sem raça —</option>
+            ${races.map((r) => `<option value="${escapeHtml(r.id)}" ${r.id === selectedRaceId ? 'selected' : ''}>${escapeHtml(r.title)}</option>`).join('')}
+          </select>
+          ${races.length ? '' : '<p class="char-hint">Nenhuma raça cadastrada ainda — o Mestre pode criar raças na aba Raças.</p>'}
+        </div>
+
+        <div class="create-form__field">
+          <label class="create-form__label">Atributos (point-buy)</label>
+          <div class="attr-buy" id="attrBuy"
+               data-base="${CHAR_ATTR_BASE}" data-pool="${CHAR_POINT_POOL}" data-max="${CHAR_ATTR_MAX}">
+            <div class="attr-buy__head">
+              <span>Cada atributo começa em ${CHAR_ATTR_BASE}. Distribua os pontos; a raça soma por cima.</span>
+              <span class="attr-buy__pool">Pontos restantes: <strong id="attrPool">${CHAR_POINT_POOL}</strong></span>
+            </div>
+            <div class="attr-buy__grid">
+              ${CHAR_ATTRIBUTES.map((a) => {
+                const val = allocated[a] != null ? Number(allocated[a]) : CHAR_ATTR_BASE;
+                const bonus = Number((mod && mod[a]) || 0);
+                return `
+                  <div class="attr-row" data-attr="${escapeHtml(a)}">
+                    <span class="attr-row__name">${escapeHtml(a)}</span>
+                    <div class="attr-row__stepper">
+                      <button type="button" class="attr-step" data-step="-1" aria-label="Diminuir ${escapeHtml(a)}">−</button>
+                      <span class="attr-row__value" data-attr-value>${val}</span>
+                      <button type="button" class="attr-step" data-step="1" aria-label="Aumentar ${escapeHtml(a)}">+</button>
+                    </div>
+                    <span class="attr-row__bonus" data-attr-bonus>${bonus ? (bonus > 0 ? '+' : '') + bonus + ' raça' : ''}</span>
+                    <span class="attr-row__total" data-attr-total>${val + bonus}</span>
+                  </div>
+                `;
+              }).join('')}
+            </div>
+          </div>
+        </div>
+
+        <div class="create-form__field">
+          <label class="create-form__label">HP por parte do corpo / Mana</label>
+          <p class="char-hint">Preenchidos a partir da raça escolhida — ajuste se precisar.</p>
+          <div class="hp-form" id="charHpForm">
+            ${RACE_HP_PARTS.map((p) => `
+              <label class="hp-form__row">
+                <span class="hp-form__name">${escapeHtml(p)}</span>
+                <input type="text" inputmode="numeric" class="create-form__input hp-form__input" data-hp-part="${escapeHtml(p)}"
+                       value="${escapeHtml(hpValues[p] != null ? hpValues[p] : '')}" maxlength="9">
+              </label>
+            `).join('')}
+          </div>
+          <label class="dossier-field dossier-field--mana">
+            <span>Mana</span>
+            <input type="text" id="charMana" class="create-form__input" value="${escapeHtml(manaValue || '')}" placeholder="15/15" maxlength="20">
+          </label>
+        </div>
+
+        <div class="create-form__field">
+          <div class="char-toggle">
+            <label class="char-switch">
+              <input type="checkbox" id="charIsMage" ${c.isMage ? 'checked' : ''}>
+              <span class="char-switch__track"><span class="char-switch__thumb"></span></span>
+              <span class="char-switch__label">É mago?</span>
+            </label>
+          </div>
+          <div class="char-magic" id="charMagic" ${c.isMage ? '' : 'hidden'}>
+            <span class="section__eyebrow">MAGIA</span>
+            <p class="char-magic-empty">Estrutura reservada para a trilha arcana — tradições e seleção de magias serão definidas depois.</p>
+            <label class="dossier-field">
+              <span>Tradições (separadas por vírgula)</span>
+              <input type="text" id="charTradicoes" class="create-form__input" placeholder="Ex.: Fogo e Carne, Sangue e Memória"
+                     value="${escapeHtml((c.magic && Array.isArray(c.magic.tradicoes)) ? c.magic.tradicoes.join(', ') : '')}" maxlength="200">
+            </label>
+          </div>
+        </div>
+
+        <div class="create-form__field">
+          <label class="create-form__label">Perícias / Talentos</label>
+          <div class="list-builder" id="charSkills" data-items='${escapeHtml(JSON.stringify(Array.isArray(c.skills) ? c.skills : []))}'>
+            <div class="list-builder__row">
+              <input type="text" class="create-form__input list-builder__input" placeholder="Digite uma perícia e Enter…" maxlength="120">
+              <button type="button" class="btn btn-ghost list-builder__add">
+                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+                <span>Adicionar</span>
+              </button>
+            </div>
+            <div class="list-builder__items" aria-live="polite">
+              ${(Array.isArray(c.skills) ? c.skills : []).map((item, i) => listBuilderItemHTML(item, i)).join('')}
+            </div>
+          </div>
+        </div>
+
+        <div class="create-form__field">
+          <label class="create-form__label">Identidade narrativa</label>
+          <div class="char-identity-grid">
+            <label class="dossier-field"><span>Papel</span>
+              <input type="text" id="charPapel" class="create-form__input" maxlength="160" value="${escapeHtml(idn.papel || '')}" placeholder="Ex.: Mercenária errante"></label>
+            <label class="dossier-field"><span>Desejo</span>
+              <input type="text" id="charDesejo" class="create-form__input" maxlength="160" value="${escapeHtml(idn.desejo || '')}" placeholder="O que persegue"></label>
+            <label class="dossier-field"><span>Ferida</span>
+              <input type="text" id="charFerida" class="create-form__input" maxlength="160" value="${escapeHtml(idn.ferida || '')}" placeholder="O que carrega"></label>
+          </div>
+        </div>
+
+        <div class="create-form__field">
+          <label class="create-form__label">História</label>
+          ${editorToolbarHTML(idn.bodyHtml || '')}
+        </div>
+
+        <div class="create-form__actions">
+          <a href="${cancelHref}" class="btn btn-ghost">Cancelar</a>
+          <button type="submit" class="btn btn-primary" id="charSave">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>
+            <span>${escapeHtml(saveLabel)}</span>
+          </button>
+        </div>
+      </form>
+    `;
+  }
+
   /* ── NOT FOUND ────────────────────────────────── */
   function viewNotFound(what) {
     return `
@@ -2048,6 +2643,13 @@
     let html;
     if (tab === 'Index' && !entry && !action) html = viewHome();
     else if (tab === 'Index' && action === 'editar') html = viewEditIndex();
+    else if (tab === 'Persona') {
+      // Persona = fichas de personagem dos jogadores (não usa o fluxo de stories).
+      if (action === 'criar' && !entry) html = viewCharacterForm(null);
+      else if (action === 'editar' && entry) html = viewCharacterForm(entry);
+      else if (entry) html = viewCharacterSheet(entry);
+      else html = viewPersonaRoster();
+    }
     else if (action === 'criar' && !entry) html = viewCreate(tab);
     else if (action === 'editar' && entry) html = viewCreate(tab, entry);
     else if (entry) html = viewEntry(tab, entry);
@@ -2066,9 +2668,11 @@
         animateView();
         attachCategoryFilter();
         attachCreateForm();
+        attachCharacterForm();
         attachEditIndexForm();
         attachIndexEditButton();
         attachDeleteHandlers();
+        attachCharacterDeleteHandlers();
       });
       window.scrollTo({ top: 0, behavior: 'instant' });
     }, 180);
@@ -3297,6 +3901,265 @@
     });
   }
 
+  /* ── LIST-BUILDER genérico (perícias) ─────────── */
+  function bindSimpleListBuilder(rootId) {
+    const builder = document.getElementById(rootId);
+    if (!builder) return { getItems: () => [] };
+    const input = builder.querySelector('.list-builder__input');
+    const addBtn = builder.querySelector('.list-builder__add');
+
+    const read = () => { try { return JSON.parse(builder.dataset.items || '[]') || []; } catch { return []; } };
+    const refresh = (items) => {
+      builder.dataset.items = JSON.stringify(items);
+      builder.querySelector('.list-builder__items').innerHTML = items.map((it, i) => listBuilderItemHTML(it, i)).join('');
+    };
+    const add = () => {
+      const v = (input.value || '').trim();
+      if (!v) { input.focus(); return; }
+      const items = read();
+      if (items.some((x) => x.toLowerCase() === v.toLowerCase())) { input.value = ''; input.focus(); return; }
+      items.push(v);
+      refresh(items);
+      input.value = '';
+      input.focus();
+    };
+    addBtn.addEventListener('click', add);
+    input.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); add(); } });
+    builder.addEventListener('click', (e) => {
+      const rm = e.target.closest('[data-remove-list]');
+      if (!rm) return;
+      const items = read();
+      items.splice(Number(rm.dataset.removeList), 1);
+      refresh(items);
+    });
+    return { getItems: read };
+  }
+
+  /* ── POINT-BUY de atributos ───────────────────── */
+  function bindAttributePointBuy() {
+    const root = document.getElementById('attrBuy');
+    if (!root) return { getAllocated: () => ({}), getRemaining: () => 0, refreshBonus: () => {} };
+    const base = Number(root.dataset.base) || 0;
+    const pool = Number(root.dataset.pool) || 0;
+    const max = Number(root.dataset.max) || 99;
+    const poolEl = document.getElementById('attrPool');
+
+    const allocated = () => {
+      const out = {};
+      root.querySelectorAll('.attr-row').forEach((row) => {
+        out[row.dataset.attr] = Number(row.querySelector('[data-attr-value]').textContent) || base;
+      });
+      return out;
+    };
+    const spent = () => Object.values(allocated()).reduce((s, v) => s + (v - base), 0);
+    const remaining = () => pool - spent();
+
+    function syncRow(row) {
+      const val = Number(row.querySelector('[data-attr-value]').textContent) || base;
+      const bonus = Number(row.dataset.bonus || 0);
+      row.querySelector('[data-attr-total]').textContent = val + bonus;
+    }
+    function syncAll() {
+      const rem = remaining();
+      if (poolEl) poolEl.textContent = rem;
+      root.querySelectorAll('.attr-row').forEach((row) => {
+        const val = Number(row.querySelector('[data-attr-value]').textContent) || base;
+        const minus = row.querySelector('[data-step="-1"]');
+        const plus = row.querySelector('[data-step="1"]');
+        minus.disabled = val <= base;
+        plus.disabled = val >= max || rem <= 0;
+        syncRow(row);
+      });
+    }
+
+    root.addEventListener('click', (e) => {
+      const btn = e.target.closest('.attr-step');
+      if (!btn) return;
+      const row = btn.closest('.attr-row');
+      const valEl = row.querySelector('[data-attr-value]');
+      let val = Number(valEl.textContent) || base;
+      const dir = Number(btn.dataset.step);
+      if (dir > 0 && val < max && remaining() > 0) val += 1;
+      else if (dir < 0 && val > base) val -= 1;
+      valEl.textContent = val;
+      syncAll();
+    });
+
+    syncAll();
+
+    return {
+      getAllocated: allocated,
+      getRemaining: remaining,
+      refreshBonus(mod) {
+        root.querySelectorAll('.attr-row').forEach((row) => {
+          const bonus = Number((mod && mod[row.dataset.attr]) || 0);
+          row.dataset.bonus = bonus;
+          row.querySelector('[data-attr-bonus]').textContent = bonus ? (bonus > 0 ? '+' : '') + bonus + ' raça' : '';
+          syncRow(row);
+        });
+      }
+    };
+  }
+
+  /* ── FORM DA FICHA DE PERSONAGEM ──────────────── */
+  function attachCharacterForm() {
+    const form = document.getElementById('characterForm');
+    if (!form || form.dataset.bound) return;
+    form.dataset.bound = '1';
+
+    const editId = form.dataset.charId || '';
+    const editing = !!editId;
+    const existing = editing ? characterById(editId) : null;
+
+    const nameInput = document.getElementById('charName');
+    const raceSelect = document.getElementById('charRace');
+    const manaInput = document.getElementById('charMana');
+    const hpForm = document.getElementById('charHpForm');
+    const isMageInput = document.getElementById('charIsMage');
+    const magicBox = document.getElementById('charMagic');
+    const submitBtn = form.querySelector('[type="submit"]');
+
+    const banner = bindBannerDrop({ initialUrl: existing?.image || '' });
+    const editor = bindEditor();
+    const skills = bindSimpleListBuilder('charSkills');
+    const points = bindAttributePointBuy();
+
+    // sincroniza o bônus inicial da raça nos atributos
+    points.refreshBonus(raceDataFor(raceSelect.value).mod);
+
+    // mago: revela bloco de magia
+    isMageInput.addEventListener('change', () => {
+      magicBox.hidden = !isMageInput.checked;
+    });
+
+    // troca de raça: atualiza bônus dos atributos e repõe HP/Mana a partir do dossiê
+    raceSelect.addEventListener('change', () => {
+      const { mod, hp, mana } = raceDataFor(raceSelect.value);
+      points.refreshBonus(mod);
+      hpForm.querySelectorAll('[data-hp-part]').forEach((inp) => {
+        inp.value = hp[inp.dataset.hpPart] != null ? hp[inp.dataset.hpPart] : '';
+      });
+      manaInput.value = mana || '';
+    });
+
+    function readHp() {
+      const out = {};
+      hpForm.querySelectorAll('[data-hp-part]').forEach((inp) => {
+        const v = (inp.value || '').trim();
+        if (v) out[inp.dataset.hpPart] = v;
+      });
+      return out;
+    }
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      if (!sb) { alert('Supabase não configurado.'); return; }
+
+      const name = nameInput.value.trim();
+      if (!name) {
+        nameInput.focus();
+        nameInput.classList.add('is-invalid');
+        return;
+      }
+      nameInput.classList.remove('is-invalid');
+
+      const race = raceSelect.value ? entryById(raceSelect.value) : null;
+      const tradicoesRaw = document.getElementById('charTradicoes');
+      const tradicoes = (tradicoesRaw && tradicoesRaw.value ? tradicoesRaw.value.split(',') : [])
+        .map((s) => s.trim()).filter(Boolean);
+
+      const data = {
+        name,
+        raceId: raceSelect.value || '',
+        raceName: race ? race.title : '',
+        isMage: isMageInput.checked,
+        attributes: points.getAllocated(),
+        pointPool: points.getRemaining(),
+        skills: skills.getItems(),
+        magic: isMageInput.checked ? { tradicoes, magias: (existing?.magic?.magias || []) } : {},
+        hp: readHp(),
+        mana: manaInput.value.trim(),
+        identity: {
+          papel: document.getElementById('charPapel').value.trim(),
+          desejo: document.getElementById('charDesejo').value.trim(),
+          ferida: document.getElementById('charFerida').value.trim(),
+          bodyHtml: editor ? sanitizeHtml(editor.innerHTML).trim() : '',
+          ownerLabel: (existing?.identity?.ownerLabel) ||
+            (auth.user ? (auth.user.user_metadata?.display_name || auth.user.email || '') : '')
+        }
+      };
+
+      submitBtn.disabled = true;
+      const originalLabel = submitBtn.innerHTML;
+      submitBtn.innerHTML = '<span>Salvando…</span>';
+
+      let uploadedPath = '';
+      const oldPathsToRemove = [];
+      try {
+        const file = banner.getFile();
+        const currentDataUrl = banner.getDataUrl();
+        let image = existing?.image || '';
+        let imagePath = existing?.imagePath || '';
+
+        if (file) {
+          const up = await uploadBanner(file, `characters/${auth.user.id}`);
+          uploadedPath = up.path;
+          if (existing?.imagePath) oldPathsToRemove.push(existing.imagePath);
+          image = up.url;
+          imagePath = up.path;
+        } else if (editing && !currentDataUrl && existing?.image) {
+          if (existing.imagePath) oldPathsToRemove.push(existing.imagePath);
+          image = '';
+          imagePath = '';
+        }
+
+        let saved;
+        if (editing) {
+          saved = await updateCharacter({ ...existing, ...data, image, imagePath });
+          const i = CHARACTERS.findIndex((x) => x.id === editId);
+          if (i >= 0) CHARACTERS[i] = saved; else CHARACTERS.unshift(saved);
+        } else {
+          saved = await persistCharacter({ ...data, image, imagePath });
+          CHARACTERS.unshift(saved);
+        }
+
+        for (const p of oldPathsToRemove) await removeBanner(p);
+        location.hash = `#/Persona/${encodeURIComponent(saved.id)}`;
+        render(true);
+      } catch (err) {
+        console.error(err);
+        alert('Erro ao salvar ficha: ' + (err.message || err));
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = originalLabel;
+        if (uploadedPath) await removeBanner(uploadedPath);
+      }
+    });
+  }
+
+  function attachCharacterDeleteHandlers() {
+    document.querySelectorAll('[data-delete-character]').forEach((btn) => {
+      if (btn.dataset.bound) return;
+      btn.dataset.bound = '1';
+      btn.addEventListener('click', async () => {
+        const c = characterById(btn.dataset.deleteCharacter);
+        if (!c) return;
+        if (!confirm(`Apagar a ficha "${c.name}"? Esta ação não pode ser desfeita.`)) return;
+        if (!sb) { alert('Supabase não configurado.'); return; }
+        btn.disabled = true;
+        try {
+          await deleteCharacter(c);
+          const i = CHARACTERS.indexOf(c);
+          if (i >= 0) CHARACTERS.splice(i, 1);
+          location.hash = '#/Persona';
+        } catch (err) {
+          console.error(err);
+          alert('Erro ao apagar ficha: ' + (err.message || err));
+          btn.disabled = false;
+        }
+      });
+    });
+  }
+
   /* ── EDIT INDEX FORM ──────────────────────────── */
   function attachEditIndexForm() {
     const form = document.getElementById('editIndexForm');
@@ -3607,7 +4470,7 @@
 
     // Logado: carrega dados e renderiza
     try {
-      await Promise.all([loadIndexCustom(), loadUserEntries(), loadMasterPalette()]);
+      await Promise.all([loadIndexCustom(), loadUserEntries(), loadMasterPalette(), loadCharacters()]);
     } catch (err) {
       console.error('Erro ao sincronizar com Supabase:', err);
     }

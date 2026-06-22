@@ -4469,3 +4469,241 @@ body.is-overlay-open { overflow: hidden; }
   background: hsla(var(--hue), 70%, 50%, 0.22);
   color: #fff;
 }
+
+/* ════════════════════════════════════════════════════
+   FICHAS DE PERSONAGEM (aba Persona)
+   ════════════════════════════════════════════════════ */
+
+/* Badge mago / não-mago (cards e ficha) */
+.char-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 10px;
+  border-radius: 99px;
+  font-size: 0.66rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  border: 1px solid var(--line-strong);
+}
+.char-badge--mage {
+  color: var(--cyan);
+  background: rgba(34, 211, 238, 0.12);
+  border-color: rgba(34, 211, 238, 0.34);
+}
+.char-badge--mundane {
+  color: var(--gold);
+  background: rgba(245, 158, 11, 0.12);
+  border-color: rgba(245, 158, 11, 0.34);
+}
+
+/* Select da raça */
+.char-select {
+  appearance: none;
+  cursor: pointer;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23a78bfa' stroke-width='2.4' stroke-linecap='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 14px center;
+  padding-right: 38px;
+}
+
+.char-hint {
+  margin: 6px 0 0;
+  font-size: 0.78rem;
+  color: var(--muted);
+  font-style: italic;
+}
+
+/* ── Point-buy de atributos ── */
+.attr-buy {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface-1);
+  padding: 16px;
+}
+.attr-buy__head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 14px;
+  font-size: 0.82rem;
+  color: var(--muted);
+}
+.attr-buy__pool strong {
+  color: hsl(var(--hue, 320), 85%, 80%);
+  font-size: 1.05rem;
+}
+.attr-buy__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+  gap: 10px;
+}
+.attr-row {
+  display: grid;
+  grid-template-columns: 1fr auto auto auto;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+}
+.attr-row__name {
+  font-weight: 600;
+  color: var(--text-2);
+}
+.attr-row__stepper {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.attr-step {
+  width: 26px;
+  height: 26px;
+  border-radius: 7px;
+  border: 1px solid var(--line-strong);
+  background: var(--surface-3);
+  color: var(--text);
+  font-size: 1.1rem;
+  line-height: 1;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, opacity 0.15s;
+}
+.attr-step:hover:not(:disabled) {
+  background: hsla(var(--hue, 320), 60%, 50%, 0.25);
+  border-color: hsl(var(--hue, 320), 70%, 60%);
+}
+.attr-step:disabled {
+  opacity: 0.32;
+  cursor: not-allowed;
+}
+.attr-row__value {
+  min-width: 24px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  color: var(--text);
+}
+.attr-row__bonus {
+  font-size: 0.7rem;
+  color: var(--cyan);
+  min-width: 48px;
+  text-align: right;
+}
+.attr-row__total {
+  min-width: 30px;
+  text-align: center;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: hsl(var(--hue, 320), 85%, 80%);
+  padding: 3px 8px;
+  border-radius: 7px;
+  background: hsla(var(--hue, 320), 60%, 45%, 0.16);
+}
+
+/* Atributos na ficha de leitura */
+.attr-grid--view {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  gap: 8px;
+}
+.attr-cell {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 10px 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+}
+.attr-cell__name {
+  font-size: 0.68rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.attr-cell__value {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: hsl(var(--hue, 320), 85%, 82%);
+  font-variant-numeric: tabular-nums;
+}
+.attr-cell__bonus {
+  font-size: 0.64rem;
+  color: var(--cyan);
+}
+
+/* ── Toggle "É mago?" ── */
+.char-toggle {
+  margin-bottom: 12px;
+}
+.char-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  cursor: pointer;
+  user-select: none;
+}
+.char-switch input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+.char-switch__track {
+  position: relative;
+  width: 46px;
+  height: 26px;
+  border-radius: 99px;
+  background: var(--surface-3);
+  border: 1px solid var(--line-strong);
+  transition: background 0.2s, border-color 0.2s;
+}
+.char-switch__thumb {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--muted);
+  transition: transform 0.2s, background 0.2s;
+}
+.char-switch input:checked + .char-switch__track {
+  background: rgba(34, 211, 238, 0.22);
+  border-color: rgba(34, 211, 238, 0.5);
+}
+.char-switch input:checked + .char-switch__track .char-switch__thumb {
+  transform: translateX(20px);
+  background: var(--cyan);
+}
+.char-switch__label {
+  font-weight: 600;
+  color: var(--text-2);
+}
+
+/* ── Bloco de magia (placeholder) ── */
+.char-magic {
+  border: 1px dashed rgba(34, 211, 238, 0.4);
+  border-radius: var(--radius);
+  background: rgba(34, 211, 238, 0.05);
+  padding: 16px;
+}
+.char-magic-empty {
+  margin: 6px 0 12px;
+  color: var(--muted);
+  font-style: italic;
+  font-size: 0.85rem;
+}
+.dossier-card--magic {
+  border-color: rgba(34, 211, 238, 0.3);
+}
+
+/* Identidade narrativa */
+.char-identity-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 12px;
+}
