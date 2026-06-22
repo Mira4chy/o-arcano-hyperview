@@ -51,6 +51,7 @@ Rode os arquivos abaixo UMA VEZ no Supabase > SQL Editor, na ordem:
 3. `supabase-itens.sql` — colunas `subtype` e `fields` em `stories`.
 4. `supabase-master-palette.sql` — paleta de cores personalizada do Mestre (necessaria para salvar cores no editor de texto).
 5. `supabase-characters.sql` — tabela `characters` (fichas de personagem dos jogadores) + RLS. Depende da funcao criada em `supabase-access-requests.sql`.
+6. `supabase-characters-sheet.sql` — colunas da ficha interativa (`vitals`, `statuses`, `inventory`, `spells`) na tabela `characters`.
 
 ## Persona — criador de personagens
 
@@ -85,6 +86,23 @@ no topo de `assets/js/app.js`.
 
 Observacao: entradas antigas de `stories` com `tab = 'Persona'` (se existirem no banco) deixam
 de aparecer nessa aba, que agora lista somente fichas da tabela `characters`.
+
+### Ficha viva (interativa)
+
+Depois de criada, a ficha (`#/Persona/<id>`) funciona como um documento vivo — o **dono** e o
+**Mestre** podem alterar; mudancas salvam sozinhas no Supabase:
+
+- **Pontos de Vida:** cada parte do corpo tem uma barra (atual/maximo) com campo de valor e
+  botoes **Dano**/**Curar**; a Mana tem **Gastar**/**Restaurar**. A cor da barra muda conforme
+  a vida cai (verde → ambar → vermelho).
+- **Status:** lista de condicoes (ex.: Sangramento) que da pra adicionar/remover. (Os efeitos
+  mecanicos de cada status serao desenvolvidos depois.)
+- **Inventario** e **Livro de Magias:** adicione itens da aba **Itens** e magias da aba
+  **Magias** (puxa nome/resumo do codex e vira link) ou entradas **avulsas** escritas a mao;
+  itens tem quantidade (+/−).
+
+Requer a migracao `supabase-characters-sheet.sql`. Se ela nao tiver rodado, a criacao de ficha
+continua funcionando (sem o estado vivo) e a ficha avisa ao tentar salvar HP/status/itens.
 
 ## Editor do Mestre (criar / editar entradas)
 

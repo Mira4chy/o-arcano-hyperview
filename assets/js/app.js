@@ -923,6 +923,11 @@
       hp: safeObj(row.hp),
       mana: row.mana || '',
       identity: safeObj(row.identity),
+      // Estado vivo da ficha (supabase-characters-sheet.sql)
+      vitals: safeObj(row.vitals),
+      statuses: safeArr(row.statuses),
+      inventory: safeArr(row.inventory),
+      spells: safeArr(row.spells),
       image: row.image || '',
       imagePath: row.image_path || '',
       createdAt: row.created_at ? new Date(row.created_at).getTime() : Date.now()
@@ -931,7 +936,8 @@
 
   function characterToRow(c) {
     return {
-      user_id: auth.user ? auth.user.id : c.userId,
+      // Preserva o dono original (o Mestre pode editar fichas de outros).
+      user_id: c.userId || (auth.user ? auth.user.id : null),
       name: c.name,
       race_id: c.raceId || null,
       race_name: c.raceName || '',
@@ -943,9 +949,21 @@
       hp: c.hp || {},
       mana: c.mana || '',
       identity: c.identity || {},
+      vitals: c.vitals || {},
+      statuses: Array.isArray(c.statuses) ? c.statuses : [],
+      inventory: Array.isArray(c.inventory) ? c.inventory : [],
+      spells: Array.isArray(c.spells) ? c.spells : [],
       image: c.image || '',
       image_path: c.imagePath || ''
     };
+  }
+
+  /* Colunas da ficha interativa — podem nao existir se o SQL nao foi rodado. */
+  const SHEET_COLS = ['vitals', 'statuses', 'inventory', 'spells'];
+  const SHEET_HINT = 'As colunas da ficha interativa ainda não existem. Rode o arquivo supabase-characters-sheet.sql no SQL Editor do Supabase.';
+  function isMissingSheetCol(error) {
+    const msg = (error && error.message) || '';
+    return new RegExp(SHEET_COLS.join('|'), 'i').test(msg) && /column|schema cache/i.test(msg);
   }
 
   function characterTableMissing(error) {
@@ -972,7 +990,13 @@
 
   async function persistCharacter(c) {
     if (!sb) throw new Error('Supabase não configurado');
-    const { data, error } = await sb.from('characters').insert(characterToRow(c)).select().single();
+    const row = characterToRow(c);
+    let { data, error } = await sb.from('characters').insert(row).select().single();
+    if (error && isMissingSheetCol(error)) {
+      // Migração da ficha interativa ainda não rodou: salva sem essas colunas.
+      SHEET_COLS.forEach((k) => delete row[k]);
+      ({ data, error } = await sb.from('characters').insert(row).select().single());
+    }
     if (error) {
       if (characterTableMissing(error)) throw new Error(CHAR_TABLE_HINT);
       throw error;
@@ -982,8 +1006,12 @@
 
   async function updateCharacter(c) {
     if (!sb) throw new Error('Supabase não configurado');
-    const payload = { ...characterToRow(c), updated_at: new Date().toISOString() };
-    const { data, error } = await sb.from('characters').update(payload).eq('id', c.id).select().single();
+    const row = { ...characterToRow(c), updated_at: new Date().toISOString() };
+    let { data, error } = await sb.from('characters').update(row).eq('id', c.id).select().single();
+    if (error && isMissingSheetCol(error)) {
+      SHEET_COLS.forEach((k) => delete row[k]);
+      ({ data, error } = await sb.from('characters').update(row).eq('id', c.id).select().single());
+    }
     if (error) {
       if (characterTableMissing(error)) throw new Error(CHAR_TABLE_HINT);
       throw error;
@@ -991,11 +1019,75 @@
     return rowToCharacter(data);
   }
 
+  /* Salva só o estado vivo da ficha (HP, status, inventário, magias). */
+  async function persistCharacterState(c) {
+    if (!sb) throw new Error('Supabase não configurado');
+    const payload = {
+      vitals: c.vitals || {},
+      statuses: Array.isArray(c.statuses) ? c.statuses : [],
+      inventory: Array.isArray(c.inventory) ? c.inventory : [],
+      spells: Array.isArray(c.spells) ? c.spells : [],
+      updated_at: new Date().toISOString()
+    };
+    const { error } = await sb.from('characters').update(payload).eq('id', c.id);
+    if (error) {
+      if (isMissingSheetCol(error)) throw new Error(SHEET_HINT);
+      throw error;
+    }
+  }
+
   async function deleteCharacter(c) {
     if (!sb) throw new Error('Supabase não configurado');
     const { error } = await sb.from('characters').delete().eq('id', c.id);
     if (error) throw error;
     if (c.imagePath) await removeBanner(c.imagePath);
+  }
+
+  /* ── Estado vivo: helpers ─────────────────────── */
+  function parseHpMax(v) {
+    const n = parseInt(String(v).split('/')[0], 10);
+    return Number.isFinite(n) ? n : 0;
+  }
+  /* Garante c.vitals.hp/mana a partir do HP/Mana da criação (sem persistir). */
+  function ensureVitals(c) {
+    c.vitals = (c.vitals && typeof c.vitals === 'object' && !Array.isArray(c.vitals)) ? c.vitals : {};
+    if (!c.vitals.hp || typeof c.vitals.hp !== 'object') {
+      c.vitals.hp = {};
+      RACE_HP_PARTS.forEach((p) => {
+        if (c.hp && c.hp[p] != null && c.hp[p] !== '') {
+          const max = parseHpMax(c.hp[p]);
+          if (max > 0) c.vitals.hp[p] = { cur: max, max };
+        }
+      });
+    }
+    if (!c.vitals.mana) {
+      const parts = String(c.mana || '').split('/').map((s) => parseInt(s, 10));
+      const max = Number.isFinite(parts[1]) ? parts[1] : (Number.isFinite(parts[0]) ? parts[0] : 0);
+      const cur = Number.isFinite(parts[0]) ? parts[0] : max;
+      if (max > 0) c.vitals.mana = { cur, max };
+    }
+    return c.vitals;
+  }
+  /* Recalcula maxes do HP a partir do formulário, preservando o atual (clampado). */
+  function mergeVitals(prev, hpFields, manaStr) {
+    const out = { hp: {}, mana: null };
+    const prevHp = (prev && prev.hp) || {};
+    RACE_HP_PARTS.forEach((p) => {
+      if (hpFields[p] != null && hpFields[p] !== '') {
+        const max = parseHpMax(hpFields[p]);
+        if (max > 0) {
+          const prevCur = prevHp[p] && Number.isFinite(prevHp[p].cur) ? prevHp[p].cur : max;
+          out.hp[p] = { cur: Math.min(prevCur, max), max };
+        }
+      }
+    });
+    const parts = String(manaStr || '').split('/').map((s) => parseInt(s, 10));
+    const mmax = Number.isFinite(parts[1]) ? parts[1] : (Number.isFinite(parts[0]) ? parts[0] : 0);
+    if (mmax > 0) {
+      const prevCur = prev && prev.mana && Number.isFinite(prev.mana.cur) ? prev.mana.cur : mmax;
+      out.mana = { cur: Math.min(prevCur, mmax), max: mmax };
+    }
+    return out;
   }
 
   async function loadIndexCustom() {
@@ -2215,10 +2307,6 @@
     };
   }
 
-  function manaTagged(value) {
-    // "15/15" → mostra cheio; mantém o que veio do dossiê.
-    return value || '';
-  }
 
   /* ── ROSTER (#/Persona) ───────────────────────── */
   function viewPersonaRoster() {
@@ -2312,6 +2400,107 @@
     `;
   }
 
+  /* ── FICHA VIVA: blocos interativos ───────────── */
+  function hpRatioClass(cur, max) {
+    const r = max > 0 ? cur / max : 0;
+    return r > 0.5 ? 'is-ok' : (r > 0.25 ? 'is-warn' : 'is-low');
+  }
+  function vbarPct(cur, max) { return max > 0 ? Math.max(0, Math.min(100, Math.round(cur / max * 100))) : 0; }
+
+  function vitalRowHTML(key, label, slot, canEdit, opts = {}) {
+    const mana = !!opts.mana;
+    const dmgLabel = mana ? 'Gastar' : 'Dano';
+    const healLabel = mana ? 'Restaurar' : 'Curar';
+    const actAttr = mana ? 'data-mana-act' : 'data-hp';
+    const dmgVal = mana ? 'spend' : 'dmg';
+    const healVal = mana ? 'restore' : 'heal';
+    const rowAttr = mana ? 'data-mana' : `data-part="${escapeHtml(key)}"`;
+    return `
+      <div class="vrow ${mana ? 'vrow--mana' : hpRatioClass(slot.cur, slot.max)}" ${rowAttr}>
+        <div class="vrow__top">
+          <span class="vrow__name">${escapeHtml(label)}</span>
+          <span class="vrow__num"><strong data-cur>${slot.cur}</strong> / <span data-max>${slot.max}</span></span>
+        </div>
+        <div class="vbar ${mana ? 'vbar--mana' : ''}"><span class="vbar__fill" data-fill style="width:${vbarPct(slot.cur, slot.max)}%"></span></div>
+        ${canEdit ? `
+          <div class="vrow__ctl">
+            <input type="number" class="vrow__amt" min="1" value="1" aria-label="Valor">
+            <button type="button" class="vbtn vbtn--dmg" ${actAttr}="${dmgVal}">${dmgLabel}</button>
+            <button type="button" class="vbtn vbtn--heal" ${actAttr}="${healVal}">${healLabel}</button>
+          </div>` : ''}
+      </div>
+    `;
+  }
+
+  function charVitalsInner(c, canEdit) {
+    const v = ensureVitals(c);
+    const parts = RACE_HP_PARTS.filter((p) => v.hp && v.hp[p]);
+    const head = `<header class="char-block__head"><span class="section__eyebrow">PONTOS DE VIDA</span><span class="dossier-rule" aria-hidden="true"></span></header>`;
+    if (!parts.length && !v.mana) {
+      return head + '<p class="char-empty">Sem HP/Mana definidos. Edite a ficha para preencher.</p>';
+    }
+    const hpRows = parts.map((p) => vitalRowHTML(p, p, v.hp[p], canEdit)).join('');
+    const manaRow = v.mana ? vitalRowHTML('mana', 'Mana', v.mana, canEdit, { mana: true }) : '';
+    return head + `<div class="vrows">${hpRows}${manaRow}</div>`;
+  }
+
+  function charStatusInner(c, canEdit) {
+    const list = Array.isArray(c.statuses) ? c.statuses : [];
+    const head = `<header class="char-block__head"><span class="section__eyebrow">STATUS</span><span class="dossier-rule" aria-hidden="true"></span></header>`;
+    const body = list.length
+      ? `<div class="status-chips">${list.map((s, i) => `
+          <span class="status-chip">${escapeHtml(s.name || '')}${canEdit ? `<button type="button" class="status-chip__x" data-status-remove="${i}" aria-label="Remover ${escapeHtml(s.name || '')}">×</button>` : ''}</span>
+        `).join('')}</div>`
+      : '<p class="char-empty">Nenhum status ativo.</p>';
+    const adder = canEdit ? `
+      <div class="char-add">
+        <input type="text" class="create-form__input" data-status-input placeholder="Adicionar status (ex.: Sangramento)…" maxlength="60">
+        <button type="button" class="btn btn-ghost" data-status-add>Adicionar</button>
+      </div>` : '';
+    return head + body + adder;
+  }
+
+  function charCodexListInner(c, canEdit, kind) {
+    const isInv = kind === 'inv';
+    const list = isInv ? (Array.isArray(c.inventory) ? c.inventory : []) : (Array.isArray(c.spells) ? c.spells : []);
+    const codex = entriesIn(isInv ? 'Itens' : 'Magias');
+    const eyebrow = isInv ? 'INVENTÁRIO' : 'LIVRO DE MAGIAS';
+    const codexTab = isInv ? 'Itens' : 'Magias';
+    const removeAttr = isInv ? 'data-inv-remove' : 'data-spell-remove';
+    const head = `<header class="char-block__head"><span class="section__eyebrow">${eyebrow}</span><span class="dossier-rule" aria-hidden="true"></span></header>`;
+    const rows = list.length ? `<ul class="inv-list">${list.map((it, i) => `
+      <li class="inv-row">
+        <div class="inv-row__main">
+          ${it.refId
+            ? `<a href="#/${codexTab}/${encodeURIComponent(it.refId)}" class="inv-row__name">${escapeHtml(it.name || '')}</a>`
+            : `<span class="inv-row__name">${escapeHtml(it.name || '')}</span>`}
+          ${it.summary ? `<span class="inv-row__sum">${escapeHtml(it.summary)}</span>` : ''}
+        </div>
+        <div class="inv-row__side">
+          ${isInv ? `
+            ${canEdit ? `<button type="button" class="qty-btn" data-inv-qty="-1" data-idx="${i}" aria-label="Menos">−</button>` : ''}
+            <span class="inv-row__q">×${it.qty || 1}</span>
+            ${canEdit ? `<button type="button" class="qty-btn" data-inv-qty="1" data-idx="${i}" aria-label="Mais">+</button>` : ''}
+          ` : ''}
+          ${canEdit ? `<button type="button" class="inv-row__x" ${removeAttr}="${i}" aria-label="Remover">×</button>` : ''}
+        </div>
+      </li>`).join('')}</ul>` : `<p class="char-empty">${isInv ? 'Inventário vazio.' : 'Nenhuma magia registrada.'}</p>`;
+    const customAttr = isInv ? 'data-inv-custom' : 'data-spell-custom';
+    const selectAttr = isInv ? 'data-inv-select' : 'data-spell-select';
+    const addAttr = isInv ? 'data-inv-add' : 'data-spell-add';
+    const adder = canEdit ? `
+      <div class="char-add char-add--codex">
+        <select class="create-form__input char-select" ${selectAttr}>
+          <option value="">— ${isInv ? 'escolher item' : 'escolher magia'} do codex —</option>
+          ${codex.map((e) => `<option value="${escapeHtml(e.id)}">${escapeHtml(e.title)}</option>`).join('')}
+        </select>
+        <input type="text" class="create-form__input" ${customAttr} placeholder="ou ${isInv ? 'item' : 'magia'} avulso…" maxlength="80">
+        ${isInv ? '<input type="number" class="create-form__input char-add__qty" data-inv-qty-input min="1" value="1" aria-label="Quantidade">' : ''}
+        <button type="button" class="btn btn-ghost" ${addAttr}>Adicionar</button>
+      </div>` : '';
+    return head + rows + adder;
+  }
+
   /* ── FICHA (#/Persona/<id>) ───────────────────── */
   function viewCharacterSheet(id) {
     const c = characterById(id);
@@ -2351,34 +2540,14 @@
       </aside>
     `;
 
-    const hpEntries = RACE_HP_PARTS.filter((p) => c.hp && c.hp[p]);
-    const hpMarkup = (hpEntries.length || c.mana) ? `
-      <aside class="entry__dossier-side dossier-card--hpmp">
-        <header class="entry__dossier-head dossier-head--ornate">
-          <span class="section__eyebrow">HP / MANA</span>
-          <span class="dossier-rule" aria-hidden="true"></span>
-        </header>
-        ${hpEntries.length ? `
-          <div class="hp-grid">
-            ${hpEntries.map((p) => `
-              <div class="hp-part">
-                <span class="hp-part__name">${escapeHtml(p)}</span>
-                <span class="hp-part__value">${escapeHtml(c.hp[p])}<em>HP</em></span>
-              </div>
-            `).join('')}
-          </div>
-        ` : ''}
-        ${c.mana ? `
-          <div class="mana-callout">
-            <span class="mana-callout__rune" aria-hidden="true">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2c1.5 3 4 5 7 6-3 1-5.5 3-7 6-1.5-3-4-5-7-6 3-1 5.5-3 7-6z"/><circle cx="12" cy="14" r="1.5"/></svg>
-            </span>
-            <span class="mana-callout__label">MANA</span>
-            <strong class="mana-callout__value">${escapeHtml(manaTagged(c.mana))}</strong>
-          </div>
-        ` : ''}
-      </aside>
-    ` : '';
+    const liveSections = `
+      <section class="char-live" id="charSheet" data-char-id="${escapeHtml(c.id)}" data-can-edit="${canEdit ? '1' : '0'}">
+        <div class="char-block char-block--wide" id="charVitals">${charVitalsInner(c, canEdit)}</div>
+        <div class="char-block" id="charStatus">${charStatusInner(c, canEdit)}</div>
+        <div class="char-block" id="charInventory">${charCodexListInner(c, canEdit, 'inv')}</div>
+        <div class="char-block" id="charSpells">${charCodexListInner(c, canEdit, 'spell')}</div>
+      </section>
+    `;
 
     const skillsMarkup = (c.skills && c.skills.length) ? `
       <aside class="entry__dossier-side">
@@ -2487,12 +2656,12 @@
             <div class="race-dossier-view">
               ${attrMarkup}
               ${awakeningMarkup}
-              ${hpMarkup}
               ${identityMarkup}
               ${skillsMarkup}
             </div>
           </div>
         </div>
+        ${liveSections}
         ${bodyMarkup ? `<div class="entry__main entry__main--full">${bodyMarkup}</div>` : ''}
         <div class="entry__actions-row">
           ${editButton}
@@ -2740,6 +2909,7 @@
         attachIndexEditButton();
         attachDeleteHandlers();
         attachCharacterDeleteHandlers();
+        attachCharacterSheet();
       });
       window.scrollTo({ top: 0, behavior: 'instant' });
     }, 180);
@@ -4378,7 +4548,12 @@
           bodyHtml: editor ? sanitizeHtml(editor.innerHTML).trim() : '',
           ownerLabel: (existing?.identity?.ownerLabel) ||
             (auth.user ? (auth.user.user_metadata?.display_name || auth.user.email || '') : '')
-        }
+        },
+        // Estado vivo: recalcula maxes do HP/Mana (preservando o atual) e mantém o resto.
+        vitals: mergeVitals(existing && existing.vitals, readHp(), manaInput.value.trim()),
+        statuses: (existing && Array.isArray(existing.statuses)) ? existing.statuses : [],
+        inventory: (existing && Array.isArray(existing.inventory)) ? existing.inventory : [],
+        spells: (existing && Array.isArray(existing.spells)) ? existing.spells : []
       };
 
       submitBtn.disabled = true;
@@ -4449,6 +4624,115 @@
           btn.disabled = false;
         }
       });
+    });
+  }
+
+  /* ── FICHA VIVA: handlers (HP, status, inventário, magias) ── */
+  function attachCharacterSheet() {
+    const root = document.getElementById('charSheet');
+    if (!root || root.dataset.bound) return;
+    root.dataset.bound = '1';
+    const c = characterById(root.dataset.charId);
+    if (!c) return;
+    const canEdit = root.dataset.canEdit === '1';
+    if (!canEdit) return;
+    ensureVitals(c);
+
+    const $ = (id) => document.getElementById(id);
+    let saveTimer; let saveErr = false;
+    const save = () => {
+      clearTimeout(saveTimer);
+      saveTimer = setTimeout(async () => {
+        try { await persistCharacterState(c); }
+        catch (err) { console.error(err); if (!saveErr) { saveErr = true; alert('Não foi possível salvar a ficha: ' + (err.message || err)); } }
+      }, 400);
+    };
+
+    const readAmt = (row) => {
+      const el = row.querySelector('.vrow__amt');
+      return Math.max(0, parseInt(el && el.value, 10) || 0);
+    };
+    const updateVrow = (row, slot, mana) => {
+      row.querySelector('[data-cur]').textContent = slot.cur;
+      const fill = row.querySelector('[data-fill]');
+      fill.style.width = vbarPct(slot.cur, slot.max) + '%';
+      if (!mana) {
+        row.classList.remove('is-ok', 'is-warn', 'is-low');
+        row.classList.add(hpRatioClass(slot.cur, slot.max));
+      }
+    };
+
+    const addStatus = () => {
+      const el = $('charStatus').querySelector('[data-status-input]');
+      const v = (el.value || '').trim();
+      if (!v) { el.focus(); return; }
+      c.statuses.push({ name: v });
+      $('charStatus').innerHTML = charStatusInner(c, true);
+      $('charStatus').querySelector('[data-status-input]').focus();
+      save();
+    };
+    const addCodex = (kind) => {
+      const isInv = kind === 'inv';
+      const box = isInv ? $('charInventory') : $('charSpells');
+      const sel = box.querySelector(isInv ? '[data-inv-select]' : '[data-spell-select]');
+      const custom = box.querySelector(isInv ? '[data-inv-custom]' : '[data-spell-custom]');
+      let item = null;
+      if (sel.value) {
+        const e = entryById(sel.value);
+        if (e) item = { refId: e.id, name: e.title, summary: e.summary || '' };
+      } else if ((custom.value || '').trim()) {
+        item = { refId: '', name: custom.value.trim(), summary: '' };
+      }
+      if (!item) { custom.focus(); return; }
+      if (isInv) {
+        const qtyEl = box.querySelector('[data-inv-qty-input]');
+        item.qty = Math.max(1, parseInt(qtyEl && qtyEl.value, 10) || 1);
+        c.inventory.push(item);
+        box.innerHTML = charCodexListInner(c, true, 'inv');
+      } else {
+        c.spells.push(item);
+        box.innerHTML = charCodexListInner(c, true, 'spell');
+      }
+      save();
+    };
+
+    root.addEventListener('click', (e) => {
+      const hpBtn = e.target.closest('[data-hp]');
+      if (hpBtn) {
+        const row = hpBtn.closest('[data-part]');
+        const amt = readAmt(row); if (!amt) return;
+        const slot = c.vitals.hp[row.dataset.part]; if (!slot) return;
+        slot.cur = hpBtn.dataset.hp === 'dmg' ? Math.max(0, slot.cur - amt) : Math.min(slot.max, slot.cur + amt);
+        updateVrow(row, slot, false); save(); return;
+      }
+      const manaBtn = e.target.closest('[data-mana-act]');
+      if (manaBtn) {
+        const row = manaBtn.closest('[data-mana]');
+        const amt = readAmt(row); if (!amt) return;
+        const m = c.vitals.mana; if (!m) return;
+        m.cur = manaBtn.dataset.manaAct === 'spend' ? Math.max(0, m.cur - amt) : Math.min(m.max, m.cur + amt);
+        updateVrow(row, m, true); save(); return;
+      }
+      const sRemove = e.target.closest('[data-status-remove]');
+      if (sRemove) { c.statuses.splice(Number(sRemove.dataset.statusRemove), 1); $('charStatus').innerHTML = charStatusInner(c, true); save(); return; }
+      if (e.target.closest('[data-status-add]')) { addStatus(); return; }
+
+      const invQty = e.target.closest('[data-inv-qty]');
+      if (invQty) { const it = c.inventory[Number(invQty.dataset.idx)]; if (it) { it.qty = Math.max(1, (it.qty || 1) + Number(invQty.dataset.invQty)); $('charInventory').innerHTML = charCodexListInner(c, true, 'inv'); save(); } return; }
+      const invRemove = e.target.closest('[data-inv-remove]');
+      if (invRemove) { c.inventory.splice(Number(invRemove.dataset.invRemove), 1); $('charInventory').innerHTML = charCodexListInner(c, true, 'inv'); save(); return; }
+      if (e.target.closest('[data-inv-add]')) { addCodex('inv'); return; }
+
+      const spellRemove = e.target.closest('[data-spell-remove]');
+      if (spellRemove) { c.spells.splice(Number(spellRemove.dataset.spellRemove), 1); $('charSpells').innerHTML = charCodexListInner(c, true, 'spell'); save(); return; }
+      if (e.target.closest('[data-spell-add]')) { addCodex('spell'); return; }
+    });
+
+    root.addEventListener('keydown', (e) => {
+      if (e.key !== 'Enter') return;
+      if (e.target.matches('[data-status-input]')) { e.preventDefault(); addStatus(); }
+      else if (e.target.matches('[data-inv-custom]')) { e.preventDefault(); addCodex('inv'); }
+      else if (e.target.matches('[data-spell-custom]')) { e.preventDefault(); addCodex('spell'); }
     });
   }
 
