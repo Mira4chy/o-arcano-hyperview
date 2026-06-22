@@ -127,13 +127,48 @@
 
   /* ── FICHAS DE PERSONAGEM (aba Persona) ───────────
      Atributos do sistema O Arcano. Para mudar a lista, edite só este array.
-     O point-buy parte de CHAR_ATTR_BASE em cada atributo e distribui
-     CHAR_POINT_POOL pontos, com teto de CHAR_ATTR_MAX por atributo.
-     O "Modificador" da raça (ex.: "+1 Força, -1 Destreza") soma por cima. */
+     Todos começam em CHAR_ATTR_BASE (10) e distribuem CHAR_POINT_POOL (6)
+     pontos, com teto de CHAR_ATTR_MAX (16) por atributo. A cada 2 pontos
+     acima de 10 ganha-se +1 de modificador (piso((valor-10)/2)); o
+     "Modificador" da raça soma por cima do modificador final.
+     Magos que aceitam a Mana têm a Resistência travada em CHAR_MAGE_RES_CAP (14). */
   const CHAR_ATTRIBUTES = ['Força', 'Destreza', 'Inteligência', 'Resistência', 'Carisma', 'Sabedoria'];
-  const CHAR_ATTR_BASE = 8;
-  const CHAR_POINT_POOL = 12;
-  const CHAR_ATTR_MAX = 18;
+  const CHAR_ATTR_BASE = 10;
+  const CHAR_POINT_POOL = 6;
+  const CHAR_ATTR_MAX = 16;
+  const CHAR_MAGE_RES_CAP = 14;
+  const CHAR_RES_ATTR = 'Resistência';
+
+  /* O Despertar: rolagens de 1d100. */
+  const AWAKEN_MAGE_MIN = 71;   // 1–70 não-mago, 71–100 mago
+  const AWAKEN_MAX_ATTEMPTS = 3;
+  const MAGIC_SCHOOLS = [
+    { id: 'elemental', name: 'Elemental', min: 1,  max: 50,  hue: 18,
+      lore: 'A Mana se manifesta como fogo, geada, raio e pedra — bruta e faminta.' },
+    { id: 'arcanista', name: 'Arcanista', min: 51, max: 85,  hue: 268,
+      lore: 'A Mana obedece à fórmula e ao símbolo: feitiçaria estudada, precisa e fria.' },
+    { id: 'druidico',  name: 'Druídico',  min: 86, max: 95,  hue: 140,
+      lore: 'A Mana flui da carne viva, da seiva e do instinto das feras.' },
+    { id: 'celestial', name: 'Celestial', min: 96, max: 100, hue: 48,
+      lore: 'A Mana desce de algo que dorme acima — luz que cura e que julga.' }
+  ];
+  function rollD100() { return Math.floor(Math.random() * 100) + 1; }
+  function schoolForRoll(roll) {
+    return MAGIC_SCHOOLS.find((s) => roll >= s.min && roll <= s.max) || MAGIC_SCHOOLS[0];
+  }
+  function schoolById(id) {
+    return MAGIC_SCHOOLS.find((s) => s.id === id) || null;
+  }
+  /* Teto de um atributo na criação (mago aceito tem Resistência travada em 14). */
+  function attrCapFor(attr, isMageAccepted) {
+    if (isMageAccepted && attr === CHAR_RES_ATTR) return CHAR_MAGE_RES_CAP;
+    return CHAR_ATTR_MAX;
+  }
+  /* Modificador final = piso((valor-10)/2) + modificador da raça. */
+  function attrModifierFor(score, attr, raceMod) {
+    return Math.floor((Number(score) - 10) / 2) + Number((raceMod && raceMod[attr]) || 0);
+  }
+  const fmtMod = (m) => (m > 0 ? '+' + m : String(m));
 
   /* Interpreta o campo "Modificador" de uma raça em { atributo: delta }.
      Aceita formatos como "+1 Força, -1 Destreza", "Força +2; Vontade -1". */
@@ -851,9 +886,29 @@
   let CHARACTERS = [];
   const characterById = (id) => CHARACTERS.find((c) => c.id === id);
 
+  /* O registro do Despertar fica guardado na coluna jsonb `magic`. */
+  function defaultAwakening() {
+    return {
+      resolved: false, mageRoll: 0, attempts: 0,
+      accepted: false, renounced: false,
+      school: '', schoolRoll: 0, bonusAttr: ''
+    };
+  }
+  function normalizeAwakening(obj) {
+    const d = defaultAwakening();
+    if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return d;
+    return { ...d, ...obj };
+  }
+
   function rowToCharacter(row) {
     const safeObj = (v) => (v && typeof v === 'object' && !Array.isArray(v)) ? v : {};
     const safeArr = (v) => Array.isArray(v) ? v : [];
+    const magic = normalizeAwakening(row.magic);
+    // Fichas antigas (sistema com toggle): sintetiza um despertar resolvido.
+    if (!magic.resolved && (row.is_mage || (row.magic && Object.keys(safeObj(row.magic)).length))) {
+      magic.resolved = true;
+      magic.accepted = !!row.is_mage;
+    }
     return {
       id: row.id,
       userId: row.user_id,
@@ -864,7 +919,7 @@
       attributes: safeObj(row.attributes),
       pointPool: row.point_pool || 0,
       skills: safeArr(row.skills),
-      magic: safeObj(row.magic),
+      magic,
       hp: safeObj(row.hp),
       mana: row.mana || '',
       identity: safeObj(row.identity),
@@ -2160,13 +2215,6 @@
     };
   }
 
-  /* Total final de um atributo = valor alocado (base + point-buy) + modificador da raça. */
-  function attrFinal(allocated, attr, mod) {
-    const base = Number(allocated && allocated[attr] != null ? allocated[attr] : CHAR_ATTR_BASE);
-    const bonus = Number((mod && mod[attr]) || 0);
-    return base + bonus;
-  }
-
   function manaTagged(value) {
     // "15/15" → mostra cheio; mantém o que veio do dossiê.
     return value || '';
@@ -2237,7 +2285,10 @@
 
   function characterCardHTML(c, i, opts = {}) {
     const theme = themeOf('Persona');
-    const mageLabel = c.isMage ? 'Mago' : 'Não-mago';
+    const awk = normalizeAwakening(c.magic);
+    const isMage = awkIsAcceptedMage(awk);
+    const sc = isMage ? (schoolById(awk.school) || null) : null;
+    const mageLabel = isMage ? ('Mago' + (sc ? ' · ' + sc.name : '')) : 'Não-mago';
     const owner = opts.showOwner && c.identity && c.identity.ownerLabel ? c.identity.ownerLabel : '';
     return `
       <a href="#/Persona/${encodeURIComponent(c.id)}" class="entry-card char-card" style="--hue:${theme.hue};--delay:${i * 40}ms">
@@ -2246,7 +2297,7 @@
           <div class="entry-card__fallback">${iconOf('Persona')}</div>
           <div class="entry-card__shade"></div>
           <div class="entry-card__tags">
-            <span class="char-badge char-badge--${c.isMage ? 'mage' : 'mundane'}">${mageLabel}</span>
+            <span class="char-badge char-badge--${isMage ? 'mage' : 'mundane'}">${escapeHtml(mageLabel)}</span>
           </div>
         </div>
         <div class="entry-card__body">
@@ -2270,6 +2321,9 @@
     const tab = tabById('Persona');
     const { mod } = raceDataFor(c.raceId);
     const bodyHtml = (c.identity && c.identity.bodyHtml) || '';
+    const awk = normalizeAwakening(c.magic);
+    const isMage = awkIsAcceptedMage(awk);
+    const bonusAttr = awkIsNonMage(awk) ? awk.bonusAttr : '';
 
     const attrMarkup = `
       <aside class="entry__dossier-side">
@@ -2279,13 +2333,17 @@
         </header>
         <div class="attr-grid attr-grid--view">
           ${CHAR_ATTRIBUTES.map((a) => {
-            const bonus = Number((mod && mod[a]) || 0);
-            const total = attrFinal(c.attributes, a, mod);
+            const raceMod = Number((mod && mod[a]) || 0);
+            const bonus = (bonusAttr && bonusAttr === a) ? 1 : 0;
+            const score = (c.attributes && c.attributes[a] != null ? Number(c.attributes[a]) : CHAR_ATTR_BASE) + bonus;
+            const m = attrModifierFor(score, a, mod);
+            const note = bonus ? '+1 despertar' : (raceMod ? fmtMod(raceMod) + ' raça' : '');
             return `
               <div class="attr-cell">
                 <span class="attr-cell__name">${escapeHtml(a)}</span>
-                <span class="attr-cell__value">${total}</span>
-                ${bonus ? `<span class="attr-cell__bonus">${bonus > 0 ? '+' : ''}${bonus} raça</span>` : ''}
+                <span class="attr-cell__value">${score}</span>
+                <span class="attr-cell__mod">${fmtMod(m)}</span>
+                ${note ? `<span class="attr-cell__bonus">${escapeHtml(note)}</span>` : ''}
               </div>
             `;
           }).join('')}
@@ -2334,19 +2392,39 @@
       </aside>
     ` : '';
 
-    const magicMarkup = c.isMage ? `
-      <aside class="entry__dossier-side dossier-card--magic">
-        <header class="entry__dossier-head dossier-head--ornate">
-          <span class="section__eyebrow">MAGIA</span>
-          <span class="dossier-rule" aria-hidden="true"></span>
-        </header>
-        ${(c.magic && Array.isArray(c.magic.tradicoes) && c.magic.tradicoes.length) ? `
+    let awakeningMarkup = '';
+    if (isMage) {
+      const sc = schoolById(awk.school) || MAGIC_SCHOOLS[0];
+      awakeningMarkup = `
+        <aside class="entry__dossier-side dossier-card--magic" style="--awk-hue:${sc.hue}">
+          <header class="entry__dossier-head dossier-head--ornate">
+            <span class="section__eyebrow">O DESPERTAR · MAGO</span>
+            <span class="dossier-rule" aria-hidden="true"></span>
+          </header>
+          <div class="char-school">
+            <span class="char-school__name">${escapeHtml(sc.name)}</span>
+            <p class="char-school__lore">${escapeHtml(sc.lore)}</p>
+          </div>
           <dl class="meta-list">
-            <div class="meta-row"><dt>Tradições</dt><dd>${c.magic.tradicoes.map((t) => escapeHtml(t)).join(', ')}</dd></div>
+            <div class="meta-row"><dt>Escola (1d100)</dt><dd>${awk.schoolRoll || '—'}</dd></div>
+            <div class="meta-row"><dt>Resistência</dt><dd>travada em ${CHAR_MAGE_RES_CAP} na criação</dd></div>
           </dl>
-        ` : '<p class="char-magic-empty">Trilha arcana ativa — detalhes de tradições e magias a definir.</p>'}
-      </aside>
-    ` : '';
+        </aside>
+      `;
+    } else if (awk.resolved) {
+      awakeningMarkup = `
+        <aside class="entry__dossier-side">
+          <header class="entry__dossier-head dossier-head--ornate">
+            <span class="section__eyebrow">O DESPERTAR · MUNDANO</span>
+            <span class="dossier-rule" aria-hidden="true"></span>
+          </header>
+          <dl class="meta-list">
+            ${awk.renounced ? '<div class="meta-row"><dt>Mana</dt><dd>renunciada</dd></div>' : ''}
+            <div class="meta-row"><dt>Bônus</dt><dd>+1 Nível de HP${bonusAttr ? ` · +1 ${escapeHtml(bonusAttr)}` : ''}</dd></div>
+          </dl>
+        </aside>
+      `;
+    }
 
     const idFields = [];
     const idn = c.identity || {};
@@ -2395,7 +2473,7 @@
               <span class="breadcrumb__current">${escapeHtml(c.name || 'Ficha')}</span>
             </nav>
             <div class="entry__tagline">
-              <span class="char-badge char-badge--${c.isMage ? 'mage' : 'mundane'}">${c.isMage ? 'Mago' : 'Não-mago'}</span>
+              <span class="char-badge char-badge--${isMage ? 'mage' : 'mundane'}">${isMage ? ('Mago · ' + escapeHtml((schoolById(awk.school) || {}).name || '')) : 'Não-mago'}</span>
               ${c.raceName ? `<span class="entry__cat">${escapeHtml(c.raceName)}</span>` : ''}
             </div>
             <h1 class="entry__title entry__title--portrait" data-text-reveal>${escapeHtml(c.name || 'Sem nome')}</h1>
@@ -2408,10 +2486,10 @@
             </div>
             <div class="race-dossier-view">
               ${attrMarkup}
+              ${awakeningMarkup}
               ${hpMarkup}
               ${identityMarkup}
               ${skillsMarkup}
-              ${magicMarkup}
             </div>
           </div>
         </div>
@@ -2497,27 +2575,33 @@
         </div>
 
         <div class="create-form__field">
-          <label class="create-form__label">Atributos (point-buy)</label>
+          <label class="create-form__label">O Despertar</label>
+          <p class="char-hint">A Mana decide quem você é. Role o destino antes de fechar a ficha.</p>
+          <div class="awakening" id="awakening"></div>
+        </div>
+
+        <div class="create-form__field">
+          <label class="create-form__label">Atributos</label>
           <div class="attr-buy" id="attrBuy"
                data-base="${CHAR_ATTR_BASE}" data-pool="${CHAR_POINT_POOL}" data-max="${CHAR_ATTR_MAX}">
             <div class="attr-buy__head">
-              <span>Cada atributo começa em ${CHAR_ATTR_BASE}. Distribua os pontos; a raça soma por cima.</span>
+              <span>Todos começam em ${CHAR_ATTR_BASE}. Distribua ${CHAR_POINT_POOL} pontos — a cada 2, +1 de modificador. A raça soma no modificador.</span>
               <span class="attr-buy__pool">Pontos restantes: <strong id="attrPool">${CHAR_POINT_POOL}</strong></span>
             </div>
             <div class="attr-buy__grid">
               ${CHAR_ATTRIBUTES.map((a) => {
                 const val = allocated[a] != null ? Number(allocated[a]) : CHAR_ATTR_BASE;
-                const bonus = Number((mod && mod[a]) || 0);
+                const m = attrModifierFor(val, a, mod);
                 return `
-                  <div class="attr-row" data-attr="${escapeHtml(a)}">
+                  <div class="attr-row" data-attr="${escapeHtml(a)}" data-racemod="${Number((mod && mod[a]) || 0)}">
                     <span class="attr-row__name">${escapeHtml(a)}</span>
                     <div class="attr-row__stepper">
                       <button type="button" class="attr-step" data-step="-1" aria-label="Diminuir ${escapeHtml(a)}">−</button>
                       <span class="attr-row__value" data-attr-value>${val}</span>
                       <button type="button" class="attr-step" data-step="1" aria-label="Aumentar ${escapeHtml(a)}">+</button>
                     </div>
-                    <span class="attr-row__bonus" data-attr-bonus>${bonus ? (bonus > 0 ? '+' : '') + bonus + ' raça' : ''}</span>
-                    <span class="attr-row__total" data-attr-total>${val + bonus}</span>
+                    <span class="attr-row__tag" data-attr-tag></span>
+                    <span class="attr-row__mod" data-attr-mod aria-label="Modificador">${fmtMod(m)}</span>
                   </div>
                 `;
               }).join('')}
@@ -2541,25 +2625,6 @@
             <span>Mana</span>
             <input type="text" id="charMana" class="create-form__input" value="${escapeHtml(manaValue || '')}" placeholder="15/15" maxlength="20">
           </label>
-        </div>
-
-        <div class="create-form__field">
-          <div class="char-toggle">
-            <label class="char-switch">
-              <input type="checkbox" id="charIsMage" ${c.isMage ? 'checked' : ''}>
-              <span class="char-switch__track"><span class="char-switch__thumb"></span></span>
-              <span class="char-switch__label">É mago?</span>
-            </label>
-          </div>
-          <div class="char-magic" id="charMagic" ${c.isMage ? '' : 'hidden'}>
-            <span class="section__eyebrow">MAGIA</span>
-            <p class="char-magic-empty">Estrutura reservada para a trilha arcana — tradições e seleção de magias serão definidas depois.</p>
-            <label class="dossier-field">
-              <span>Tradições (separadas por vírgula)</span>
-              <input type="text" id="charTradicoes" class="create-form__input" placeholder="Ex.: Fogo e Carne, Sangue e Memória"
-                     value="${escapeHtml((c.magic && Array.isArray(c.magic.tradicoes)) ? c.magic.tradicoes.join(', ') : '')}" maxlength="200">
-            </label>
-          </div>
         </div>
 
         <div class="create-form__field">
@@ -3938,36 +4003,45 @@
   /* ── POINT-BUY de atributos ───────────────────── */
   function bindAttributePointBuy() {
     const root = document.getElementById('attrBuy');
-    if (!root) return { getAllocated: () => ({}), getRemaining: () => 0, refreshBonus: () => {} };
-    const base = Number(root.dataset.base) || 0;
-    const pool = Number(root.dataset.pool) || 0;
-    const max = Number(root.dataset.max) || 99;
+    const stub = { getAllocated: () => ({}), getRemaining: () => 0, refreshRaceMod() {}, setResCap() {}, setBonusAttr() {} };
+    if (!root) return stub;
+    const base = Number(root.dataset.base) || 10;
+    const pool = Number(root.dataset.pool) || 6;
+    const max = Number(root.dataset.max) || 16;
     const poolEl = document.getElementById('attrPool');
+    let resCapMage = false;
+    let bonusAttr = '';
 
-    const allocated = () => {
-      const out = {};
-      root.querySelectorAll('.attr-row').forEach((row) => {
-        out[row.dataset.attr] = Number(row.querySelector('[data-attr-value]').textContent) || base;
-      });
-      return out;
-    };
-    const spent = () => Object.values(allocated()).reduce((s, v) => s + (v - base), 0);
+    const rows = () => [...root.querySelectorAll('.attr-row')];
+    const valueOf = (row) => Number(row.querySelector('[data-attr-value]').textContent) || base;
+    const allocated = () => { const o = {}; rows().forEach((r) => { o[r.dataset.attr] = valueOf(r); }); return o; };
+    const spent = () => rows().reduce((s, r) => s + (valueOf(r) - base), 0);
     const remaining = () => pool - spent();
+    const isCapped = (row) => resCapMage && row.dataset.attr === CHAR_RES_ATTR;
+    const capOf = (row) => (isCapped(row) ? CHAR_MAGE_RES_CAP : max);
 
     function syncRow(row) {
-      const val = Number(row.querySelector('[data-attr-value]').textContent) || base;
-      const bonus = Number(row.dataset.bonus || 0);
-      row.querySelector('[data-attr-total]').textContent = val + bonus;
+      const v = valueOf(row);
+      const raceMod = Number(row.dataset.racemod) || 0;
+      const bonus = (bonusAttr && bonusAttr === row.dataset.attr) ? 1 : 0;
+      const finalScore = v + bonus;
+      const m = Math.floor((finalScore - 10) / 2) + raceMod;
+      row.querySelector('[data-attr-mod]').textContent = fmtMod(m);
+      const tag = row.querySelector('[data-attr-tag]');
+      let tagClass = 'attr-row__tag';
+      if (isCapped(row)) { tag.textContent = 'trava 14'; tagClass += ' attr-row__tag--cap'; }
+      else if (bonus) { tag.textContent = '+1 despertar'; tagClass += ' attr-row__tag--bonus'; }
+      else if (raceMod) { tag.textContent = fmtMod(raceMod) + ' raça'; }
+      else { tag.textContent = ''; }
+      tag.className = tagClass;
     }
     function syncAll() {
       const rem = remaining();
       if (poolEl) poolEl.textContent = rem;
-      root.querySelectorAll('.attr-row').forEach((row) => {
-        const val = Number(row.querySelector('[data-attr-value]').textContent) || base;
-        const minus = row.querySelector('[data-step="-1"]');
-        const plus = row.querySelector('[data-step="1"]');
-        minus.disabled = val <= base;
-        plus.disabled = val >= max || rem <= 0;
+      rows().forEach((row) => {
+        const v = valueOf(row);
+        row.querySelector('[data-step="-1"]').disabled = v <= base;
+        row.querySelector('[data-step="1"]').disabled = v >= capOf(row) || rem <= 0;
         syncRow(row);
       });
     }
@@ -3977,11 +4051,11 @@
       if (!btn) return;
       const row = btn.closest('.attr-row');
       const valEl = row.querySelector('[data-attr-value]');
-      let val = Number(valEl.textContent) || base;
+      let v = Number(valEl.textContent) || base;
       const dir = Number(btn.dataset.step);
-      if (dir > 0 && val < max && remaining() > 0) val += 1;
-      else if (dir < 0 && val > base) val -= 1;
-      valEl.textContent = val;
+      if (dir > 0 && v < capOf(row) && remaining() > 0) v += 1;
+      else if (dir < 0 && v > base) v -= 1;
+      valEl.textContent = v;
       syncAll();
     });
 
@@ -3990,15 +4064,121 @@
     return {
       getAllocated: allocated,
       getRemaining: remaining,
-      refreshBonus(mod) {
-        root.querySelectorAll('.attr-row').forEach((row) => {
-          const bonus = Number((mod && mod[row.dataset.attr]) || 0);
-          row.dataset.bonus = bonus;
-          row.querySelector('[data-attr-bonus]').textContent = bonus ? (bonus > 0 ? '+' : '') + bonus + ' raça' : '';
-          syncRow(row);
-        });
-      }
+      refreshRaceMod(mod) {
+        rows().forEach((r) => { r.dataset.racemod = Number((mod && mod[r.dataset.attr]) || 0); });
+        syncAll();
+      },
+      setResCap(on) {
+        resCapMage = !!on;
+        if (on) {
+          const r = rows().find((x) => x.dataset.attr === CHAR_RES_ATTR);
+          if (r) {
+            const el = r.querySelector('[data-attr-value]');
+            if (Number(el.textContent) > CHAR_MAGE_RES_CAP) el.textContent = CHAR_MAGE_RES_CAP;
+          }
+        }
+        syncAll();
+      },
+      setBonusAttr(attr) { bonusAttr = attr || ''; syncAll(); }
     };
+  }
+
+  /* ── O DESPERTAR (ritual com animação) ────────── */
+  const AWK_SIGIL = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2c1.7 3.6 4.6 6 8 7-3.4 1-6.3 3.4-8 7-1.7-3.6-4.6-6-8-7 3.4-1 6.3-3.4 8-7z"/><circle cx="12" cy="16" r="1.6"/></svg>';
+
+  function awkIsAcceptedMage(a) { return a.resolved && a.mageRoll >= AWAKEN_MAGE_MIN && a.accepted; }
+  function awkIsNonMage(a) { return a.resolved && !(a.mageRoll >= AWAKEN_MAGE_MIN && a.accepted); }
+
+  function awakeningRollingHTML(label) {
+    return `
+      <div class="awk awk--rolling">
+        <div class="awk__sigil is-spinning">${AWK_SIGIL}</div>
+        <div class="awk__die" id="awkDie">?</div>
+        <p class="awk__caption">${escapeHtml(label)}</p>
+      </div>
+    `;
+  }
+
+  function awakeningPanelHTML(a) {
+    const hasRolled = a.mageRoll > 0;
+    const rolledMage = a.mageRoll >= AWAKEN_MAGE_MIN;
+    const attemptsLeft = AWAKEN_MAX_ATTEMPTS - a.attempts;
+
+    if (!hasRolled) {
+      return `
+        <div class="awk awk--idle">
+          <div class="awk__sigil">${AWK_SIGIL}</div>
+          <p class="awk__intro">O destino ainda não falou. Role <strong>1d100</strong> para saber se a Mana corre em você.</p>
+          <button type="button" class="btn btn-primary awk__roll" data-awk="roll">
+            <span>Rolar o Despertar</span>
+          </button>
+          <span class="awk__attempts">${AWAKEN_MAX_ATTEMPTS} tentativas disponíveis</span>
+        </div>
+      `;
+    }
+
+    const dieBlock = `<div class="awk__die awk__die--final ${rolledMage ? 'is-mage' : 'is-mundane'}">${a.mageRoll}</div>`;
+    const rerollBtn = attemptsLeft > 0 && !(rolledMage && a.accepted)
+      ? `<button type="button" class="btn btn-ghost awk__reroll" data-awk="roll"><span>Rolar de novo</span> <small>(${attemptsLeft} ${attemptsLeft === 1 ? 'restante' : 'restantes'})</small></button>`
+      : '';
+
+    // Mago indeciso: precisa aceitar ou renunciar
+    if (rolledMage && !a.accepted && !a.renounced) {
+      return `
+        <div class="awk awk--result is-mage">
+          ${dieBlock}
+          <div class="awk__verdict">
+            <span class="awk__verdict-eyebrow">71–100 · A MANA DESPERTOU</span>
+            <h3 class="awk__verdict-title">Você nasceu Mago</h3>
+            <p class="awk__verdict-lore">A Mana viva pulsa sob sua pele. Aceitá-la é poder e condenação; recusá-la, voltar ao mundo dos que ferem cristais.</p>
+          </div>
+          <div class="awk__choice">
+            <button type="button" class="btn btn-primary" data-awk="accept"><span>Aceitar a Mana</span></button>
+            <button type="button" class="btn btn-ghost" data-awk="renounce"><span>Renunciar</span></button>
+          </div>
+          ${rerollBtn}
+        </div>
+      `;
+    }
+
+    // Mago que aceitou: mostra a escola
+    if (rolledMage && a.accepted) {
+      const sc = schoolById(a.school) || MAGIC_SCHOOLS[0];
+      return `
+        <div class="awk awk--result is-mage awk--school" style="--awk-hue:${sc.hue}">
+          <div class="awk__rolls">
+            ${dieBlock}
+            <div class="awk__die awk__die--final awk__die--school">${a.schoolRoll}</div>
+          </div>
+          <div class="awk__verdict">
+            <span class="awk__verdict-eyebrow">ESCOLA DA MANA</span>
+            <h3 class="awk__verdict-title">${escapeHtml(sc.name)}</h3>
+            <p class="awk__verdict-lore">${escapeHtml(sc.lore)}</p>
+            <p class="awk__note">Resistência travada em ${CHAR_MAGE_RES_CAP} na criação (o Mestre pode exceder narrativamente).</p>
+          </div>
+        </div>
+      `;
+    }
+
+    // Não-mago (rolou baixo) ou renunciou
+    const bonusName = a.bonusAttr ? a.bonusAttr : '';
+    const reason = a.renounced ? 'Você renunciou à Mana' : 'A Mana não respondeu';
+    const eyebrow = a.renounced ? 'RENÚNCIA' : '1–70 · MUNDANO';
+    return `
+      <div class="awk awk--result is-mundane">
+        ${dieBlock}
+        <div class="awk__verdict">
+          <span class="awk__verdict-eyebrow">${eyebrow}</span>
+          <h3 class="awk__verdict-title">${escapeHtml(reason)}</h3>
+          <p class="awk__verdict-lore">Sem a febre arcana, seu corpo é mais firme. Você endurece onde o mago se parte.</p>
+          <ul class="awk__bonuses">
+            <li><strong>+1 Nível de HP</strong> — some-o manualmente nas partes do corpo abaixo.</li>
+            <li><strong>+1 ${escapeHtml(bonusName || 'Atributo')}</strong> — ponto extra rolado no Despertar.</li>
+          </ul>
+        </div>
+        ${rerollBtn}
+      </div>
+    `;
   }
 
   /* ── FORM DA FICHA DE PERSONAGEM ──────────────── */
@@ -4015,8 +4195,7 @@
     const raceSelect = document.getElementById('charRace');
     const manaInput = document.getElementById('charMana');
     const hpForm = document.getElementById('charHpForm');
-    const isMageInput = document.getElementById('charIsMage');
-    const magicBox = document.getElementById('charMagic');
+    const awakeningEl = document.getElementById('awakening');
     const submitBtn = form.querySelector('[type="submit"]');
 
     const banner = bindBannerDrop({ initialUrl: existing?.image || '' });
@@ -4024,18 +4203,113 @@
     const skills = bindSimpleListBuilder('charSkills');
     const points = bindAttributePointBuy();
 
-    // sincroniza o bônus inicial da raça nos atributos
-    points.refreshBonus(raceDataFor(raceSelect.value).mod);
+    // Estado do Despertar (carrega de uma ficha existente ou começa do zero).
+    const awakening = normalizeAwakening(existing ? existing.magic : null);
 
-    // mago: revela bloco de magia
-    isMageInput.addEventListener('change', () => {
-      magicBox.hidden = !isMageInput.checked;
+    points.refreshRaceMod(raceDataFor(raceSelect.value).mod);
+
+    // Escolhe um atributo aleatório para o +1 de não-mago, respeitando o teto.
+    function pickBonusAttr() {
+      const alloc = points.getAllocated();
+      const eligible = CHAR_ATTRIBUTES.filter((a) => (alloc[a] || CHAR_ATTR_BASE) < attrCapFor(a, false));
+      const pool = eligible.length ? eligible : CHAR_ATTRIBUTES;
+      return pool[Math.floor(Math.random() * pool.length)];
+    }
+
+    function applyAwakeningToAttributes() {
+      points.setResCap(awkIsAcceptedMage(awakening));
+      points.setBonusAttr(awkIsNonMage(awakening) ? awakening.bonusAttr : '');
+    }
+
+    function renderAwakening() {
+      awakeningEl.innerHTML = awakeningPanelHTML(awakening);
+    }
+
+    function animateRoll(el, finalValue, done) {
+      if (!el) { done(); return; }
+      const total = 1200;
+      const start = performance.now();
+      (function tick(now) {
+        const elapsed = now - start;
+        if (elapsed >= total) {
+          el.textContent = finalValue;
+          el.classList.add('is-settled');
+          done();
+          return;
+        }
+        el.textContent = rollD100();
+        const delay = 35 + (elapsed / total) * 150;
+        setTimeout(() => requestAnimationFrame(tick), delay);
+      })(start);
+    }
+
+    // Delegação de cliques do ritual.
+    awakeningEl.addEventListener('click', (e) => {
+      const btn = e.target.closest('[data-awk]');
+      if (!btn) return;
+      const action = btn.dataset.awk;
+
+      if (action === 'roll') {
+        if (awakening.attempts >= AWAKEN_MAX_ATTEMPTS) return;
+        awakeningEl.innerHTML = awakeningRollingHTML('A Mana se agita…');
+        const value = rollD100();
+        animateRoll(document.getElementById('awkDie'), value, () => {
+          awakening.mageRoll = value;
+          awakening.attempts += 1;
+          awakening.accepted = false;
+          awakening.renounced = false;
+          awakening.school = '';
+          awakening.schoolRoll = 0;
+          if (value >= AWAKEN_MAGE_MIN) {
+            awakening.resolved = false;
+            awakening.bonusAttr = '';
+          } else {
+            awakening.resolved = true;
+            awakening.bonusAttr = pickBonusAttr();
+          }
+          applyAwakeningToAttributes();
+          renderAwakening();
+        });
+        return;
+      }
+
+      if (action === 'accept') {
+        awakeningEl.innerHTML = awakeningRollingHTML('A Mana escolhe sua forma…');
+        const value = rollD100();
+        const sc = schoolForRoll(value);
+        animateRoll(document.getElementById('awkDie'), value, () => {
+          awakening.accepted = true;
+          awakening.renounced = false;
+          awakening.school = sc.id;
+          awakening.schoolRoll = value;
+          awakening.bonusAttr = '';
+          awakening.resolved = true;
+          applyAwakeningToAttributes();
+          renderAwakening();
+        });
+        return;
+      }
+
+      if (action === 'renounce') {
+        awakening.accepted = false;
+        awakening.renounced = true;
+        awakening.school = '';
+        awakening.schoolRoll = 0;
+        awakening.resolved = true;
+        awakening.bonusAttr = pickBonusAttr();
+        applyAwakeningToAttributes();
+        renderAwakening();
+        return;
+      }
     });
 
-    // troca de raça: atualiza bônus dos atributos e repõe HP/Mana a partir do dossiê
+    applyAwakeningToAttributes();
+    renderAwakening();
+
+    // troca de raça: atualiza modificadores e repõe HP/Mana a partir do dossiê
     raceSelect.addEventListener('change', () => {
       const { mod, hp, mana } = raceDataFor(raceSelect.value);
-      points.refreshBonus(mod);
+      points.refreshRaceMod(mod);
       hpForm.querySelectorAll('[data-hp-part]').forEach((inp) => {
         inp.value = hp[inp.dataset.hpPart] != null ? hp[inp.dataset.hpPart] : '';
       });
@@ -4063,20 +4337,23 @@
       }
       nameInput.classList.remove('is-invalid');
 
+      if (!awakening.resolved) {
+        alert('Conclua o Despertar antes de salvar: role o destino e, se for mago, aceite ou renuncie à Mana.');
+        awakeningEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        return;
+      }
+
       const race = raceSelect.value ? entryById(raceSelect.value) : null;
-      const tradicoesRaw = document.getElementById('charTradicoes');
-      const tradicoes = (tradicoesRaw && tradicoesRaw.value ? tradicoesRaw.value.split(',') : [])
-        .map((s) => s.trim()).filter(Boolean);
 
       const data = {
         name,
         raceId: raceSelect.value || '',
         raceName: race ? race.title : '',
-        isMage: isMageInput.checked,
+        isMage: awkIsAcceptedMage(awakening),
         attributes: points.getAllocated(),
         pointPool: points.getRemaining(),
         skills: skills.getItems(),
-        magic: isMageInput.checked ? { tradicoes, magias: (existing?.magic?.magias || []) } : {},
+        magic: { ...awakening },
         hp: readHp(),
         mana: manaInput.value.trim(),
         identity: {

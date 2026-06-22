@@ -60,13 +60,28 @@ personagem dos jogadores**. Cada ficha fica vinculada ao usuario (coluna `user_i
 - Qualquer conta aprovada cria/edita as **proprias** fichas (varias por conta); o **Mestre**
   (admin) ve as fichas de todos os jogadores.
 - A ficha tem: **raca** (puxa HP por parte do corpo e Mana do dossie da raca, editaveis),
-  **atributos** por point-buy (Forca, Destreza, Inteligencia, Resistencia, Carisma, Sabedoria —
-  o `Modificador` da raca soma por cima), toggle **mago / nao-mago** (com bloco de magia
-  reservado para detalhar depois), **pericias/talentos** e **identidade narrativa** (papel,
-  desejo, ferida e historia em rich-text).
-- Para ajustar a lista de atributos ou os numeros do point-buy, edite as constantes
-  `CHAR_ATTRIBUTES`, `CHAR_ATTR_BASE`, `CHAR_POINT_POOL` e `CHAR_ATTR_MAX` no topo de
-  `assets/js/app.js`.
+  **atributos** (todos comecam em 10 + 6 pontos para distribuir; a cada 2 pontos, +1 de
+  modificador; o `Modificador` da raca soma no modificador final), **O Despertar**
+  (ver abaixo), **pericias/talentos** e **identidade narrativa** (papel, desejo, ferida e
+  historia em rich-text).
+
+### O Despertar (mago / nao-mago)
+
+Durante a criacao, o jogador rola **1d100** (ate 3 tentativas, mantem a ultima) com uma
+animacao de ritual:
+
+- **1–70:** nasce **Nao-Mago**. **71–100:** nasce **Mago**.
+- Mago pode **Aceitar a Mana** (rola 1d100 da Escola: 1–50 Elemental, 51–85 Arcanista,
+  86–95 Druidico, 96–100 Celestial) ou **Renunciar** (vira nao-mago).
+- **Mago que aceitou:** Resistencia travada em **14** na criacao (o Mestre pode exceder
+  narrativamente).
+- **Nao-Mago / renunciou:** **+1 Nivel de HP** (adicionado manualmente nas partes do corpo)
+  e **+1 ponto em um atributo aleatorio** (rolado no Despertar, respeitando o teto).
+
+Para ajustar a lista de atributos, os numeros (base 10 / pool 6 / teto 16 / trava 14 do mago)
+ou as faixas/escolas, edite as constantes `CHAR_ATTRIBUTES`, `CHAR_ATTR_BASE`,
+`CHAR_POINT_POOL`, `CHAR_ATTR_MAX`, `CHAR_MAGE_RES_CAP`, `AWAKEN_MAGE_MIN` e `MAGIC_SCHOOLS`
+no topo de `assets/js/app.js`.
 
 Observacao: entradas antigas de `stories` com `tab = 'Persona'` (se existirem no banco) deixam
 de aparecer nessa aba, que agora lista somente fichas da tabela `characters`.
