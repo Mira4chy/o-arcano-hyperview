@@ -95,11 +95,15 @@ Depois de criada, a ficha (`#/Persona/<id>`) funciona como um documento vivo —
 - **Pontos de Vida:** cada parte do corpo tem uma barra (atual/maximo) com campo de valor e
   botoes **Dano**/**Curar**; a Mana tem **Gastar**/**Restaurar**. A cor da barra muda conforme
   a vida cai (verde → ambar → vermelho).
+- **Defesa (escudo):** um escudo no topo dos vitais mostra a Defesa total = **base** (campo
+  editavel) **+** soma dos **itens equipados**. Itens equipaveis do codex tem um campo
+  `Defesa` (o Mestre define ao criar); na ficha da pra ajustar a defesa de cada item.
 - **Status:** lista de condicoes (ex.: Sangramento) que da pra adicionar/remover. (Os efeitos
   mecanicos de cada status serao desenvolvidos depois.)
-- **Inventario** e **Livro de Magias:** adicione itens da aba **Itens** e magias da aba
-  **Magias** (puxa nome/resumo do codex e vira link) ou entradas **avulsas** escritas a mao;
-  itens tem quantidade (+/−).
+- **Inventario:** dividido em **Mochila** (espaco ilimitado) e **Equipado** (ate 5 itens).
+  Da pra **Equipar/Desequipar** e ajustar quantidade. Itens vem da aba **Itens** (puxa
+  nome/resumo/defesa do codex e viram link) ou **avulsos** escritos a mao.
+- **Livro de Magias:** adicione magias da aba **Magias** (vira link) ou avulsas.
 
 Requer a migracao `supabase-characters-sheet.sql`. Se ela nao tiver rodado, a criacao de ficha
 continua funcionando (sem o estado vivo) e a ficha avisa ao tentar salvar HP/status/itens.

@@ -51,7 +51,7 @@
     equipavel: {
       label: 'Equipável',
       icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><polyline points="14.5 17.5 3 6 3 3 6 3 17.5 14.5"/><line x1="13" x2="19" y1="19" y2="13"/><line x1="16" x2="20" y1="16" y2="20"/><line x1="19" x2="21" y1="21" y2="19"/></svg>',
-      fields: ['Raridade', 'Valor', 'Efeito', 'Slot']
+      fields: ['Raridade', 'Valor', 'Defesa', 'Efeito', 'Slot']
     },
     consumivel: {
       label: 'Consumível',
@@ -2407,6 +2407,34 @@
   }
   function vbarPct(cur, max) { return max > 0 ? Math.max(0, Math.min(100, Math.round(cur / max * 100))) : 0; }
 
+  /* Defesa (escudo): valor base + soma dos itens equipados. */
+  function parseDefense(v) {
+    const m = String(v == null ? '' : v).match(/-?\d+/);
+    return m ? parseInt(m[0], 10) : 0;
+  }
+  function defenseBaseOf(c) {
+    return Number((c.vitals && c.vitals.defense) || 0);
+  }
+  function defenseFromItems(c) {
+    return (Array.isArray(c.inventory) ? c.inventory : [])
+      .filter((it) => it.equipped)
+      .reduce((sum, it) => sum + (Number(it.defense) || 0), 0);
+  }
+  function totalDefense(c) {
+    return defenseBaseOf(c) + defenseFromItems(c);
+  }
+  function equippedCount(c) {
+    return (Array.isArray(c.inventory) ? c.inventory : []).filter((it) => it.equipped).length;
+  }
+  const MAX_EQUIPPED = 5;
+  /* Atualiza o escudo no DOM sem re-renderizar o bloco inteiro. */
+  function refreshDefense(c) {
+    const totalEl = document.querySelector('[data-def-total]');
+    if (totalEl) totalEl.textContent = totalDefense(c);
+    const itemsEl = document.querySelector('[data-def-items]');
+    if (itemsEl) itemsEl.textContent = defenseFromItems(c);
+  }
+
   function vitalRowHTML(key, label, slot, canEdit, opts = {}) {
     const mana = !!opts.mana;
     const dmgLabel = mana ? 'Gastar' : 'Dano';
@@ -2432,16 +2460,38 @@
     `;
   }
 
+  function defenseShieldHTML(c, canEdit) {
+    return `
+      <div class="defense">
+        <span class="defense__shield" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7 3v5c0 4.5-3 8.2-7 9.5C8 19.2 5 15.5 5 11V6l7-3z"/></svg>
+          <strong class="defense__total" data-def-total>${totalDefense(c)}</strong>
+        </span>
+        <div class="defense__info">
+          <span class="defense__label">DEFESA</span>
+          <span class="defense__detail">
+            base
+            ${canEdit
+              ? `<input type="number" class="defense__base" data-def-base value="${defenseBaseOf(c)}" min="0" aria-label="Defesa base">`
+              : `<strong>${defenseBaseOf(c)}</strong>`}
+            + itens <strong data-def-items>${defenseFromItems(c)}</strong>
+          </span>
+        </div>
+      </div>
+    `;
+  }
+
   function charVitalsInner(c, canEdit) {
     const v = ensureVitals(c);
     const parts = RACE_HP_PARTS.filter((p) => v.hp && v.hp[p]);
-    const head = `<header class="char-block__head"><span class="section__eyebrow">PONTOS DE VIDA</span><span class="dossier-rule" aria-hidden="true"></span></header>`;
+    const head = `<header class="char-block__head"><span class="section__eyebrow">VITAIS</span><span class="dossier-rule" aria-hidden="true"></span></header>`;
+    const shield = defenseShieldHTML(c, canEdit);
     if (!parts.length && !v.mana) {
-      return head + '<p class="char-empty">Sem HP/Mana definidos. Edite a ficha para preencher.</p>';
+      return head + shield + '<p class="char-empty">Sem HP/Mana definidos. Edite a ficha para preencher.</p>';
     }
     const hpRows = parts.map((p) => vitalRowHTML(p, p, v.hp[p], canEdit)).join('');
     const manaRow = v.mana ? vitalRowHTML('mana', 'Mana', v.mana, canEdit, { mana: true }) : '';
-    return head + `<div class="vrows">${hpRows}${manaRow}</div>`;
+    return head + shield + `<div class="vrows">${hpRows}${manaRow}</div>`;
   }
 
   function charStatusInner(c, canEdit) {
@@ -2501,6 +2551,75 @@
     return head + rows + adder;
   }
 
+  const INV_SHIELD_ICON = '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7 3v5c0 4.5-3 8.2-7 9.5C8 19.2 5 15.5 5 11V6l7-3z"/></svg>';
+
+  function invRowHTML(it, i, canEdit) {
+    const def = Number(it.defense) || 0;
+    const qty = it.qty || 1;
+    const nameHTML = it.refId
+      ? `<a href="#/Itens/${encodeURIComponent(it.refId)}" class="inv-row__name">${escapeHtml(it.name || '')}</a>`
+      : `<span class="inv-row__name">${escapeHtml(it.name || '')}</span>`;
+    const defHTML = `<span class="inv-row__def" title="Defesa">${INV_SHIELD_ICON}${canEdit
+      ? `<input type="number" class="inv-def-input" data-inv-def value="${def}" min="0" aria-label="Defesa do item">`
+      : `<strong>${def}</strong>`}</span>`;
+    return `
+      <li class="inv-row ${it.equipped ? 'is-equipped' : ''}" data-idx="${i}">
+        <div class="inv-row__main">
+          ${nameHTML}
+          <span class="inv-row__meta">
+            ${it.summary ? `<span class="inv-row__sum">${escapeHtml(it.summary)}</span>` : ''}
+            ${defHTML}
+          </span>
+        </div>
+        <div class="inv-row__side">
+          ${canEdit ? `<button type="button" class="qty-btn" data-inv-qty="-1" aria-label="Menos">−</button>` : ''}
+          <span class="inv-row__q">×${qty}</span>
+          ${canEdit ? `<button type="button" class="qty-btn" data-inv-qty="1" aria-label="Mais">+</button>` : ''}
+          ${canEdit ? (it.equipped
+            ? `<button type="button" class="inv-act" data-inv-unequip>Desequipar</button>`
+            : `<button type="button" class="inv-act inv-act--equip" data-inv-equip>Equipar</button>`) : ''}
+          ${canEdit ? `<button type="button" class="inv-row__x" data-inv-remove aria-label="Remover">×</button>` : ''}
+        </div>
+      </li>
+    `;
+  }
+
+  function charInventoryInner(c, canEdit) {
+    const list = Array.isArray(c.inventory) ? c.inventory : [];
+    const itens = entriesIn('Itens');
+    const eqCount = list.filter((it) => it.equipped).length;
+    const eqRows = []; const bpRows = [];
+    list.forEach((it, i) => { (it.equipped ? eqRows : bpRows).push(invRowHTML(it, i, canEdit)); });
+    const head = `<header class="char-block__head"><span class="section__eyebrow">INVENTÁRIO</span><span class="dossier-rule" aria-hidden="true"></span></header>`;
+    const equippedBlock = `
+      <div class="inv-group">
+        <div class="inv-group__head">
+          <span class="inv-group__title">Equipado</span>
+          <span class="inv-group__count ${eqCount >= MAX_EQUIPPED ? 'is-full' : ''}">${eqCount}/${MAX_EQUIPPED}</span>
+        </div>
+        ${eqRows.length ? `<ul class="inv-list">${eqRows.join('')}</ul>` : '<p class="char-empty">Nada equipado.</p>'}
+      </div>`;
+    const backpackBlock = `
+      <div class="inv-group">
+        <div class="inv-group__head">
+          <span class="inv-group__title">Mochila</span>
+          <span class="inv-group__count">${bpRows.length}</span>
+        </div>
+        ${bpRows.length ? `<ul class="inv-list">${bpRows.join('')}</ul>` : '<p class="char-empty">Mochila vazia.</p>'}
+      </div>`;
+    const adder = canEdit ? `
+      <div class="char-add char-add--codex">
+        <select class="create-form__input char-select" data-inv-select>
+          <option value="">— escolher item do codex —</option>
+          ${itens.map((e) => `<option value="${escapeHtml(e.id)}">${escapeHtml(e.title)}</option>`).join('')}
+        </select>
+        <input type="text" class="create-form__input" data-inv-custom placeholder="ou item avulso…" maxlength="80">
+        <input type="number" class="create-form__input char-add__qty" data-inv-qty-input min="1" value="1" aria-label="Quantidade">
+        <button type="button" class="btn btn-ghost" data-inv-add>Adicionar</button>
+      </div>` : '';
+    return head + equippedBlock + backpackBlock + adder;
+  }
+
   /* ── FICHA (#/Persona/<id>) ───────────────────── */
   function viewCharacterSheet(id) {
     const c = characterById(id);
@@ -2544,7 +2663,7 @@
       <section class="char-live" id="charSheet" data-char-id="${escapeHtml(c.id)}" data-can-edit="${canEdit ? '1' : '0'}">
         <div class="char-block char-block--wide" id="charVitals">${charVitalsInner(c, canEdit)}</div>
         <div class="char-block" id="charStatus">${charStatusInner(c, canEdit)}</div>
-        <div class="char-block" id="charInventory">${charCodexListInner(c, canEdit, 'inv')}</div>
+        <div class="char-block" id="charInventory">${charInventoryInner(c, canEdit)}</div>
         <div class="char-block" id="charSpells">${charCodexListInner(c, canEdit, 'spell')}</div>
       </section>
     `;
@@ -4671,6 +4790,9 @@
       $('charStatus').querySelector('[data-status-input]').focus();
       save();
     };
+    const renderInv = () => { $('charInventory').innerHTML = charInventoryInner(c, true); refreshDefense(c); };
+    const invIdx = (el) => { const row = el.closest('.inv-row'); return row ? Number(row.dataset.idx) : -1; };
+
     const addCodex = (kind) => {
       const isInv = kind === 'inv';
       const box = isInv ? $('charInventory') : $('charSpells');
@@ -4679,17 +4801,19 @@
       let item = null;
       if (sel.value) {
         const e = entryById(sel.value);
-        if (e) item = { refId: e.id, name: e.title, summary: e.summary || '' };
+        if (e) item = { refId: e.id, name: e.title, summary: e.summary || '', defense: isInv ? parseDefense((e.fields || {})['Defesa']) : 0 };
       } else if ((custom.value || '').trim()) {
-        item = { refId: '', name: custom.value.trim(), summary: '' };
+        item = { refId: '', name: custom.value.trim(), summary: '', defense: 0 };
       }
       if (!item) { custom.focus(); return; }
       if (isInv) {
         const qtyEl = box.querySelector('[data-inv-qty-input]');
         item.qty = Math.max(1, parseInt(qtyEl && qtyEl.value, 10) || 1);
+        item.equipped = false;
         c.inventory.push(item);
-        box.innerHTML = charCodexListInner(c, true, 'inv');
+        renderInv();
       } else {
+        delete item.defense;
         c.spells.push(item);
         box.innerHTML = charCodexListInner(c, true, 'spell');
       }
@@ -4717,15 +4841,36 @@
       if (sRemove) { c.statuses.splice(Number(sRemove.dataset.statusRemove), 1); $('charStatus').innerHTML = charStatusInner(c, true); save(); return; }
       if (e.target.closest('[data-status-add]')) { addStatus(); return; }
 
+      // Inventário (mochila / equipado)
       const invQty = e.target.closest('[data-inv-qty]');
-      if (invQty) { const it = c.inventory[Number(invQty.dataset.idx)]; if (it) { it.qty = Math.max(1, (it.qty || 1) + Number(invQty.dataset.invQty)); $('charInventory').innerHTML = charCodexListInner(c, true, 'inv'); save(); } return; }
+      if (invQty) { const it = c.inventory[invIdx(invQty)]; if (it) { it.qty = Math.max(1, (it.qty || 1) + Number(invQty.dataset.invQty)); renderInv(); save(); } return; }
+      if (e.target.closest('[data-inv-equip]')) {
+        const it = c.inventory[invIdx(e.target)];
+        if (it) {
+          if (equippedCount(c) >= MAX_EQUIPPED) { alert(`Máximo de ${MAX_EQUIPPED} itens equipados.`); return; }
+          it.equipped = true; renderInv(); save();
+        }
+        return;
+      }
+      if (e.target.closest('[data-inv-unequip]')) { const it = c.inventory[invIdx(e.target)]; if (it) { it.equipped = false; renderInv(); save(); } return; }
       const invRemove = e.target.closest('[data-inv-remove]');
-      if (invRemove) { c.inventory.splice(Number(invRemove.dataset.invRemove), 1); $('charInventory').innerHTML = charCodexListInner(c, true, 'inv'); save(); return; }
+      if (invRemove) { const i = invIdx(invRemove); if (i >= 0) { c.inventory.splice(i, 1); renderInv(); save(); } return; }
       if (e.target.closest('[data-inv-add]')) { addCodex('inv'); return; }
 
       const spellRemove = e.target.closest('[data-spell-remove]');
       if (spellRemove) { c.spells.splice(Number(spellRemove.dataset.spellRemove), 1); $('charSpells').innerHTML = charCodexListInner(c, true, 'spell'); save(); return; }
       if (e.target.closest('[data-spell-add]')) { addCodex('spell'); return; }
+    });
+
+    // Defesa base e defesa por item (inputs numéricos).
+    root.addEventListener('input', (e) => {
+      if (e.target.matches('[data-def-base]')) {
+        ensureVitals(c).defense = Math.max(0, parseInt(e.target.value, 10) || 0);
+        refreshDefense(c); save();
+      } else if (e.target.matches('[data-inv-def]')) {
+        const it = c.inventory[invIdx(e.target)];
+        if (it) { it.defense = Math.max(0, parseInt(e.target.value, 10) || 0); refreshDefense(c); save(); }
+      }
     });
 
     root.addEventListener('keydown', (e) => {
