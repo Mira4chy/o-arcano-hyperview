@@ -89,8 +89,10 @@ de aparecer nessa aba, que agora lista somente fichas da tabela `characters`.
 
 ### Ficha viva (interativa)
 
-Depois de criada, a ficha (`#/Persona/<id>`) funciona como um documento vivo — o **dono** e o
-**Mestre** podem alterar; mudancas salvam sozinhas no Supabase:
+Depois de criada, a ficha (`#/Persona/<id>`) funciona como um documento vivo, organizado em
+**abas**: Visao Geral (atributos, despertar, identidade, pericias), Combate (defesa, HP, status),
+Inventario, Magias e Historia. Um cabecalho mostra retrato, nome e o resumo (Defesa/HP/Mana).
+O **dono** e o **Mestre** podem alterar; mudancas salvam sozinhas no Supabase:
 
 - **Pontos de Vida:** cada parte do corpo tem uma barra (atual/maximo) com campo de valor e
   botoes **Dano**/**Curar**; a Mana tem **Gastar**/**Restaurar**. A cor da barra muda conforme

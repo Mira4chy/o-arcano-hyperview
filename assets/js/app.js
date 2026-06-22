@@ -2659,15 +2659,6 @@
       </aside>
     `;
 
-    const liveSections = `
-      <section class="char-live" id="charSheet" data-char-id="${escapeHtml(c.id)}" data-can-edit="${canEdit ? '1' : '0'}">
-        <div class="char-block char-block--wide" id="charVitals">${charVitalsInner(c, canEdit)}</div>
-        <div class="char-block" id="charStatus">${charStatusInner(c, canEdit)}</div>
-        <div class="char-block" id="charInventory">${charInventoryInner(c, canEdit)}</div>
-        <div class="char-block" id="charSpells">${charCodexListInner(c, canEdit, 'spell')}</div>
-      </section>
-    `;
-
     const skillsMarkup = (c.skills && c.skills.length) ? `
       <aside class="entry__dossier-side">
         <header class="entry__dossier-head dossier-head--ornate">
@@ -2738,53 +2729,97 @@
       </div>
     ` : '';
 
-    const editButton = canEdit ? `
-      <a class="back-link back-link--edit" href="#/Persona/${encodeURIComponent(c.id)}/editar">
-        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 1 1 3 3L7 19l-4 1 1-4 12.5-12.5z"/></svg>
-        Editar ficha
-      </a>
-    ` : '';
-    const deleteButton = canEdit ? `
-      <button type="button" class="back-link back-link--danger" data-delete-character="${escapeHtml(c.id)}">
-        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"/></svg>
-        Apagar ficha
-      </button>
-    ` : '';
+    // ── Resumo (HP / Defesa / Mana) para o cabeçalho ──
+    const v = ensureVitals(c);
+    const hpParts = RACE_HP_PARTS.filter((p) => v.hp && v.hp[p]);
+    const hpCur = hpParts.reduce((s, p) => s + (Number(v.hp[p].cur) || 0), 0);
+    const hpMax = hpParts.reduce((s, p) => s + (Number(v.hp[p].max) || 0), 0);
+    const statPills = `
+      <div class="char-hero__stats">
+        <span class="hstat hstat--def"><span class="hstat__k">Defesa</span><span class="hstat__v">${totalDefense(c)}</span></span>
+        ${hpMax ? `<span class="hstat hstat--hp"><span class="hstat__k">HP</span><span class="hstat__v">${hpCur}<small>/${hpMax}</small></span></span>` : ''}
+        ${v.mana ? `<span class="hstat hstat--mana"><span class="hstat__k">Mana</span><span class="hstat__v">${v.mana.cur}<small>/${v.mana.max}</small></span></span>` : ''}
+      </div>
+    `;
+
+    const tabs = [
+      { id: 'geral', label: 'Visão Geral' },
+      { id: 'combate', label: 'Combate' },
+      { id: 'inventario', label: 'Inventário' },
+      { id: 'magias', label: 'Magias' },
+      { id: 'historia', label: 'História' }
+    ];
 
     return `
-      <article class="entry entry--portrait" style="--hue:${theme.hue}">
-        <div class="entry__portrait-card entry__portrait-card--tall" style="--hue:${theme.hue}">
-          <header class="entry__portrait-header">
-            <nav class="breadcrumb">
-              <a href="#/">Codex</a><span>/</span>
-              <a href="#/Persona">${escapeHtml(tab.title)}</a><span>/</span>
-              <span class="breadcrumb__current">${escapeHtml(c.name || 'Ficha')}</span>
-            </nav>
-            <div class="entry__tagline">
+      <article class="entry char-sheet" id="charSheet" style="--hue:${theme.hue}"
+               data-char-id="${escapeHtml(c.id)}" data-can-edit="${canEdit ? '1' : '0'}">
+        <nav class="breadcrumb">
+          <a href="#/">Codex</a><span>/</span>
+          <a href="#/Persona">${escapeHtml(tab.title)}</a><span>/</span>
+          <span class="breadcrumb__current">${escapeHtml(c.name || 'Ficha')}</span>
+        </nav>
+
+        <header class="char-hero">
+          <div class="char-hero__portrait">
+            ${c.image ? `<img src="${c.image}" alt="" onerror="this.parentElement.classList.add('is-fallback')">` : ''}
+            <div class="char-hero__fallback">${iconOf('Persona')}</div>
+          </div>
+          <div class="char-hero__id">
+            <div class="char-hero__badges">
               <span class="char-badge char-badge--${isMage ? 'mage' : 'mundane'}">${isMage ? ('Mago · ' + escapeHtml((schoolById(awk.school) || {}).name || '')) : 'Não-mago'}</span>
-              ${c.raceName ? `<span class="entry__cat">${escapeHtml(c.raceName)}</span>` : ''}
+              ${c.raceName ? `<span class="char-badge char-badge--race">${escapeHtml(c.raceName)}</span>` : ''}
             </div>
-            <h1 class="entry__title entry__title--portrait" data-text-reveal>${escapeHtml(c.name || 'Sem nome')}</h1>
-          </header>
-          <div class="entry__portrait-grid">
-            <div class="entry__portrait" style="aspect-ratio: 2 / 3;">
-              ${c.image ? `<img class="entry__portrait-img" src="${c.image}" alt="" onerror="this.parentElement.classList.add('is-fallback')">` : ''}
-              <div class="entry__portrait-fallback">${iconOf('Persona')}</div>
-              <div class="entry__portrait-shine" aria-hidden="true"></div>
+            <h1 class="char-hero__name" data-text-reveal>${escapeHtml(c.name || 'Sem nome')}</h1>
+            ${(c.identity && c.identity.papel) ? `<p class="char-hero__role">${escapeHtml(c.identity.papel)}</p>` : ''}
+            ${statPills}
+          </div>
+          ${canEdit ? `
+            <div class="char-hero__actions">
+              <a class="icon-btn" href="#/Persona/${encodeURIComponent(c.id)}/editar" title="Editar ficha" aria-label="Editar ficha">
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 1 1 3 3L7 19l-4 1 1-4 12.5-12.5z"/></svg>
+              </a>
+              <button type="button" class="icon-btn icon-btn--danger" data-delete-character="${escapeHtml(c.id)}" title="Apagar ficha" aria-label="Apagar ficha">
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"/></svg>
+              </button>
             </div>
-            <div class="race-dossier-view">
+          ` : ''}
+        </header>
+
+        <nav class="char-tabs" role="tablist">
+          ${tabs.map((t, i) => `<button type="button" class="char-tab ${i === 0 ? 'is-active' : ''}" role="tab" data-tab="${t.id}">${t.label}</button>`).join('')}
+        </nav>
+
+        <div class="char-panels">
+          <section class="char-panel is-active" data-panel="geral">
+            <div class="char-cards">
               ${attrMarkup}
               ${awakeningMarkup}
               ${identityMarkup}
               ${skillsMarkup}
             </div>
-          </div>
+          </section>
+
+          <section class="char-panel" data-panel="combate">
+            <div class="char-cards">
+              <div class="char-block char-block--wide" id="charVitals">${charVitalsInner(c, canEdit)}</div>
+              <div class="char-block" id="charStatus">${charStatusInner(c, canEdit)}</div>
+            </div>
+          </section>
+
+          <section class="char-panel" data-panel="inventario">
+            <div class="char-block" id="charInventory">${charInventoryInner(c, canEdit)}</div>
+          </section>
+
+          <section class="char-panel" data-panel="magias">
+            <div class="char-block" id="charSpells">${charCodexListInner(c, canEdit, 'spell')}</div>
+          </section>
+
+          <section class="char-panel" data-panel="historia">
+            ${bodyMarkup || '<p class="char-empty">Nenhuma história escrita ainda.</p>'}
+          </section>
         </div>
-        ${liveSections}
-        ${bodyMarkup ? `<div class="entry__main entry__main--full">${bodyMarkup}</div>` : ''}
-        <div class="entry__actions-row">
-          ${editButton}
-          ${deleteButton}
+
+        <div class="char-sheet__foot">
           <a href="#/Persona" class="back-link">
             <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
             Voltar às Personas
@@ -4753,6 +4788,19 @@
     root.dataset.bound = '1';
     const c = characterById(root.dataset.charId);
     if (!c) return;
+
+    // Abas (sempre ativas, mesmo para quem só visualiza)
+    const tabBar = root.querySelector('.char-tabs');
+    if (tabBar) {
+      tabBar.addEventListener('click', (e) => {
+        const btn = e.target.closest('[data-tab]');
+        if (!btn) return;
+        const id = btn.dataset.tab;
+        tabBar.querySelectorAll('[data-tab]').forEach((b) => b.classList.toggle('is-active', b === btn));
+        root.querySelectorAll('.char-panel').forEach((p) => p.classList.toggle('is-active', p.dataset.panel === id));
+      });
+    }
+
     const canEdit = root.dataset.canEdit === '1';
     if (!canEdit) return;
     ensureVitals(c);
