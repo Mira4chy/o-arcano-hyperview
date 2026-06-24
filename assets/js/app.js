@@ -170,6 +170,36 @@
   }
   const fmtMod = (m) => (m > 0 ? '+' + m : String(m));
 
+  /* Ícones (stroke) usados nos cabeçalhos da ficha redesenhada. */
+  const FICON = {
+    attr:   '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"><path d="M12 2l2.4 4.9 5.4.8-3.9 3.8.9 5.4L12 15l-4.8 2.5.9-5.4L4.2 7.7l5.4-.8z"/></svg>',
+    feat:   '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"><path d="M12 3l1.6 4.6L18 9l-3.4 2.7L15 16l-3-2.4L9 16l.4-4.3L6 9l4.4-1.4z"/><path d="M5 4v3M3.5 5.5h3M18 16v3M16.5 17.5h3"/></svg>',
+    shield: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7 3v5c0 4.5-3 8.2-7 9.5C8 19.2 5 15.5 5 11V6l7-3z"/></svg>',
+    check:  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>',
+    heart:  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21C7 17 3 13 3 8.5 3 6 5 4 7.5 4 9.2 4 10.7 5 12 7c1.3-2 2.8-3 4.5-3C19 4 21 6 21 8.5 21 13 17 17 12 21z"/></svg>',
+    bolt:   '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2L3 14h7l-1 8 10-12h-7z"/></svg>',
+    sword:  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 3.5l6 6M3 21l4-1L18 9l-3-3L4 17l-1 4z"/></svg>',
+    bag:    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16v13H4zM9 7V4h6v3"/></svg>',
+    spark:  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"><path d="M12 2l1.8 5.6L20 9.4l-4.8 3.6L17 19l-5-3.5L7 19l1.8-6L4 9.4l6.2-1.8z"/></svg>',
+    mana:   '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"><path d="M12 2l4 7-4 13-4-13z"/></svg>',
+    status: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 9v4M12 17h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>',
+    clock:  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>',
+    gem:    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"><path d="M6 3h12l3 6-9 12L3 9z"/><path d="M3 9h18M9 3 7 9l5 12 5-12-2-6"/></svg>',
+    book:   '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H20v15H6.5A2.5 2.5 0 0 0 4 20.5z"/><path d="M4 20.5A2.5 2.5 0 0 1 6.5 18H20"/></svg>',
+    dice:   '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="3"/><circle cx="9" cy="9" r="1.1" fill="currentColor" stroke="none"/><circle cx="15" cy="15" r="1.1" fill="currentColor" stroke="none"/><circle cx="15" cy="9" r="1.1" fill="currentColor" stroke="none"/><circle cx="9" cy="15" r="1.1" fill="currentColor" stroke="none"/></svg>'
+  };
+
+  /* Modificadores de atributo já com bônus do Despertar aplicado. */
+  function attrModsView(c, mod, bonusAttr) {
+    const out = {};
+    CHAR_ATTRIBUTES.forEach((a) => {
+      const bonus = (bonusAttr && bonusAttr === a) ? 1 : 0;
+      const score = (c.attributes && c.attributes[a] != null ? Number(c.attributes[a]) : CHAR_ATTR_BASE) + bonus;
+      out[a] = { score, m: attrModifierFor(score, a, mod), bonus };
+    });
+    return out;
+  }
+
   /* Interpreta o campo "Modificador" de uma raça em { atributo: delta }.
      Aceita formatos como "+1 Força, -1 Destreza", "Força +2; Vontade -1". */
   function parseRaceModifier(text) {
@@ -2426,13 +2456,11 @@
   function equippedCount(c) {
     return (Array.isArray(c.inventory) ? c.inventory : []).filter((it) => it.equipped).length;
   }
-  const MAX_EQUIPPED = 5;
+  const MAX_EQUIPPED = 6;
   /* Atualiza o escudo no DOM sem re-renderizar o bloco inteiro. */
   function refreshDefense(c) {
-    const totalEl = document.querySelector('[data-def-total]');
-    if (totalEl) totalEl.textContent = totalDefense(c);
-    const itemsEl = document.querySelector('[data-def-items]');
-    if (itemsEl) itemsEl.textContent = defenseFromItems(c);
+    document.querySelectorAll('[data-def-total]').forEach((el) => { el.textContent = totalDefense(c); });
+    document.querySelectorAll('[data-def-items]').forEach((el) => { el.textContent = defenseFromItems(c); });
   }
 
   function vitalRowHTML(key, label, slot, canEdit, opts = {}) {
@@ -2484,7 +2512,7 @@
   function charVitalsInner(c, canEdit) {
     const v = ensureVitals(c);
     const parts = RACE_HP_PARTS.filter((p) => v.hp && v.hp[p]);
-    const head = `<header class="char-block__head"><span class="section__eyebrow">VITAIS</span><span class="dossier-rule" aria-hidden="true"></span></header>`;
+    const head = `<h3 class="fcard__h"><span class="fcard__ico">${FICON.heart}</span>Vitais</h3>`;
     const shield = defenseShieldHTML(c, canEdit);
     if (!parts.length && !v.mana) {
       return head + shield + '<p class="char-empty">Sem HP/Mana definidos. Edite a ficha para preencher.</p>';
@@ -2496,7 +2524,7 @@
 
   function charStatusInner(c, canEdit) {
     const list = Array.isArray(c.statuses) ? c.statuses : [];
-    const head = `<header class="char-block__head"><span class="section__eyebrow">STATUS</span><span class="dossier-rule" aria-hidden="true"></span></header>`;
+    const head = `<h3 class="fcard__h"><span class="fcard__ico">${FICON.status}</span>Condições</h3>`;
     const body = list.length
       ? `<div class="status-chips">${list.map((s, i) => `
           <span class="status-chip">${escapeHtml(s.name || '')}${canEdit ? `<button type="button" class="status-chip__x" data-status-remove="${i}" aria-label="Remover ${escapeHtml(s.name || '')}">×</button>` : ''}</span>
@@ -2510,105 +2538,144 @@
     return head + body + adder;
   }
 
+  /* Livro de magias — grade de cards (estado vivo). */
   function charCodexListInner(c, canEdit, kind) {
-    const isInv = kind === 'inv';
-    const list = isInv ? (Array.isArray(c.inventory) ? c.inventory : []) : (Array.isArray(c.spells) ? c.spells : []);
-    const codex = entriesIn(isInv ? 'Itens' : 'Magias');
-    const eyebrow = isInv ? 'INVENTÁRIO' : 'LIVRO DE MAGIAS';
-    const codexTab = isInv ? 'Itens' : 'Magias';
-    const removeAttr = isInv ? 'data-inv-remove' : 'data-spell-remove';
-    const head = `<header class="char-block__head"><span class="section__eyebrow">${eyebrow}</span><span class="dossier-rule" aria-hidden="true"></span></header>`;
-    const rows = list.length ? `<ul class="inv-list">${list.map((it, i) => `
-      <li class="inv-row">
-        <div class="inv-row__main">
-          ${it.refId
-            ? `<a href="#/${codexTab}/${encodeURIComponent(it.refId)}" class="inv-row__name">${escapeHtml(it.name || '')}</a>`
-            : `<span class="inv-row__name">${escapeHtml(it.name || '')}</span>`}
-          ${it.summary ? `<span class="inv-row__sum">${escapeHtml(it.summary)}</span>` : ''}
+    const list = Array.isArray(c.spells) ? c.spells : [];
+    const codex = entriesIn('Magias');
+    const v = ensureVitals(c);
+    const manaTxt = v.mana ? `${v.mana.cur} / ${v.mana.max}` : '—';
+
+    const bar = `
+      <div class="spell-bar">
+        <span class="spell-bar__mana">${FICON.mana}<span>Mana ${manaTxt}</span></span>
+        <span class="spell-bar__m">Magias conhecidas <b>${list.length}</b></span>
+        <span class="spell-bar__spacer"></span>
+        ${canEdit ? `<button type="button" class="btn-primary spell-bar__add" data-spell-focus><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>Adicionar magia</button>` : ''}
+      </div>`;
+
+    const tools = list.length ? `
+      <div class="ftools" data-filter-scope>
+        <label class="fsearch"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg><input type="search" data-filter placeholder="Pesquisar magia…"></label>
+      </div>` : '';
+
+    const cards = list.length ? `<div class="spell-grid">${list.map((it, i) => `
+      <article class="spell-card" data-filter-item>
+        <div class="spell-card__top">
+          <span class="spell-card__ico">${FICON.spark}</span>
+          <div class="spell-card__id">
+            <span class="spell-card__nameline">
+              ${it.refId
+                ? `<a href="#/Magias/${encodeURIComponent(it.refId)}" class="spell-card__name">${escapeHtml(it.name || '')}</a>`
+                : `<span class="spell-card__name">${escapeHtml(it.name || '')}</span>`}
+              ${it.refId ? `<span class="spell-card__codex" title="Magia do codex">${FICON.book}</span>` : ''}
+            </span>
+          </div>
+          ${canEdit ? `<button type="button" class="spell-card__x" data-spell-remove="${i}" aria-label="Remover magia">×</button>` : ''}
         </div>
-        <div class="inv-row__side">
-          ${isInv ? `
-            ${canEdit ? `<button type="button" class="qty-btn" data-inv-qty="-1" data-idx="${i}" aria-label="Menos">−</button>` : ''}
-            <span class="inv-row__q">×${it.qty || 1}</span>
-            ${canEdit ? `<button type="button" class="qty-btn" data-inv-qty="1" data-idx="${i}" aria-label="Mais">+</button>` : ''}
-          ` : ''}
-          ${canEdit ? `<button type="button" class="inv-row__x" ${removeAttr}="${i}" aria-label="Remover">×</button>` : ''}
-        </div>
-      </li>`).join('')}</ul>` : `<p class="char-empty">${isInv ? 'Inventário vazio.' : 'Nenhuma magia registrada.'}</p>`;
-    const customAttr = isInv ? 'data-inv-custom' : 'data-spell-custom';
-    const selectAttr = isInv ? 'data-inv-select' : 'data-spell-select';
-    const addAttr = isInv ? 'data-inv-add' : 'data-spell-add';
+        ${it.summary ? `<p class="spell-card__d">${escapeHtml(it.summary)}</p>` : ''}
+      </article>`).join('')}</div>` : `<p class="char-empty">Nenhuma magia registrada.</p>`;
+
     const adder = canEdit ? `
-      <div class="char-add char-add--codex">
-        <select class="create-form__input char-select" ${selectAttr}>
-          <option value="">— ${isInv ? 'escolher item' : 'escolher magia'} do codex —</option>
+      <div class="char-add char-add--codex" data-spell-adder>
+        <select class="create-form__input char-select" data-spell-select>
+          <option value="">— escolher magia do codex —</option>
           ${codex.map((e) => `<option value="${escapeHtml(e.id)}">${escapeHtml(e.title)}</option>`).join('')}
         </select>
-        <input type="text" class="create-form__input" ${customAttr} placeholder="ou ${isInv ? 'item' : 'magia'} avulso…" maxlength="80">
-        ${isInv ? '<input type="number" class="create-form__input char-add__qty" data-inv-qty-input min="1" value="1" aria-label="Quantidade">' : ''}
-        <button type="button" class="btn btn-ghost" ${addAttr}>Adicionar</button>
+        <input type="text" class="create-form__input" data-spell-custom placeholder="ou magia avulsa…" maxlength="80">
+        <button type="button" class="btn btn-ghost" data-spell-add>Adicionar</button>
       </div>` : '';
-    return head + rows + adder;
+
+    return bar + tools + cards + adder;
   }
 
   const INV_SHIELD_ICON = '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7 3v5c0 4.5-3 8.2-7 9.5C8 19.2 5 15.5 5 11V6l7-3z"/></svg>';
 
+  /* Slot de equipamento (grade Equipamentos). */
+  function invSlotHTML(it, i, canEdit) {
+    const def = Number(it.defense) || 0;
+    return `
+      <div class="eq-slot is-filled inv-row" data-idx="${i}" title="${escapeHtml(it.name || '')}">
+        <span class="eq-slot__ico">${FICON.sword}</span>
+        <span class="eq-slot__name">${escapeHtml(it.name || '')}</span>
+        ${def ? `<span class="eq-slot__def">${INV_SHIELD_ICON}${def}</span>` : ''}
+        ${canEdit ? `<button type="button" class="eq-slot__x" data-inv-unequip aria-label="Desequipar ${escapeHtml(it.name || '')}">×</button>` : ''}
+      </div>`;
+  }
+
+  /* Linha da mochila (visual tabular, mantém os hooks data-inv-*). */
   function invRowHTML(it, i, canEdit) {
     const def = Number(it.defense) || 0;
     const qty = it.qty || 1;
     const nameHTML = it.refId
       ? `<a href="#/Itens/${encodeURIComponent(it.refId)}" class="inv-row__name">${escapeHtml(it.name || '')}</a>`
       : `<span class="inv-row__name">${escapeHtml(it.name || '')}</span>`;
-    const defHTML = `<span class="inv-row__def" title="Defesa">${INV_SHIELD_ICON}${canEdit
-      ? `<input type="number" class="inv-def-input" data-inv-def value="${def}" min="0" aria-label="Defesa do item">`
-      : `<strong>${def}</strong>`}</span>`;
     return `
-      <li class="inv-row ${it.equipped ? 'is-equipped' : ''}" data-idx="${i}">
+      <li class="inv-row" data-idx="${i}" data-filter-item>
+        <span class="inv-row__ic">${FICON.bag}</span>
         <div class="inv-row__main">
           ${nameHTML}
-          <span class="inv-row__meta">
-            ${it.summary ? `<span class="inv-row__sum">${escapeHtml(it.summary)}</span>` : ''}
-            ${defHTML}
-          </span>
+          ${it.summary ? `<span class="inv-row__sum">${escapeHtml(it.summary)}</span>` : ''}
         </div>
-        <div class="inv-row__side">
+        <span class="inv-row__qty">
           ${canEdit ? `<button type="button" class="qty-btn" data-inv-qty="-1" aria-label="Menos">−</button>` : ''}
           <span class="inv-row__q">×${qty}</span>
           ${canEdit ? `<button type="button" class="qty-btn" data-inv-qty="1" aria-label="Mais">+</button>` : ''}
-          ${canEdit ? (it.equipped
-            ? `<button type="button" class="inv-act" data-inv-unequip>Desequipar</button>`
-            : `<button type="button" class="inv-act inv-act--equip" data-inv-equip>Equipar</button>`) : ''}
+        </span>
+        <span class="inv-row__def" title="Defesa">${INV_SHIELD_ICON}${canEdit
+          ? `<input type="number" class="inv-def-input" data-inv-def value="${def}" min="0" aria-label="Defesa do item">`
+          : `<strong>${def}</strong>`}</span>
+        <span class="inv-row__type">${it.refId ? 'Codex' : 'Avulso'}</span>
+        <span class="inv-row__acts">
+          ${canEdit ? `<button type="button" class="inv-act inv-act--equip" data-inv-equip>Equipar</button>` : ''}
           ${canEdit ? `<button type="button" class="inv-row__x" data-inv-remove aria-label="Remover">×</button>` : ''}
-        </div>
-      </li>
-    `;
+        </span>
+      </li>`;
   }
 
   function charInventoryInner(c, canEdit) {
     const list = Array.isArray(c.inventory) ? c.inventory : [];
     const itens = entriesIn('Itens');
-    const eqCount = list.filter((it) => it.equipped).length;
-    const eqRows = []; const bpRows = [];
-    list.forEach((it, i) => { (it.equipped ? eqRows : bpRows).push(invRowHTML(it, i, canEdit)); });
-    const head = `<header class="char-block__head"><span class="section__eyebrow">INVENTÁRIO</span><span class="dossier-rule" aria-hidden="true"></span></header>`;
-    const equippedBlock = `
-      <div class="inv-group">
-        <div class="inv-group__head">
-          <span class="inv-group__title">Equipado</span>
-          <span class="inv-group__count ${eqCount >= MAX_EQUIPPED ? 'is-full' : ''}">${eqCount}/${MAX_EQUIPPED}</span>
-        </div>
-        ${eqRows.length ? `<ul class="inv-list">${eqRows.join('')}</ul>` : '<p class="char-empty">Nada equipado.</p>'}
+    const eq = []; const bpRows = [];
+    list.forEach((it, i) => { if (it.equipped) eq.push([it, i]); else bpRows.push(invRowHTML(it, i, canEdit)); });
+    const eqCount = eq.length;
+    const totalQty = list.reduce((s, it) => s + (it.qty || 1), 0);
+
+    const bar = `
+      <div class="inv-bar">
+        <span class="inv-bar__m">Itens <b>${list.length}</b></span>
+        <span class="inv-bar__m">Unidades <b>${totalQty}</b></span>
+        <span class="inv-bar__m">Defesa por itens <b>+${defenseFromItems(c)}</b></span>
+        <span class="inv-bar__spacer"></span>
+        ${canEdit ? `<button type="button" class="btn-primary inv-bar__add" data-inv-focus><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>Adicionar item</button>` : ''}
       </div>`;
-    const backpackBlock = `
-      <div class="inv-group">
-        <div class="inv-group__head">
-          <span class="inv-group__title">Mochila</span>
-          <span class="inv-group__count">${bpRows.length}</span>
-        </div>
-        ${bpRows.length ? `<ul class="inv-list">${bpRows.join('')}</ul>` : '<p class="char-empty">Mochila vazia.</p>'}
+
+    const slots = [];
+    for (let s = 0; s < MAX_EQUIPPED; s++) {
+      slots.push(eq[s]
+        ? invSlotHTML(eq[s][0], eq[s][1], canEdit)
+        : `<div class="eq-slot is-empty"><span class="eq-slot__ico"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M12 7v10M7 12h10"/></svg></span></div>`);
+    }
+    const equipCol = `
+      <div class="fcard inv-equip">
+        <h3 class="fcard__h"><span class="fcard__ico">${FICON.shield}</span>Equipamentos<span class="fcard__count ${eqCount >= MAX_EQUIPPED ? 'is-full' : ''}">${eqCount}/${MAX_EQUIPPED}</span></h3>
+        <div class="eq-grid">${slots.join('')}</div>
       </div>`;
+
+    const backpackCol = `
+      <div class="inv-backpack" data-filter-scope>
+        <div class="ftools">
+          <label class="fsearch"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg><input type="search" data-filter placeholder="Pesquisar item…"></label>
+        </div>
+        ${bpRows.length ? `
+          <div class="fcard inv-list-card">
+            <div class="inv-thead"><span>Item</span><span>Qtd.</span><span>Defesa</span><span>Tipo</span><span></span></div>
+            <ul class="inv-list">${bpRows.join('')}</ul>
+          </div>`
+          : `<div class="fcard"><p class="char-empty">Mochila vazia. ${canEdit ? 'Adicione itens abaixo.' : ''}</p></div>`}
+      </div>`;
+
     const adder = canEdit ? `
-      <div class="char-add char-add--codex">
+      <div class="char-add char-add--codex" data-inv-adder>
         <select class="create-form__input char-select" data-inv-select>
           <option value="">— escolher item do codex —</option>
           ${itens.map((e) => `<option value="${escapeHtml(e.id)}">${escapeHtml(e.title)}</option>`).join('')}
@@ -2617,7 +2684,8 @@
         <input type="number" class="create-form__input char-add__qty" data-inv-qty-input min="1" value="1" aria-label="Quantidade">
         <button type="button" class="btn btn-ghost" data-inv-add>Adicionar</button>
       </div>` : '';
-    return head + equippedBlock + backpackBlock + adder;
+
+    return bar + `<div class="inv-layout">${equipCol}${backpackCol}</div>` + adder;
   }
 
   /* ── FICHA (#/Persona/<id>) ───────────────────── */
@@ -2633,125 +2701,126 @@
     const isMage = awkIsAcceptedMage(awk);
     const bonusAttr = awkIsNonMage(awk) ? awk.bonusAttr : '';
 
-    const attrMarkup = `
-      <aside class="entry__dossier-side">
-        <header class="entry__dossier-head dossier-head--ornate">
-          <span class="section__eyebrow">ATRIBUTOS</span>
-          <span class="dossier-rule" aria-hidden="true"></span>
-        </header>
-        <div class="attr-grid attr-grid--view">
-          ${CHAR_ATTRIBUTES.map((a) => {
-            const raceMod = Number((mod && mod[a]) || 0);
-            const bonus = (bonusAttr && bonusAttr === a) ? 1 : 0;
-            const score = (c.attributes && c.attributes[a] != null ? Number(c.attributes[a]) : CHAR_ATTR_BASE) + bonus;
-            const m = attrModifierFor(score, a, mod);
-            const note = bonus ? '+1 despertar' : (raceMod ? fmtMod(raceMod) + ' raça' : '');
-            return `
-              <div class="attr-cell">
-                <span class="attr-cell__name">${escapeHtml(a)}</span>
-                <span class="attr-cell__value">${score}</span>
-                <span class="attr-cell__mod">${fmtMod(m)}</span>
-                ${note ? `<span class="attr-cell__bonus">${escapeHtml(note)}</span>` : ''}
-              </div>
-            `;
-          }).join('')}
-        </div>
-      </aside>
-    `;
-
-    const skillsMarkup = (c.skills && c.skills.length) ? `
-      <aside class="entry__dossier-side">
-        <header class="entry__dossier-head dossier-head--ornate">
-          <span class="section__eyebrow">PERÍCIAS / TALENTOS</span>
-          <span class="dossier-rule" aria-hidden="true"></span>
-        </header>
-        <ul class="meta-list-items">
-          ${c.skills.map((s) => `<li>${escapeHtml(s)}</li>`).join('')}
-        </ul>
-      </aside>
-    ` : '';
-
-    let awakeningMarkup = '';
-    if (isMage) {
-      const sc = schoolById(awk.school) || MAGIC_SCHOOLS[0];
-      awakeningMarkup = `
-        <aside class="entry__dossier-side dossier-card--magic" style="--awk-hue:${sc.hue}">
-          <header class="entry__dossier-head dossier-head--ornate">
-            <span class="section__eyebrow">O DESPERTAR · MAGO</span>
-            <span class="dossier-rule" aria-hidden="true"></span>
-          </header>
-          <div class="char-school">
-            <span class="char-school__name">${escapeHtml(sc.name)}</span>
-            <p class="char-school__lore">${escapeHtml(sc.lore)}</p>
-          </div>
-          <dl class="meta-list">
-            <div class="meta-row"><dt>Escola (1d100)</dt><dd>${awk.schoolRoll || '—'}</dd></div>
-            <div class="meta-row"><dt>Resistência</dt><dd>travada em ${CHAR_MAGE_RES_CAP} na criação</dd></div>
-          </dl>
-        </aside>
-      `;
-    } else if (awk.resolved) {
-      awakeningMarkup = `
-        <aside class="entry__dossier-side">
-          <header class="entry__dossier-head dossier-head--ornate">
-            <span class="section__eyebrow">O DESPERTAR · MUNDANO</span>
-            <span class="dossier-rule" aria-hidden="true"></span>
-          </header>
-          <dl class="meta-list">
-            ${awk.renounced ? '<div class="meta-row"><dt>Mana</dt><dd>renunciada</dd></div>' : ''}
-            <div class="meta-row"><dt>Bônus</dt><dd>+1 Nível de HP${bonusAttr ? ` · +1 ${escapeHtml(bonusAttr)}` : ''}</dd></div>
-          </dl>
-        </aside>
-      `;
-    }
-
-    const idFields = [];
+    const A = attrModsView(c, mod, bonusAttr);
     const idn = c.identity || {};
-    if (idn.papel) idFields.push(['Papel', idn.papel]);
-    if (idn.desejo) idFields.push(['Desejo', idn.desejo]);
-    if (idn.ferida) idFields.push(['Ferida', idn.ferida]);
-    const identityMarkup = idFields.length ? `
-      <aside class="entry__dossier-side">
-        <header class="entry__dossier-head dossier-head--ornate">
-          <span class="section__eyebrow">IDENTIDADE</span>
-          <span class="dossier-rule" aria-hidden="true"></span>
-        </header>
-        <dl class="meta-list">
-          ${idFields.map(([k, v]) => `<div class="meta-row"><dt>${escapeHtml(k)}</dt><dd>${escapeHtml(v)}</dd></div>`).join('')}
-        </dl>
-      </aside>
-    ` : '';
+    const sc = isMage ? (schoolById(awk.school) || MAGIC_SCHOOLS[0]) : null;
+    const className = isMage ? ('Mago' + (sc && sc.name ? ' · ' + sc.name : '')) : 'Não-mago';
 
-    const bodyMarkup = bodyHtml ? `
-      <div class="entry__body entry__body--rich">
-        <span class="section__eyebrow">HISTÓRIA</span>
-        <div class="rt-content">${sanitizeHtml(bodyHtml)}</div>
-      </div>
-    ` : '';
-
-    // ── Resumo (HP / Defesa / Mana) para o cabeçalho ──
+    // ── Vitais resumidos para o cabeçalho ──
     const v = ensureVitals(c);
     const hpParts = RACE_HP_PARTS.filter((p) => v.hp && v.hp[p]);
     const hpCur = hpParts.reduce((s, p) => s + (Number(v.hp[p].cur) || 0), 0);
     const hpMax = hpParts.reduce((s, p) => s + (Number(v.hp[p].max) || 0), 0);
-    const statPills = `
-      <div class="char-hero__stats">
-        <span class="hstat hstat--def"><span class="hstat__k">Defesa</span><span class="hstat__v">${totalDefense(c)}</span></span>
-        ${hpMax ? `<span class="hstat hstat--hp"><span class="hstat__k">HP</span><span class="hstat__v">${hpCur}<small>/${hpMax}</small></span></span>` : ''}
-        ${v.mana ? `<span class="hstat hstat--mana"><span class="hstat__k">Mana</span><span class="hstat__v">${v.mana.cur}<small>/${v.mana.max}</small></span></span>` : ''}
-      </div>
-    `;
+    const initMod = A['Destreza'] ? A['Destreza'].m : 0;
+    const level = Number(c.level) || 1;
+    const playerName = (idn.ownerLabel || (auth.user && c.userId === auth.user.id ? (auth.user.name || auth.user.email) : '')) || '—';
+
+    const vitalBar = (cls, k, dotHue, slot) => `
+      <div class="hvital hvital--${cls}">
+        <div class="hvital__top"><span class="hvital__k"><span class="hvital__dot"></span>${k}</span>
+          <span class="hvital__v">${slot.cur}<small>/${slot.max}</small></span></div>
+        <div class="hvbar"><span style="width:${vbarPct(slot.cur, slot.max)}%"></span></div>
+      </div>`;
+    const hpHead = hpMax ? vitalBar('hp', 'Vida', 0, { cur: hpCur, max: hpMax }) : '';
+    const manaHead = v.mana ? vitalBar('mana', 'Mana', 0, v.mana) : '';
+
+    const circles = `
+      <div class="hcircles">
+        <span class="hcircle"><b data-def-total>${totalDefense(c)}</b><span>Defesa</span></span>
+        <span class="hcircle"><b>${fmtMod(initMod)}</b><span>Iniciativa</span></span>
+        <span class="hcircle"><b>9m</b><span>Movimento</span></span>
+        <span class="hcircle hcircle--muted"><b>—</b><span>CA</span></span>
+      </div>`;
+
+    // ════ VISÃO GERAL ════
+    const attrCard = `
+      <div class="fcard">
+        <h3 class="fcard__h"><span class="fcard__ico">${FICON.attr}</span>Atributos</h3>
+        <div class="attr-rows">
+          ${CHAR_ATTRIBUTES.map((a) => {
+            const cell = A[a];
+            const note = cell.bonus ? 'despertar' : (Number((mod && mod[a]) || 0) ? 'raça' : '');
+            return `<div class="attr-row">
+              <span class="attr-row__n">${escapeHtml(a)}${note ? `<em class="attr-row__note">${note}</em>` : ''}</span>
+              <span class="attr-row__r"><span class="attr-row__v">${cell.score}</span><span class="attr-row__m">${fmtMod(cell.m)}</span></span>
+            </div>`;
+          }).join('')}
+        </div>
+      </div>`;
+
+    const featItems = [];
+    if (isMage && sc) featItems.push([FICON.spark, sc.name, sc.lore]);
+    if (idn.desejo) featItems.push([FICON.feat, 'Desejo', idn.desejo]);
+    if (idn.ferida) featItems.push([FICON.status, 'Ferida', idn.ferida]);
+    if (awk.resolved && !isMage) featItems.push([FICON.feat, 'Caminho mundano', `+1 Nível de HP${bonusAttr ? ` · +1 ${bonusAttr}` : ''}${awk.renounced ? ' · Mana renunciada' : ''}`]);
+    const featCard = `
+      <div class="fcard">
+        <h3 class="fcard__h"><span class="fcard__ico">${FICON.feat}</span>Características</h3>
+        ${featItems.length ? featItems.map(([ic, t, d]) => `
+          <div class="feat-row">
+            <span class="feat-row__ico">${ic}</span>
+            <div class="feat-row__b"><div class="feat-row__t">${escapeHtml(t)}</div><div class="feat-row__d">${escapeHtml(d)}</div></div>
+          </div>`).join('') : '<p class="char-empty">Nenhuma característica registrada.</p>'}
+      </div>`;
+
+    const resistCard = `
+      <div class="fcard">
+        <h3 class="fcard__h"><span class="fcard__ico">${FICON.shield}</span>Resistências</h3>
+        <p class="char-empty char-empty--soft">Resistências e vulnerabilidades ainda não definidas.</p>
+      </div>`;
+
+    const skillsList = (c.skills && c.skills.length) ? c.skills : [];
+    const profCard = `
+      <div class="fcard">
+        <h3 class="fcard__h"><span class="fcard__ico">${FICON.check}</span>Proficiências</h3>
+        <dl class="kv-list">
+          <div class="kv"><dt>Perícias</dt><dd>${skillsList.length ? escapeHtml(skillsList.join(', ')) : '<span class="dim">—</span>'}</dd></div>
+          <div class="kv"><dt>Armas</dt><dd><span class="dim">a definir</span></dd></div>
+          <div class="kv"><dt>Armaduras</dt><dd><span class="dim">a definir</span></dd></div>
+        </dl>
+      </div>`;
+
+    // ════ COMBATE ════
+    const initCard = `
+      <div class="fcard fcard--center">
+        <h3 class="fcard__h"><span class="fcard__ico">${FICON.bolt}</span>Iniciativa</h3>
+        <div class="bignum">${fmtMod(initMod)}</div>
+        <p class="fcard__note">Bônus de Destreza</p>
+      </div>`;
+    const savesCard = `
+      <div class="fcard">
+        <h3 class="fcard__h"><span class="fcard__ico">${FICON.shield}</span>Testes de Resistência</h3>
+        <div class="saves-list">
+          ${CHAR_ATTRIBUTES.map((a) => {
+            const nd = Math.max(0, A[a].m);
+            return `<button type="button" class="res-row res-row--roll" data-save-roll="${escapeHtml(a)}" data-save-dice="${nd}" title="Rolar 1d12${nd ? ` + ${nd}d6` : ''}">
+              <span class="res-row__l"><span class="res-row__die">${FICON.dice}</span>${escapeHtml(a)}</span>
+              <span class="res-row__f">1d12${nd ? `<em>+${nd}d6</em>` : ''}</span>
+            </button>`;
+          }).join('')}
+        </div>
+        <div class="saves-roll" data-save-result hidden></div>
+      </div>`;
+    const manaCard = v.mana ? `
+      <div class="fcard">
+        <h3 class="fcard__h"><span class="fcard__ico">${FICON.mana}</span>Mana</h3>
+        <div class="res-row"><span>Pontos de Mana</span><b>${v.mana.cur} / ${v.mana.max}</b></div>
+        <p class="fcard__note">Recupera no descanso longo.</p>
+      </div>` : '';
+
+    // ════ HISTÓRIA ════
+    const bodyMarkup = bodyHtml ? `<div class="fcard"><h3 class="fcard__h"><span class="fcard__ico">${FICON.feat}</span>História</h3><div class="rt-content">${sanitizeHtml(bodyHtml)}</div></div>` : '';
 
     const tabs = [
-      { id: 'geral', label: 'Visão Geral' },
-      { id: 'combate', label: 'Combate' },
-      { id: 'inventario', label: 'Inventário' },
-      { id: 'magias', label: 'Magias' },
-      { id: 'historia', label: 'História' }
+      { id: 'geral', label: 'Visão Geral', icon: FICON.clock },
+      { id: 'combate', label: 'Combate', icon: FICON.sword },
+      { id: 'inventario', label: 'Inventário', icon: FICON.bag },
+      { id: 'magias', label: 'Magias', icon: FICON.spark },
+      { id: 'historia', label: 'História', icon: FICON.feat }
     ];
 
     return `
-      <article class="entry char-sheet" id="charSheet" style="--hue:${theme.hue}"
+      <article class="entry char-sheet char-sheet--v2" id="charSheet" style="--hue:${theme.hue}"
                data-char-id="${escapeHtml(c.id)}" data-can-edit="${canEdit ? '1' : '0'}">
         <nav class="breadcrumb">
           <a href="#/">Codex</a><span>/</span>
@@ -2759,63 +2828,74 @@
           <span class="breadcrumb__current">${escapeHtml(c.name || 'Ficha')}</span>
         </nav>
 
-        <header class="char-hero">
-          <div class="char-hero__portrait">
+        <header class="sheet-head">
+          <div class="sheet-head__portrait">
             ${c.image ? `<img src="${c.image}" alt="" onerror="this.parentElement.classList.add('is-fallback')">` : ''}
             <div class="char-hero__fallback">${iconOf('Persona')}</div>
           </div>
-          <div class="char-hero__id">
+          <div class="sheet-head__id">
             <div class="char-hero__badges">
-              <span class="char-badge char-badge--${isMage ? 'mage' : 'mundane'}">${isMage ? ('Mago · ' + escapeHtml((schoolById(awk.school) || {}).name || '')) : 'Não-mago'}</span>
+              <span class="char-badge char-badge--${isMage ? 'mage' : 'mundane'}">${escapeHtml(className)}</span>
               ${c.raceName ? `<span class="char-badge char-badge--race">${escapeHtml(c.raceName)}</span>` : ''}
             </div>
-            <h1 class="char-hero__name" data-text-reveal>${escapeHtml(c.name || 'Sem nome')}</h1>
-            ${(c.identity && c.identity.papel) ? `<p class="char-hero__role">${escapeHtml(c.identity.papel)}</p>` : ''}
-            ${statPills}
-          </div>
-          ${canEdit ? `
-            <div class="char-hero__actions">
-              <a class="icon-btn" href="#/Persona/${encodeURIComponent(c.id)}/editar" title="Editar ficha" aria-label="Editar ficha">
-                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 1 1 3 3L7 19l-4 1 1-4 12.5-12.5z"/></svg>
-              </a>
-              <button type="button" class="icon-btn icon-btn--danger" data-delete-character="${escapeHtml(c.id)}" title="Apagar ficha" aria-label="Apagar ficha">
-                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"/></svg>
-              </button>
+            <h1 class="sheet-head__name" data-text-reveal>${escapeHtml(c.name || 'Sem nome')}</h1>
+            <div class="sheet-head__lvl">
+              <span class="lvl-chip">Nível ${level}</span>
+              ${idn.papel ? `<span class="sheet-head__role">${escapeHtml(idn.papel)}</span>` : ''}
             </div>
-          ` : ''}
+            <div class="sheet-head__meta">
+              <span class="shm"><span class="shm__k">Campanha</span><b>O Arcano</b></span>
+              <span class="shm"><span class="shm__k">Jogador</span><b>${escapeHtml(playerName)}</b></span>
+              <span class="shm"><span class="shm__k">Despertar</span><b>${awk.schoolRoll ? '1d100 · ' + awk.schoolRoll : (awk.resolved ? 'mundano' : '—')}</b></span>
+            </div>
+          </div>
+          <div class="sheet-head__right">
+            ${canEdit ? `
+              <div class="sheet-head__actions">
+                <a class="btn-line" href="#/Persona/${encodeURIComponent(c.id)}/editar" title="Editar ficha">
+                  <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 1 1 3 3L7 19l-4 1 1-4 12.5-12.5z"/></svg>
+                  <span>Editar</span>
+                </a>
+                <button type="button" class="btn-line btn-line--danger" data-delete-character="${escapeHtml(c.id)}" title="Apagar ficha" aria-label="Apagar ficha">
+                  <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"/></svg>
+                </button>
+              </div>` : ''}
+            <div class="hvitals">${hpHead}${manaHead}</div>
+            ${circles}
+          </div>
         </header>
 
         <nav class="char-tabs" role="tablist">
-          ${tabs.map((t, i) => `<button type="button" class="char-tab ${i === 0 ? 'is-active' : ''}" role="tab" data-tab="${t.id}">${t.label}</button>`).join('')}
+          ${tabs.map((t, i) => `<button type="button" class="char-tab ${i === 0 ? 'is-active' : ''}" role="tab" data-tab="${t.id}"><span class="char-tab__ico">${t.icon}</span>${t.label}</button>`).join('')}
         </nav>
 
         <div class="char-panels">
           <section class="char-panel is-active" data-panel="geral">
-            <div class="char-cards">
-              ${attrMarkup}
-              ${awakeningMarkup}
-              ${identityMarkup}
-              ${skillsMarkup}
+            <div class="fgrid fgrid--geral">
+              ${attrCard}
+              ${featCard}
+              <div class="fcol">${resistCard}${profCard}</div>
             </div>
           </section>
 
           <section class="char-panel" data-panel="combate">
-            <div class="char-cards">
-              <div class="char-block char-block--wide" id="charVitals">${charVitalsInner(c, canEdit)}</div>
-              <div class="char-block" id="charStatus">${charStatusInner(c, canEdit)}</div>
+            <div class="fgrid fgrid--combate">
+              <div class="fcol">${initCard}${savesCard}</div>
+              <div class="fcard fcard--vitals" id="charVitals">${charVitalsInner(c, canEdit)}</div>
+              <div class="fcol"><div class="fcard fcard--status" id="charStatus">${charStatusInner(c, canEdit)}</div>${manaCard}</div>
             </div>
           </section>
 
           <section class="char-panel" data-panel="inventario">
-            <div class="char-block" id="charInventory">${charInventoryInner(c, canEdit)}</div>
+            <div id="charInventory">${charInventoryInner(c, canEdit)}</div>
           </section>
 
           <section class="char-panel" data-panel="magias">
-            <div class="char-block" id="charSpells">${charCodexListInner(c, canEdit, 'spell')}</div>
+            <div id="charSpells">${charCodexListInner(c, canEdit, 'spell')}</div>
           </section>
 
           <section class="char-panel" data-panel="historia">
-            ${bodyMarkup || '<p class="char-empty">Nenhuma história escrita ainda.</p>'}
+            ${bodyMarkup || '<div class="fcard"><p class="char-empty">Nenhuma história escrita ainda.</p></div>'}
           </section>
         </div>
 
@@ -4801,6 +4881,41 @@
       });
     }
 
+    // Filtro de busca (inventário / magias) — disponível para todos.
+    root.addEventListener('input', (e) => {
+      const f = e.target.closest('[data-filter]');
+      if (!f) return;
+      const scope = f.closest('[data-filter-scope]');
+      if (!scope) return;
+      const q = normalize(f.value);
+      scope.querySelectorAll('[data-filter-item]').forEach((it) => {
+        it.style.display = (!q || normalize(it.textContent).includes(q)) ? '' : 'none';
+      });
+    });
+
+    // Rolagem de teste de resistência — 1d12 + Nd6 (N = dados do atributo). Read-only.
+    const rollDie = (faces) => 1 + Math.floor(Math.random() * faces);
+    root.addEventListener('click', (e) => {
+      const btn = e.target.closest('[data-save-roll]');
+      if (!btn) return;
+      const card = btn.closest('.fcard');
+      const out = card && card.querySelector('[data-save-result]');
+      if (!out) return;
+      const attr = btn.dataset.saveRoll;
+      const nD6 = Math.max(0, parseInt(btn.dataset.saveDice, 10) || 0);
+      const d12 = rollDie(12);
+      const d6s = []; for (let i = 0; i < nD6; i++) d6s.push(rollDie(6));
+      const total = d12 + d6s.reduce((a, b) => a + b, 0);
+      card.querySelectorAll('.res-row--roll').forEach((r) => r.classList.toggle('is-active', r === btn));
+      out.hidden = false;
+      out.innerHTML = `
+        <span class="saves-roll__attr">${escapeHtml(attr)}</span>
+        <span class="saves-roll__parts">1d12 <b>${d12}</b>${nD6 ? ` + ${nD6}d6 <b>${d6s.join('·')}</b>` : ''}</span>
+        <span class="saves-roll__eq">=</span>
+        <span class="saves-roll__total">${total}</span>`;
+      out.classList.remove('is-rolling'); void out.offsetWidth; out.classList.add('is-rolling');
+    });
+
     const canEdit = root.dataset.canEdit === '1';
     if (!canEdit) return;
     ensureVitals(c);
@@ -4868,7 +4983,17 @@
       save();
     };
 
+    const focusAdder = (boxId, selKey) => {
+      const box = $(boxId); if (!box) return;
+      const adder = box.querySelector(`[data-${selKey}-adder]`);
+      const field = box.querySelector(`[data-${selKey}-select], [data-${selKey}-custom]`);
+      if (adder) adder.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      if (field) setTimeout(() => field.focus(), 200);
+    };
+
     root.addEventListener('click', (e) => {
+      if (e.target.closest('[data-inv-focus]')) { focusAdder('charInventory', 'inv'); return; }
+      if (e.target.closest('[data-spell-focus]')) { focusAdder('charSpells', 'spell'); return; }
       const hpBtn = e.target.closest('[data-hp]');
       if (hpBtn) {
         const row = hpBtn.closest('[data-part]');
