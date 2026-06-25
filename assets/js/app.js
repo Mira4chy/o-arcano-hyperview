@@ -99,21 +99,52 @@
   };
   const SPELL_SCOPE_KEYS = Object.keys(SPELL_SCOPES);
   const scopeColor = (s) => SPELL_SCOPES[s] || '#9ca3af';
+  const scopeIcon = (s) => ({ Dano: '⚔', Cura: '✚', Buff: '▲', Debuff: '▼', Controle: '✦', Utilidade: '◈' }[s] || '◆');
+  const SCOPE_PLACEHOLDERS = {
+    Dano:      'Ex.: 2d6 de dano de fogo na área',
+    Cura:      'Ex.: cura 1d8 + modificador de Sabedoria',
+    Buff:      'Ex.: +2 em Destreza por 3 turnos',
+    Debuff:    'Ex.: -2 na Defesa do alvo até o fim do combate',
+    Controle:  'Ex.: empurra 2 quadrados / atordoa por 1 turno',
+    Utilidade: 'Ex.: ilumina 5q de raio / revela o invisível'
+  };
 
-  /* Normaliza fields.Escopo (pode vir array, string ou JSON). */
-  function spellScopes(fields) {
-    const raw = (fields || {})['Escopo'];
-    if (Array.isArray(raw)) return raw.filter(Boolean);
-    if (typeof raw === 'string') {
-      try { const a = JSON.parse(raw); if (Array.isArray(a)) return a.filter(Boolean); } catch {}
-      return raw.split(',').map((s) => s.trim()).filter(Boolean);
+  /* Unidades de custo — a magia não cobra necessariamente MP. */
+  const COST_UNITS = ['MP', 'HP', 'Vigor'];
+
+  /* Escopos: novo formato fields.Escopos = [{tipo, detalhe}].
+     Mantém compat com o legado fields.Escopo (array/string de nomes). */
+  function spellScopeEntries(fields) {
+    const f = fields || {};
+    if (Array.isArray(f.Escopos)) {
+      return f.Escopos
+        .map((s) => (s && typeof s === 'object')
+          ? { tipo: s.tipo, detalhe: s.detalhe || '' }
+          : { tipo: String(s), detalhe: '' })
+        .filter((s) => s.tipo);
     }
-    return [];
+    const raw = f.Escopo;
+    let names = [];
+    if (Array.isArray(raw)) names = raw;
+    else if (typeof raw === 'string') {
+      try { const a = JSON.parse(raw); names = Array.isArray(a) ? a : raw.split(','); }
+      catch { names = raw.split(','); }
+    }
+    return names.map((n) => String(n).trim()).filter(Boolean).map((tipo) => ({ tipo, detalhe: '' }));
   }
-  function spellScopePills(scopes, extraClass = '') {
-    return (scopes || []).map((s) =>
+  const spellScopeNames = (fields) => spellScopeEntries(fields).map((s) => s.tipo);
+  function spellScopePills(names, extraClass = '') {
+    return (names || []).map((s) =>
       `<span class="scope-pill ${extraClass}" style="--pill:${scopeColor(s)}">${escapeHtml(s)}</span>`
     ).join('');
+  }
+  /* "12 MP", "5 HP" ou "—" quando sem custo. */
+  function formatCusto(fields) {
+    const f = fields || {};
+    const v = String(f['Custo'] ?? '').trim();
+    if (!v) return '—';
+    const unit = f['CustoUnidade'] || 'MP';
+    return `${v} ${unit}`;
   }
   const isMagiasTab = (id) => canonicalTabId(id) === 'Magias';
 
@@ -2029,7 +2060,7 @@
     const type = (editing && isSpellType(existingEntry.subtype)) ? existingEntry.subtype : 'ativa';
     const affinity = f['Afinidade'] || '';
     const aff = affinityMeta(affinity);
-    const scopes = spellScopes(f);
+    const scopeEntries = spellScopeEntries(f);
     const v = (x) => escapeHtml(x ?? '');
 
     const heroEyebrow = editing ? `EDITAR · ${theme.label}` : `CRIAR · ${theme.label}`;
@@ -2090,24 +2121,38 @@
             <label class="create-form__label" for="spellTier">Tier</label>
             ${spellSelectHTML('spellTier', TIER_OPTIONS, f['Tier'] || '', '—')}
           </div>
-          <div class="create-form__field" data-spell-group="ativa" ${type === 'ativa' ? '' : 'hidden'}>
-            <label class="create-form__label" for="spCusto">Custo</label>
-            <input type="number" id="spCusto" class="create-form__input" min="0" placeholder="MP" value="${type === 'ativa' ? v(f['Custo']) : ''}">
-          </div>
-          <div class="create-form__field" data-spell-group="passiva" ${type === 'passiva' ? '' : 'hidden'}>
-            <label class="create-form__label" for="spCustoP">Custo <span class="spell-opt">(opcional)</span></label>
-            <input type="number" id="spCustoP" class="create-form__input" min="0" placeholder="MP para ativar" value="${type === 'passiva' ? v(f['Custo']) : ''}">
+          <div class="create-form__field">
+            <label class="create-form__label" for="spCusto">Custo <span class="spell-opt" id="spCustoHint" ${type === 'passiva' ? '' : 'hidden'}>(opcional)</span></label>
+            <div class="cost-input">
+              <input type="number" id="spCusto" class="create-form__input" min="0" placeholder="Valor" value="${v(f['Custo'])}">
+              <div class="spell-select cost-input__unit">
+                <select id="spCustoUnidade" class="create-form__input">
+                  ${COST_UNITS.map((u) => `<option value="${u}" ${(f['CustoUnidade'] || 'MP') === u ? 'selected' : ''}>${u}</option>`).join('')}
+                </select>
+                <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 9l6 6 6-6"/></svg>
+              </div>
+            </div>
           </div>
         </div>
 
         <div class="create-form__field">
-          <label class="create-form__label">Escopo</label>
-          <div class="scope-checks" id="scopeChecks">
-            ${SPELL_SCOPE_KEYS.map((s) => `
-              <label class="scope-check" style="--pill:${scopeColor(s)}">
-                <input type="checkbox" value="${escapeHtml(s)}" ${scopes.includes(s) ? 'checked' : ''}>
-                <span>${escapeHtml(s)}</span>
-              </label>`).join('')}
+          <label class="create-form__label">Escopo <span class="spell-opt">— marque cada escopo e descreva seu efeito</span></label>
+          <div class="scope-builder" id="scopeBuilder">
+            ${SPELL_SCOPE_KEYS.map((s) => {
+              const found = scopeEntries.find((x) => x.tipo === s);
+              const on = !!found;
+              return `
+                <div class="scope-item ${on ? 'is-on' : ''}" data-scope="${escapeHtml(s)}" style="--pill:${scopeColor(s)}">
+                  <button type="button" class="scope-toggle" aria-pressed="${on}">
+                    <span class="scope-toggle__ic">${scopeIcon(s)}</span>
+                    <span class="scope-toggle__label">${escapeHtml(s)}</span>
+                    <span class="scope-toggle__check" aria-hidden="true"></span>
+                  </button>
+                  <input type="text" class="create-form__input scope-detail" maxlength="200"
+                         placeholder="${escapeHtml(SCOPE_PLACEHOLDERS[s] || 'Descreva o efeito')}"
+                         value="${found ? v(found.detalhe) : ''}" ${on ? '' : 'disabled'}>
+                </div>`;
+            }).join('')}
           </div>
         </div>
 
@@ -2152,8 +2197,8 @@
             <textarea id="spEfeitoContinuo" class="create-form__input spell-textarea" rows="3" placeholder="O que a passiva faz permanentemente...">${v(f['Efeito Contínuo'])}</textarea>
           </div>
           <div class="create-form__field">
-            <label class="create-form__label" for="spManutencao">Manutenção <span class="spell-opt">(opcional)</span></label>
-            <input type="number" id="spManutencao" class="create-form__input" min="0" placeholder="Custo recorrente em MP" value="${v(f['Manutenção'])}">
+            <label class="create-form__label" for="spManutencao">Manutenção <span class="spell-opt">(opcional · por turno)</span></label>
+            <input type="number" id="spManutencao" class="create-form__input" min="0" placeholder="Custo recorrente por turno" value="${v(f['Manutenção'])}">
           </div>
         </div>
 
@@ -2185,10 +2230,12 @@
     const submitBtn = $f('spellSave');
     let type = (existing && isSpellType(existing.subtype)) ? existing.subtype : 'ativa';
 
+    const custoHint = $f('spCustoHint');
     const showGroups = () => {
       form.querySelectorAll('[data-spell-group]').forEach((el) => {
         el.hidden = el.dataset.spellGroup !== type;
       });
+      if (custoHint) custoHint.hidden = (type !== 'passiva');
     };
 
     // Toggle tipo
@@ -2223,8 +2270,25 @@
       form.dataset.affinity = key;
     });
 
-    const getScopes = () =>
-      [...form.querySelectorAll('#scopeChecks input:checked')].map((el) => el.value);
+    // Escopos dinâmicos: ligar/desligar e habilitar o campo de detalhe
+    form.querySelector('#scopeBuilder').addEventListener('click', (e) => {
+      const toggle = e.target.closest('.scope-toggle');
+      if (!toggle) return;
+      const item = toggle.closest('.scope-item');
+      const on = !item.classList.contains('is-on');
+      item.classList.toggle('is-on', on);
+      toggle.setAttribute('aria-pressed', on ? 'true' : 'false');
+      const detail = item.querySelector('.scope-detail');
+      detail.disabled = !on;
+      form.querySelector('#scopeBuilder').classList.remove('is-invalid');
+      if (on) detail.focus(); else { detail.value = ''; detail.classList.remove('is-invalid'); }
+    });
+
+    const getScopeEntries = () =>
+      [...form.querySelectorAll('#scopeBuilder .scope-item.is-on')].map((item) => ({
+        tipo: item.dataset.scope,
+        detalhe: item.querySelector('.scope-detail').value.trim()
+      }));
 
     form.addEventListener('submit', async (e) => {
       e.preventDefault();
@@ -2237,7 +2301,9 @@
       const name = val('spellName');
       const affinity = affHidden.value;
       const tier = val('spellTier');
-      const scopes = getScopes();
+      const custo = val('spCusto');
+      const custoUnidade = $f('spCustoUnidade') ? $f('spCustoUnidade').value : 'MP';
+      const scopeEntries = getScopeEntries();
 
       const missing = [];
       const clearInvalid = () => form.querySelectorAll('.is-invalid').forEach((el) => el.classList.remove('is-invalid'));
@@ -2247,24 +2313,37 @@
       if (!name) { missing.push('Nome'); mark('spellName'); }
       if (!affinity) { missing.push('Afinidade'); form.querySelector('#affinityPicker').classList.add('is-invalid'); }
       if (!tier) { missing.push('Tier'); mark('spellTier'); }
-      if (!scopes.length) { missing.push('Escopo'); form.querySelector('#scopeChecks').classList.add('is-invalid'); }
+      // Custo é obrigatório nas ativas; opcional nas passivas
+      if (type === 'ativa' && !custo) { missing.push('Custo'); mark('spCusto'); }
+      // Escopos: ao menos um, e cada um precisa do detalhe escrito
+      if (!scopeEntries.length) {
+        missing.push('Escopo');
+        form.querySelector('#scopeBuilder').classList.add('is-invalid');
+      } else {
+        scopeEntries.forEach((s) => {
+          if (!s.detalhe) {
+            missing.push('detalhe de ' + s.tipo);
+            const item = form.querySelector(`.scope-item[data-scope="${s.tipo}"]`);
+            if (item) item.querySelector('.scope-detail').classList.add('is-invalid');
+          }
+        });
+      }
 
       let fields, summary;
       if (type === 'ativa') {
-        const custo = val('spCusto'), alcance = val('spAlcance');
+        const alcance = val('spAlcance');
         const areaL = val('spAreaL'), areaA = val('spAreaA');
         const duracao = val('spDuracao'), descricao = val('spDescricao');
-        if (!custo) { missing.push('Custo'); mark('spCusto'); }
         if (!alcance) { missing.push('Alcance'); mark('spAlcance'); }
         if (!areaL) { missing.push('Área'); mark('spAreaL'); }
         if (!areaA) { missing.push('Área'); mark('spAreaA'); }
         if (!duracao) { missing.push('Duração'); mark('spDuracao'); }
         if (!descricao) { missing.push('Descrição'); mark('spDescricao'); }
         fields = {
-          Custo: custo, Tier: tier, Alcance: alcance,
+          Custo: custo, CustoUnidade: custoUnidade, Tier: tier, Alcance: alcance,
           AreaLargura: areaL, AreaAltura: areaA,
           'Duração': duracao, Afinidade: affinity,
-          Escopo: scopes, 'Descrição': descricao,
+          Escopos: scopeEntries, 'Descrição': descricao,
           'Efeito Adicional': val('spEfeito')
         };
         summary = descricao;
@@ -2273,9 +2352,9 @@
         if (!ativacao) { missing.push('Condição de Ativação'); mark('spAtivacao'); }
         if (!efeito) { missing.push('Efeito Contínuo'); mark('spEfeitoContinuo'); }
         fields = {
-          Custo: val('spCustoP'), Tier: tier,
+          Custo: custo, CustoUnidade: custoUnidade, Tier: tier,
           'Condição de Ativação': ativacao, Afinidade: affinity,
-          Escopo: scopes, 'Efeito Contínuo': efeito,
+          Escopos: scopeEntries, 'Efeito Contínuo': efeito,
           'Manutenção': val('spManutencao')
         };
         summary = efeito;
@@ -2331,42 +2410,72 @@
   /* ── MAGIAS: ficha detalhada (viewEntry) ──────── */
   function spellEntryView(tabId, e) {
     const tab = tabById(tabId);
-    const theme = themeOf(tabId);
     const f = e.fields || {};
     const type = isSpellType(e.subtype) ? e.subtype : 'ativa';
     const typeMeta = SPELL_TYPES[type];
     const aff = affinityMeta(f['Afinidade']);
-    const scopes = spellScopes(f);
+    const scopeEntries = spellScopeEntries(f);
     const tierRoman = f['Tier'] || '—';
+    const unit = f['CustoUnidade'] || 'MP';
 
-    const row = (icon, label, value, cls) => value ? `
-      <div class="spell-meta-row">
-        <dt><span class="spell-meta-ic">${icon}</span>${escapeHtml(label)}</dt>
-        <dd class="${cls || ''}">${value}</dd>
+    const stat = (label, value, cls) => value ? `
+      <div class="spell-stat">
+        <span class="spell-stat__label">${escapeHtml(label)}</span>
+        <span class="spell-stat__value ${cls || ''}">${value}</span>
       </div>` : '';
 
     const area = (f['AreaLargura'] && f['AreaAltura'])
       ? `${escapeHtml(f['AreaLargura'])} × ${escapeHtml(f['AreaAltura'])} q` : '';
+    const tierVal = `<span class="tier-roman">${escapeHtml(tierRoman)}</span>`;
 
-    const rows = type === 'ativa' ? [
-      row('💧', 'Custo', f['Custo'] ? `<b>${escapeHtml(f['Custo'])}</b> MP` : '', 'is-cost'),
-      row('✦', 'Tier', `<span class="tier-roman">${escapeHtml(tierRoman)}</span>`, 'is-tier'),
-      row('🎯', 'Alcance', f['Alcance'] ? `${escapeHtml(f['Alcance'])} q` : '', 'is-neutral'),
-      row('▦', 'Área', area, 'is-neutral'),
-      row('⏳', 'Duração', escapeHtml(f['Duração'] || ''), 'is-duration')
+    const strip = type === 'ativa' ? [
+      stat('Custo', formatCusto(f), 'is-cost'),
+      stat('Tier', tierVal, 'is-tier'),
+      stat('Alcance', f['Alcance'] ? `${escapeHtml(f['Alcance'])} q` : '—', 'is-neutral'),
+      stat('Área', area || '—', 'is-neutral'),
+      stat('Duração', escapeHtml(f['Duração'] || '—'), 'is-duration')
     ].join('') : [
-      row('💧', 'Custo', f['Custo'] ? `<b>${escapeHtml(f['Custo'])}</b> MP` : '—', 'is-cost'),
-      row('✦', 'Tier', `<span class="tier-roman">${escapeHtml(tierRoman)}</span>`, 'is-tier'),
-      row('⚡', 'Ativação', escapeHtml(f['Condição de Ativação'] || ''), 'is-neutral'),
-      row('♾', 'Manutenção', f['Manutenção'] ? `${escapeHtml(f['Manutenção'])} MP/turno` : '', 'is-duration')
+      stat('Custo', formatCusto(f), 'is-cost'),
+      stat('Tier', tierVal, 'is-tier'),
+      stat('Ativação', escapeHtml(f['Condição de Ativação'] || '—'), 'is-neutral'),
+      stat('Manutenção', f['Manutenção'] ? `${escapeHtml(f['Manutenção'])} ${escapeHtml(unit)}/turno` : '—', 'is-duration')
     ].join('');
 
-    const longText = type === 'ativa'
-      ? [
-          f['Descrição'] ? `<div class="spell-block"><span class="section__eyebrow">DESCRIÇÃO</span><p>${escapeHtml(f['Descrição'])}</p></div>` : '',
-          f['Efeito Adicional'] ? `<div class="spell-block spell-block--extra"><span class="section__eyebrow">EFEITO ADICIONAL</span><p>${escapeHtml(f['Efeito Adicional'])}</p></div>` : ''
-        ].join('')
-      : (f['Efeito Contínuo'] ? `<div class="spell-block"><span class="section__eyebrow">EFEITO CONTÍNUO</span><p>${escapeHtml(f['Efeito Contínuo'])}</p></div>` : '');
+    const scopeCards = scopeEntries.length ? `
+      <section class="spell-section">
+        <span class="section__eyebrow">ESCOPOS</span>
+        <div class="scope-effects">
+          ${scopeEntries.map((s) => `
+            <div class="scope-effect" style="--pill:${scopeColor(s.tipo)}">
+              <div class="scope-effect__head">
+                <span class="scope-effect__ic">${scopeIcon(s.tipo)}</span>
+                <span class="scope-effect__name">${escapeHtml(s.tipo)}</span>
+              </div>
+              ${s.detalhe ? `<p class="scope-effect__text">${escapeHtml(s.detalhe)}</p>` : ''}
+            </div>`).join('')}
+        </div>
+      </section>` : '';
+
+    const mainText = type === 'ativa'
+      ? f['Descrição'] ? `<section class="spell-section"><span class="section__eyebrow">DESCRIÇÃO</span><p class="spell-prose">${escapeHtml(f['Descrição'])}</p></section>` : ''
+      : f['Efeito Contínuo'] ? `<section class="spell-section"><span class="section__eyebrow">EFEITO CONTÍNUO</span><p class="spell-prose">${escapeHtml(f['Efeito Contínuo'])}</p></section>` : '';
+
+    const extraText = (type === 'ativa' && f['Efeito Adicional'])
+      ? `<section class="spell-section spell-section--extra"><span class="section__eyebrow">EFEITO ADICIONAL</span><p class="spell-prose">${escapeHtml(f['Efeito Adicional'])}</p></section>`
+      : '';
+
+    // Bloco explicativo para passivas (como o efeito se mantém).
+    let howWorks = '';
+    if (type === 'passiva') {
+      const cond = (f['Condição de Ativação'] || 'Sempre ativa').toLowerCase();
+      const condTxt = cond === 'sempre ativa'
+        ? 'Esta passiva fica sempre ativa assim que a magia é aprendida.'
+        : `Esta passiva entra em efeito: ${escapeHtml(cond)}.`;
+      const upkeep = f['Manutenção']
+        ? ` O custo de manutenção de <b>${escapeHtml(f['Manutenção'])} ${escapeHtml(unit)}/turno</b> é pago no início de cada turno; sem recurso suficiente, o efeito é suspenso até voltar a ser pago.`
+        : (f['Custo'] ? ` Custa <b>${escapeHtml(formatCusto(f))}</b> para ativar.` : '');
+      howWorks = `<section class="spell-section spell-section--note"><span class="section__eyebrow">COMO FUNCIONA</span><p class="spell-prose">${condTxt}${upkeep}</p></section>`;
+    }
 
     const editButton = (e.isUserCreated && auth.isAdmin) ? `
       <a class="back-link back-link--edit" href="#/${tabId}/${encodeURIComponent(e.id)}/editar">
@@ -2380,32 +2489,40 @@
       </button>` : '';
 
     return `
-      <article class="entry spell-entry" style="--hue:${aff.hue};--accent:${aff.accent};--glow:${aff.glow}">
-        <div class="spell-hero">
-          <div class="spell-hero__rune" aria-hidden="true">
-            ${aff.rune ? `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.1" stroke-linecap="round" stroke-linejoin="round"><path d="${aff.rune}"/></svg>` : aff.icon}
-          </div>
-          <nav class="breadcrumb">
-            <a href="#/">Codex</a><span>/</span>
-            <a href="#/${tabId}">${escapeHtml(tab.title)}</a><span>/</span>
-            <span class="breadcrumb__current">${escapeHtml(e.title)}</span>
-          </nav>
-          <div class="spell-hero__badges">
-            <span class="spell-type-badge spell-type-badge--${type}">${escapeHtml(typeMeta.badge)}</span>
-            <span class="spell-affinity-badge"><span class="spell-affinity-badge__ic">${aff.icon}</span>${escapeHtml(aff.label)}</span>
-          </div>
-          <h1 class="spell-hero__title" data-text-reveal>${escapeHtml(e.title)}</h1>
-          ${scopes.length ? `<div class="spell-hero__scopes">${spellScopePills(scopes)}</div>` : ''}
-        </div>
+      <article class="entry spell-sheet" style="--hue:${aff.hue};--accent:${aff.accent};--glow:${aff.glow}">
+        <div class="spell-sheet__aura" aria-hidden="true"></div>
+        <nav class="breadcrumb">
+          <a href="#/">Codex</a><span>/</span>
+          <a href="#/${tabId}">${escapeHtml(tab.title)}</a><span>/</span>
+          <span class="breadcrumb__current">${escapeHtml(e.title)}</span>
+        </nav>
 
-        <div class="spell-entry__body">
-          <aside class="spell-statcard">
-            <span class="section__eyebrow">FICHA</span>
-            <dl class="spell-meta-list">${rows}</dl>
-          </aside>
-          <div class="spell-entry__text">
-            ${longText || '<p class="spell-empty-text">Sem descrição.</p>'}
+        <header class="spell-sheet__head">
+          <div class="spell-sigil" aria-hidden="true">
+            <span class="spell-sigil__ring"></span>
+            <span class="spell-sigil__rune">
+              ${aff.rune ? `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"><path d="${aff.rune}"/></svg>` : aff.icon}
+            </span>
           </div>
+          <div class="spell-sheet__id">
+            <div class="spell-sheet__badges">
+              <span class="spell-type-badge spell-type-badge--${type}">${escapeHtml(typeMeta.badge)}</span>
+              <span class="spell-affinity-badge"><span class="spell-affinity-badge__ic">${aff.icon}</span>${escapeHtml(aff.label)}</span>
+            </div>
+            <h1 class="spell-sheet__title" data-text-reveal>${escapeHtml(e.title)}</h1>
+            ${e.summary ? `<p class="spell-sheet__summary">${escapeHtml(e.summary)}</p>` : ''}
+            ${scopeEntries.length ? `<div class="spell-sheet__scopes">${spellScopePills(scopeEntries.map((s) => s.tipo))}</div>` : ''}
+          </div>
+        </header>
+
+        <div class="spell-strip">${strip}</div>
+
+        <div class="spell-sheet__body">
+          ${mainText}
+          ${scopeCards}
+          ${extraText}
+          ${howWorks}
+          ${(!mainText && !scopeCards) ? '<p class="spell-empty-text">Sem descrição.</p>' : ''}
         </div>
 
         <div class="entry__actions-row">
@@ -2425,21 +2542,21 @@
     const f = e.fields || {};
     const type = isSpellType(e.subtype) ? e.subtype : 'ativa';
     const aff = affinityMeta(f['Afinidade']);
-    const scopes = spellScopes(f);
-    const custo = f['Custo'];
+    const names = spellScopeNames(f);
+    const hasCusto = String(f['Custo'] ?? '').trim() !== '';
     return `
       <a href="#/${e.tab}/${e.id}" class="spell-card" style="--accent:${aff.accent};--glow:${aff.glow};--hue:${aff.hue};--delay:${i * 45}ms">
         <div class="spell-card__rune" aria-hidden="true">${aff.icon}</div>
         <div class="spell-card__head">
           <span class="spell-type-badge spell-type-badge--${type}">${escapeHtml(SPELL_TYPES[type].badge)}</span>
-          ${custo ? `<span class="spell-card__cost">${escapeHtml(custo)} <small>MP</small></span>` : ''}
+          ${hasCusto ? `<span class="spell-card__cost">${escapeHtml(String(f['Custo']))} <small>${escapeHtml(f['CustoUnidade'] || 'MP')}</small></span>` : ''}
         </div>
         <h3 class="spell-card__name">${escapeHtml(e.title)}</h3>
         <div class="spell-card__tags">
           <span class="spell-card__affinity"><span>${aff.icon}</span>${escapeHtml(aff.label)}</span>
           <span class="spell-card__tier">Tier ${escapeHtml(f['Tier'] || '—')}</span>
         </div>
-        ${scopes.length ? `<div class="spell-card__scopes">${spellScopePills(scopes.slice(0, 4))}</div>` : ''}
+        ${names.length ? `<div class="spell-card__scopes">${spellScopePills(names.slice(0, 4))}</div>` : ''}
       </a>
     `;
   }
