@@ -40,8 +40,7 @@ window.ARCANO_ARCHIVE = {
     {
       id: "Magias",
       title: "Magias",
-      tone: "Poderes vivos, instáveis, sempre cobrados no corpo.",
-      template: ["Círculo", "Tradição", "Custo", "Efeito", "Colapso"]
+      tone: "Poderes vivos, instáveis, sempre cobrados no corpo. Crie magias ativas e passivas."
     },
     {
       id: "Bestiario",
@@ -97,57 +96,5 @@ window.ARCANO_ARCHIVE = {
     }
   ],
 
-  entries: [
-    {
-      id: "chama-da-febre-branca",
-      tab: "Magias",
-      title: "Chama da Febre Branca",
-      image: "assets/images/mage-collapse.png",
-      summary: "Fogo arcano que queima frio na pele do conjurador.",
-      fields: {
-        Círculo: "II",
-        Tradição: "Fogo e Carne",
-        Custo: "Marca de Calor ou Vigor temporário",
-        Efeito: "Labareda branco-violeta que busca feridas abertas",
-        Colapso: "O conjurador perde a sensação de calor até descansar"
-      },
-      body: [
-        "A chama obedece porque reconhece a febre que a chamou."
-      ]
-    },
-    {
-      id: "vento-de-ossos",
-      tab: "Magias",
-      title: "Vento de Ossos",
-      image: "assets/images/mage-collapse.png",
-      summary: "Rajada cortante feita de cinza, poeira e memória mineral.",
-      fields: {
-        Círculo: "I",
-        Tradição: "Ar e Ruína",
-        Custo: "Respirar cinza, pó de osso ou poeira de ruína",
-        Efeito: "Empurra, corta e revela superfícies cobertas por pó",
-        Colapso: "O mago fica sem voz até receber cuidado"
-      },
-      body: [
-        "É comum entre errantes porque quase todo lugar em O Arcano oferece pó, cinza ou restos."
-      ]
-    },
-    {
-      id: "sangue-que-recorda",
-      tab: "Magias",
-      title: "Sangue que Recorda",
-      image: "assets/images/mage-collapse.png",
-      summary: "Ritual menor capaz de ouvir memórias recentes no sangue.",
-      fields: {
-        Círculo: "II",
-        Tradição: "Sangue e Memória",
-        Custo: "Misturar uma gota do próprio sangue à amostra",
-        Efeito: "Revela impressão sensorial dos últimos instantes",
-        Colapso: "Uma memória alheia parece própria até o sono"
-      },
-      body: [
-        "A resposta vem como lembrança invasiva, não como frase."
-      ]
-    }
-  ]
+  entries: []
 };

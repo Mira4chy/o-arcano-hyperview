@@ -15,7 +15,7 @@
   });
 
   /* Categorias em que o usuário pode criar histórias */
-  const CREATABLE_TABS = ['Cenarios', 'Eras', 'Sistemas', 'Mapa', 'Deuses', 'Historias', 'Itens', 'Racas'];
+  const CREATABLE_TABS = ['Cenarios', 'Eras', 'Sistemas', 'Mapa', 'Deuses', 'Historias', 'Itens', 'Racas', 'Magias'];
   const isCreatable = (id) => CREATABLE_TABS.includes(canonicalTabId(id));
 
   /* Categorias com layout alternativo (imagem ao lado do dossiê).
@@ -66,6 +66,56 @@
   function subtypeLabel(subtype) {
     return (ITEM_SUBTYPES[subtype] || ITEM_SUBTYPES.item).label;
   }
+
+  /* ── MAGIAS: tipos, afinidades e opções ───────── */
+  const SPELL_TYPES = {
+    ativa:   { label: 'Magia Ativa',   badge: 'ATIVA',   icon: '✦' },
+    passiva: { label: 'Magia Passiva', badge: 'PASSIVA', icon: '◇' }
+  };
+  const SPELL_TYPE_KEYS = Object.keys(SPELL_TYPES);
+  const isSpellType = (t) => SPELL_TYPE_KEYS.includes(t);
+
+  const TIER_OPTIONS = ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X'];
+  const DURATION_OPTIONS = ['1 turno', '2 turnos', '3 turnos', '4 turnos', '5 turnos', '6 turnos', '7 turnos', '8 turnos', '9 turnos', '10 turnos', 'instantâneo', 'concentração'];
+  const ACTIVATION_OPTIONS = ['Sempre ativa', 'Ao receber dano', 'Ao iniciar combate', 'Quando HP < X%', 'Manual (custo MP)'];
+
+  /* Afinidades: cada uma carrega seu tema visual arcano. */
+  const SPELL_AFFINITIES = {
+    Elemental: { label: 'Elemental', hue: 22,  accent: '#fb923c', glow: '#f97316', icon: '🜂', rune: 'M12 2c2 4 5 6 8 7-3 1-6 4-8 7-2-3-5-6-8-7 3-1 6-3 8-7z' },
+    Arcanista: { label: 'Arcanista', hue: 275, accent: '#c084fc', glow: '#a855f7', icon: '✶', rune: 'M12 2v20M2 12h20M5 5l14 14M19 5L5 19' },
+    'Druídico': { label: 'Druídico', hue: 140, accent: '#4ade80', glow: '#22c55e', icon: '🌿', rune: 'M12 22c0-6 0-10 3-13M12 22c0-6 0-10-3-13M12 9c0-4 2-6 5-7M12 9c0-4-2-6-5-7' },
+    Celestial: { label: 'Celestial', hue: 46,  accent: '#fcd34d', glow: '#fbbf24', icon: '✧', rune: 'M12 2l2.4 6.5L21 11l-6.6 2.5L12 20l-2.4-6.5L3 11l6.6-2.5L12 2z' }
+  };
+  const SPELL_AFFINITY_KEYS = Object.keys(SPELL_AFFINITIES);
+  const affinityMeta = (name) => SPELL_AFFINITIES[name] || { label: name || '—', hue: 268, accent: 'var(--primary-2)', glow: 'var(--primary)', icon: '✦', rune: '' };
+
+  const SPELL_SCOPES = {
+    Dano:      '#f43f5e',
+    Cura:      '#10b981',
+    Buff:      '#3b82f6',
+    Debuff:    '#f59e0b',
+    Controle:  '#a855f7',
+    Utilidade: '#9ca3af'
+  };
+  const SPELL_SCOPE_KEYS = Object.keys(SPELL_SCOPES);
+  const scopeColor = (s) => SPELL_SCOPES[s] || '#9ca3af';
+
+  /* Normaliza fields.Escopo (pode vir array, string ou JSON). */
+  function spellScopes(fields) {
+    const raw = (fields || {})['Escopo'];
+    if (Array.isArray(raw)) return raw.filter(Boolean);
+    if (typeof raw === 'string') {
+      try { const a = JSON.parse(raw); if (Array.isArray(a)) return a.filter(Boolean); } catch {}
+      return raw.split(',').map((s) => s.trim()).filter(Boolean);
+    }
+    return [];
+  }
+  function spellScopePills(scopes, extraClass = '') {
+    return (scopes || []).map((s) =>
+      `<span class="scope-pill ${extraClass}" style="--pill:${scopeColor(s)}">${escapeHtml(s)}</span>`
+    ).join('');
+  }
+  const isMagiasTab = (id) => canonicalTabId(id) === 'Magias';
 
   /* Raridades possiveis em ordem crescente. As classes CSS batem com .rarity-chip--<x>. */
   const RARITY_OPTIONS = [
@@ -1568,7 +1618,7 @@
           <h1 class="cat-hero__title" data-text-reveal>${escapeHtml(tab.title)}</h1>
           <p class="cat-hero__tone">${escapeHtml(tab.tone || '')}</p>
           <div class="cat-hero__meta">
-            <span class="badge"><strong>${all.length}</strong> ${all.length === 1 ? 'história' : 'histórias'}</span>
+            <span class="badge"><strong>${all.length}</strong> ${isMagiasTab(tabId) ? (all.length === 1 ? 'magia' : 'magias') : (all.length === 1 ? 'história' : 'histórias')}</span>
             ${showCreate ? '<span class="badge badge-soft">Criação aberta</span>' : ''}
           </div>
         </div>
@@ -1613,20 +1663,23 @@
 
   function createCardHTML(tabId) {
     const theme = themeOf(tabId);
+    const noun = isMagiasTab(tabId) ? 'magia' : (tabId === 'Itens' ? 'item' : (tabId === 'Racas' ? 'raça' : 'história'));
+    const title = tabById(tabId)?.title || tabId;
     return `
-      <a href="#/${tabId}/criar" class="entry-card create-card" style="--hue:${theme.hue};--delay:0ms" aria-label="Criar nova história em ${escapeHtml(tabById(tabId)?.title || tabId)}">
+      <a href="#/${tabId}/criar" class="entry-card create-card" style="--hue:${theme.hue};--delay:0ms" aria-label="Criar nova ${noun} em ${escapeHtml(title)}">
         <div class="create-card__inner">
           <div class="create-card__plus">
             <svg viewBox="0 0 24 24" width="38" height="38" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
           </div>
           <span class="create-card__label">Criar</span>
-          <span class="create-card__hint">Nova história em ${escapeHtml(tabById(tabId)?.title || tabId)}</span>
+          <span class="create-card__hint">Nova ${noun} em ${escapeHtml(title)}</span>
         </div>
       </a>
     `;
   }
 
   function entryCardHTML(e, i) {
+    if (isMagiasTab(e.tab)) return spellCardHTML(e, i);
     const theme = themeOf(e.tab);
     const fieldKeys = Object.keys(e.fields || {});
     const tags = sanitizeTags(e.tags);
@@ -1807,6 +1860,8 @@
       return viewNotFound(entryId);
     }
 
+    if (isMagiasTab(tabId)) return spellCreateView(tabId, entryId, editing, existingEntry);
+
     const theme = themeOf(tabId);
     const portrait = isPortrait(tabId);
     const isItens = tabId === 'Itens';
@@ -1956,6 +2011,439 @@
     `;
   }
 
+  /* ── MAGIAS: criação / edição ─────────────────── */
+  function spellSelectHTML(id, options, selected, placeholder) {
+    return `
+      <div class="spell-select">
+        <select id="${id}" class="spell-input">
+          <option value="" disabled ${selected ? '' : 'selected'}>${escapeHtml(placeholder || '—')}</option>
+          ${options.map((o) => `<option value="${escapeHtml(o)}" ${o === selected ? 'selected' : ''}>${escapeHtml(o)}</option>`).join('')}
+        </select>
+        <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 9l6 6 6-6"/></svg>
+      </div>`;
+  }
+
+  function spellCreateView(tabId, entryId, editing, existingEntry) {
+    const theme = themeOf(tabId);
+    const f = (editing && existingEntry.fields) ? existingEntry.fields : {};
+    const type = (editing && isSpellType(existingEntry.subtype)) ? existingEntry.subtype : 'ativa';
+    const affinity = f['Afinidade'] || '';
+    const aff = affinityMeta(affinity);
+    const scopes = spellScopes(f);
+    const v = (x) => escapeHtml(x ?? '');
+
+    const heroEyebrow = editing ? `EDITAR · ${theme.label}` : `CRIAR · ${theme.label}`;
+    const heroH1 = editing ? `Editar magia · ${existingEntry.title}` : 'Nova magia em Magias';
+    const heroTone = 'Escolha o tipo, defina a afinidade e preencha a ficha. Os detalhes arcanos mudam conforme a afinidade.';
+
+    return `
+      <section class="cat-hero" style="--hue:${theme.hue}">
+        <div class="cat-hero__icon">${iconOf(tabId)}</div>
+        <div class="cat-hero__body">
+          <span class="cat-hero__eyebrow">${escapeHtml(heroEyebrow)}</span>
+          <h1 class="cat-hero__title">${escapeHtml(heroH1)}</h1>
+          <p class="cat-hero__tone">${escapeHtml(heroTone)}</p>
+        </div>
+      </section>
+
+      <form class="create-form spell-form" id="spellCreateForm"
+            data-tab="${escapeHtml(tabId)}"
+            ${editing ? `data-edit-id="${escapeHtml(entryId)}"` : ''}
+            data-affinity="${v(affinity)}"
+            style="--hue:${aff.hue};--accent:${aff.accent};--glow:${aff.glow}" novalidate>
+
+        <div class="create-form__field">
+          <label class="create-form__label">Tipo</label>
+          <div class="spell-type-tabs" id="spellTypeTabs" role="tablist">
+            ${SPELL_TYPE_KEYS.map((key) => `
+              <button type="button" class="spell-type-tab ${key === type ? 'is-active' : ''}" data-spell-type="${key}" role="tab" aria-selected="${key === type}">
+                <span class="spell-type-tab__icon">${SPELL_TYPES[key].icon}</span>
+                <span class="spell-type-tab__label">${escapeHtml(SPELL_TYPES[key].label)}</span>
+              </button>
+            `).join('')}
+          </div>
+        </div>
+
+        <div class="create-form__field">
+          <label class="create-form__label" for="spellName">Nome</label>
+          <input type="text" id="spellName" class="create-form__input" placeholder="Nome da magia" maxlength="120" required value="${editing ? v(existingEntry.title) : ''}">
+        </div>
+
+        <div class="create-form__field">
+          <label class="create-form__label">Afinidade</label>
+          <div class="affinity-picker" id="affinityPicker">
+            ${SPELL_AFFINITY_KEYS.map((key) => {
+              const a = SPELL_AFFINITIES[key];
+              return `
+                <button type="button" class="affinity-chip ${key === affinity ? 'is-active' : ''}" data-affinity="${escapeHtml(key)}"
+                        style="--a-hue:${a.hue};--a-accent:${a.accent};--a-glow:${a.glow}" aria-pressed="${key === affinity}">
+                  <span class="affinity-chip__icon">${a.icon}</span>
+                  <span class="affinity-chip__label">${escapeHtml(a.label)}</span>
+                </button>`;
+            }).join('')}
+          </div>
+          <input type="hidden" id="spellAffinity" value="${v(affinity)}">
+        </div>
+
+        <div class="create-form__row">
+          <div class="create-form__field">
+            <label class="create-form__label" for="spellTier">Tier</label>
+            ${spellSelectHTML('spellTier', TIER_OPTIONS, f['Tier'] || '', '—')}
+          </div>
+          <div class="create-form__field" data-spell-group="ativa" ${type === 'ativa' ? '' : 'hidden'}>
+            <label class="create-form__label" for="spCusto">Custo</label>
+            <input type="number" id="spCusto" class="create-form__input" min="0" placeholder="MP" value="${type === 'ativa' ? v(f['Custo']) : ''}">
+          </div>
+          <div class="create-form__field" data-spell-group="passiva" ${type === 'passiva' ? '' : 'hidden'}>
+            <label class="create-form__label" for="spCustoP">Custo <span class="spell-opt">(opcional)</span></label>
+            <input type="number" id="spCustoP" class="create-form__input" min="0" placeholder="MP para ativar" value="${type === 'passiva' ? v(f['Custo']) : ''}">
+          </div>
+        </div>
+
+        <div class="create-form__field">
+          <label class="create-form__label">Escopo</label>
+          <div class="scope-checks" id="scopeChecks">
+            ${SPELL_SCOPE_KEYS.map((s) => `
+              <label class="scope-check" style="--pill:${scopeColor(s)}">
+                <input type="checkbox" value="${escapeHtml(s)}" ${scopes.includes(s) ? 'checked' : ''}>
+                <span>${escapeHtml(s)}</span>
+              </label>`).join('')}
+          </div>
+        </div>
+
+        <!-- ATIVA -->
+        <div data-spell-group="ativa" ${type === 'ativa' ? '' : 'hidden'}>
+          <div class="create-form__row">
+            <div class="create-form__field">
+              <label class="create-form__label" for="spAlcance">Alcance</label>
+              <input type="number" id="spAlcance" class="create-form__input" min="0" placeholder="Quadrados (1q = 1m)" value="${v(f['Alcance'])}">
+            </div>
+            <div class="create-form__field">
+              <label class="create-form__label">Área</label>
+              <div class="spell-area">
+                <input type="number" id="spAreaL" class="create-form__input" min="0" placeholder="X" value="${v(f['AreaLargura'])}">
+                <span class="spell-area__x">×</span>
+                <input type="number" id="spAreaA" class="create-form__input" min="0" placeholder="X q" value="${v(f['AreaAltura'])}">
+              </div>
+            </div>
+          </div>
+          <div class="create-form__field">
+            <label class="create-form__label" for="spDuracao">Duração</label>
+            ${spellSelectHTML('spDuracao', DURATION_OPTIONS, f['Duração'] || '', '—')}
+          </div>
+          <div class="create-form__field">
+            <label class="create-form__label" for="spDescricao">Descrição</label>
+            <textarea id="spDescricao" class="create-form__input spell-textarea" rows="3" placeholder="Descreva a magia...">${v(f['Descrição'])}</textarea>
+          </div>
+          <div class="create-form__field">
+            <label class="create-form__label" for="spEfeito">Efeito Adicional <span class="spell-opt">(opcional)</span></label>
+            <textarea id="spEfeito" class="create-form__input spell-textarea" rows="2" placeholder="Efeitos especiais, comportamentos condicionais...">${v(f['Efeito Adicional'])}</textarea>
+          </div>
+        </div>
+
+        <!-- PASSIVA -->
+        <div data-spell-group="passiva" ${type === 'passiva' ? '' : 'hidden'}>
+          <div class="create-form__field">
+            <label class="create-form__label" for="spAtivacao">Condição de Ativação</label>
+            ${spellSelectHTML('spAtivacao', ACTIVATION_OPTIONS, f['Condição de Ativação'] || '', '—')}
+          </div>
+          <div class="create-form__field">
+            <label class="create-form__label" for="spEfeitoContinuo">Efeito Contínuo</label>
+            <textarea id="spEfeitoContinuo" class="create-form__input spell-textarea" rows="3" placeholder="O que a passiva faz permanentemente...">${v(f['Efeito Contínuo'])}</textarea>
+          </div>
+          <div class="create-form__field">
+            <label class="create-form__label" for="spManutencao">Manutenção <span class="spell-opt">(opcional)</span></label>
+            <input type="number" id="spManutencao" class="create-form__input" min="0" placeholder="Custo recorrente em MP" value="${v(f['Manutenção'])}">
+          </div>
+        </div>
+
+        <p class="create-form__error" id="spellError" hidden></p>
+
+        <div class="create-form__actions">
+          <a href="${editing ? `#/${tabId}/${entryId}` : `#/${tabId}`}" class="btn btn-ghost">Cancelar</a>
+          <button type="submit" class="btn btn-primary" id="spellSave">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>
+            <span>${editing ? 'Salvar alterações' : 'Salvar magia'}</span>
+          </button>
+        </div>
+      </form>
+    `;
+  }
+
+  function attachSpellForm() {
+    const form = document.getElementById('spellCreateForm');
+    if (!form || form.dataset.bound) return;
+    form.dataset.bound = '1';
+
+    const tabId = form.dataset.tab;
+    const editId = form.dataset.editId || '';
+    const editing = !!editId;
+    const existing = editing ? entryById(editId) : null;
+
+    const $f = (id) => document.getElementById(id);
+    const errorBox = $f('spellError');
+    const submitBtn = $f('spellSave');
+    let type = (existing && isSpellType(existing.subtype)) ? existing.subtype : 'ativa';
+
+    const showGroups = () => {
+      form.querySelectorAll('[data-spell-group]').forEach((el) => {
+        el.hidden = el.dataset.spellGroup !== type;
+      });
+    };
+
+    // Toggle tipo
+    form.querySelector('#spellTypeTabs').addEventListener('click', (e) => {
+      const btn = e.target.closest('.spell-type-tab');
+      if (!btn) return;
+      type = btn.dataset.spellType;
+      form.querySelectorAll('.spell-type-tab').forEach((b) => {
+        const on = b === btn;
+        b.classList.toggle('is-active', on);
+        b.setAttribute('aria-selected', on ? 'true' : 'false');
+      });
+      showGroups();
+    });
+
+    // Afinidade
+    const affHidden = $f('spellAffinity');
+    form.querySelector('#affinityPicker').addEventListener('click', (e) => {
+      const btn = e.target.closest('.affinity-chip');
+      if (!btn) return;
+      const key = btn.dataset.affinity;
+      affHidden.value = key;
+      form.querySelectorAll('.affinity-chip').forEach((b) => {
+        const on = b === btn;
+        b.classList.toggle('is-active', on);
+        b.setAttribute('aria-pressed', on ? 'true' : 'false');
+      });
+      const a = affinityMeta(key);
+      form.style.setProperty('--hue', a.hue);
+      form.style.setProperty('--accent', a.accent);
+      form.style.setProperty('--glow', a.glow);
+      form.dataset.affinity = key;
+    });
+
+    const getScopes = () =>
+      [...form.querySelectorAll('#scopeChecks input:checked')].map((el) => el.value);
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      if (!sb) {
+        alert('Supabase não configurado. Edite assets/js/config.js com sua URL e anon key.');
+        return;
+      }
+
+      const val = (id) => ($f(id) ? $f(id).value.trim() : '');
+      const name = val('spellName');
+      const affinity = affHidden.value;
+      const tier = val('spellTier');
+      const scopes = getScopes();
+
+      const missing = [];
+      const clearInvalid = () => form.querySelectorAll('.is-invalid').forEach((el) => el.classList.remove('is-invalid'));
+      const mark = (id) => { const el = $f(id); if (el) el.classList.add('is-invalid'); };
+      clearInvalid();
+
+      if (!name) { missing.push('Nome'); mark('spellName'); }
+      if (!affinity) { missing.push('Afinidade'); form.querySelector('#affinityPicker').classList.add('is-invalid'); }
+      if (!tier) { missing.push('Tier'); mark('spellTier'); }
+      if (!scopes.length) { missing.push('Escopo'); form.querySelector('#scopeChecks').classList.add('is-invalid'); }
+
+      let fields, summary;
+      if (type === 'ativa') {
+        const custo = val('spCusto'), alcance = val('spAlcance');
+        const areaL = val('spAreaL'), areaA = val('spAreaA');
+        const duracao = val('spDuracao'), descricao = val('spDescricao');
+        if (!custo) { missing.push('Custo'); mark('spCusto'); }
+        if (!alcance) { missing.push('Alcance'); mark('spAlcance'); }
+        if (!areaL) { missing.push('Área'); mark('spAreaL'); }
+        if (!areaA) { missing.push('Área'); mark('spAreaA'); }
+        if (!duracao) { missing.push('Duração'); mark('spDuracao'); }
+        if (!descricao) { missing.push('Descrição'); mark('spDescricao'); }
+        fields = {
+          Custo: custo, Tier: tier, Alcance: alcance,
+          AreaLargura: areaL, AreaAltura: areaA,
+          'Duração': duracao, Afinidade: affinity,
+          Escopo: scopes, 'Descrição': descricao,
+          'Efeito Adicional': val('spEfeito')
+        };
+        summary = descricao;
+      } else {
+        const ativacao = val('spAtivacao'), efeito = val('spEfeitoContinuo');
+        if (!ativacao) { missing.push('Condição de Ativação'); mark('spAtivacao'); }
+        if (!efeito) { missing.push('Efeito Contínuo'); mark('spEfeitoContinuo'); }
+        fields = {
+          Custo: val('spCustoP'), Tier: tier,
+          'Condição de Ativação': ativacao, Afinidade: affinity,
+          Escopo: scopes, 'Efeito Contínuo': efeito,
+          'Manutenção': val('spManutencao')
+        };
+        summary = efeito;
+      }
+
+      if (missing.length) {
+        errorBox.textContent = 'Preencha os campos obrigatórios: ' + [...new Set(missing)].join(', ') + '.';
+        errorBox.hidden = false;
+        const firstBad = form.querySelector('.is-invalid');
+        if (firstBad && firstBad.focus) firstBad.focus();
+        return;
+      }
+      errorBox.hidden = true;
+
+      submitBtn.disabled = true;
+      const originalLabel = submitBtn.innerHTML;
+      submitBtn.innerHTML = '<span>Salvando…</span>';
+
+      try {
+        if (editing) {
+          const updated = {
+            ...existing, tab: tabId, subtype: type,
+            title: name, summary: (summary || '').slice(0, 200),
+            fields, bodyHtml: '', tags: []
+          };
+          await updateUserEntry(updated);
+          const i = ARCHIVE.entries.indexOf(existing);
+          if (i >= 0) ARCHIVE.entries[i] = updated;
+          location.hash = `#/${tabId}/${updated.id}`;
+        } else {
+          const id = uniqueId(slugify(name));
+          const newEntry = {
+            id, tab: tabId, subtype: type,
+            title: name, summary: (summary || '').slice(0, 200),
+            image: '', imagePath: '', bodyHtml: '', tags: [],
+            fields, createdAt: Date.now(), isUserCreated: true
+          };
+          await persistUserEntry(newEntry);
+          ARCHIVE.entries.push(newEntry);
+          location.hash = `#/${tabId}/${id}`;
+        }
+      } catch (err) {
+        console.error(err);
+        alert('Erro ao salvar: ' + (err.message || err));
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = originalLabel;
+      }
+    });
+
+    showGroups();
+  }
+
+  /* ── MAGIAS: ficha detalhada (viewEntry) ──────── */
+  function spellEntryView(tabId, e) {
+    const tab = tabById(tabId);
+    const theme = themeOf(tabId);
+    const f = e.fields || {};
+    const type = isSpellType(e.subtype) ? e.subtype : 'ativa';
+    const typeMeta = SPELL_TYPES[type];
+    const aff = affinityMeta(f['Afinidade']);
+    const scopes = spellScopes(f);
+    const tierRoman = f['Tier'] || '—';
+
+    const row = (icon, label, value, cls) => value ? `
+      <div class="spell-meta-row">
+        <dt><span class="spell-meta-ic">${icon}</span>${escapeHtml(label)}</dt>
+        <dd class="${cls || ''}">${value}</dd>
+      </div>` : '';
+
+    const area = (f['AreaLargura'] && f['AreaAltura'])
+      ? `${escapeHtml(f['AreaLargura'])} × ${escapeHtml(f['AreaAltura'])} q` : '';
+
+    const rows = type === 'ativa' ? [
+      row('💧', 'Custo', f['Custo'] ? `<b>${escapeHtml(f['Custo'])}</b> MP` : '', 'is-cost'),
+      row('✦', 'Tier', `<span class="tier-roman">${escapeHtml(tierRoman)}</span>`, 'is-tier'),
+      row('🎯', 'Alcance', f['Alcance'] ? `${escapeHtml(f['Alcance'])} q` : '', 'is-neutral'),
+      row('▦', 'Área', area, 'is-neutral'),
+      row('⏳', 'Duração', escapeHtml(f['Duração'] || ''), 'is-duration')
+    ].join('') : [
+      row('💧', 'Custo', f['Custo'] ? `<b>${escapeHtml(f['Custo'])}</b> MP` : '—', 'is-cost'),
+      row('✦', 'Tier', `<span class="tier-roman">${escapeHtml(tierRoman)}</span>`, 'is-tier'),
+      row('⚡', 'Ativação', escapeHtml(f['Condição de Ativação'] || ''), 'is-neutral'),
+      row('♾', 'Manutenção', f['Manutenção'] ? `${escapeHtml(f['Manutenção'])} MP/turno` : '', 'is-duration')
+    ].join('');
+
+    const longText = type === 'ativa'
+      ? [
+          f['Descrição'] ? `<div class="spell-block"><span class="section__eyebrow">DESCRIÇÃO</span><p>${escapeHtml(f['Descrição'])}</p></div>` : '',
+          f['Efeito Adicional'] ? `<div class="spell-block spell-block--extra"><span class="section__eyebrow">EFEITO ADICIONAL</span><p>${escapeHtml(f['Efeito Adicional'])}</p></div>` : ''
+        ].join('')
+      : (f['Efeito Contínuo'] ? `<div class="spell-block"><span class="section__eyebrow">EFEITO CONTÍNUO</span><p>${escapeHtml(f['Efeito Contínuo'])}</p></div>` : '');
+
+    const editButton = (e.isUserCreated && auth.isAdmin) ? `
+      <a class="back-link back-link--edit" href="#/${tabId}/${encodeURIComponent(e.id)}/editar">
+        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 1 1 3 3L7 19l-4 1 1-4 12.5-12.5z"/></svg>
+        Editar magia
+      </a>` : '';
+    const deleteButton = (e.isUserCreated && auth.isAdmin) ? `
+      <button type="button" class="back-link back-link--danger" data-delete-entry="${escapeHtml(e.id)}">
+        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"/></svg>
+        Apagar magia
+      </button>` : '';
+
+    return `
+      <article class="entry spell-entry" style="--hue:${aff.hue};--accent:${aff.accent};--glow:${aff.glow}">
+        <div class="spell-hero">
+          <div class="spell-hero__rune" aria-hidden="true">
+            ${aff.rune ? `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.1" stroke-linecap="round" stroke-linejoin="round"><path d="${aff.rune}"/></svg>` : aff.icon}
+          </div>
+          <nav class="breadcrumb">
+            <a href="#/">Codex</a><span>/</span>
+            <a href="#/${tabId}">${escapeHtml(tab.title)}</a><span>/</span>
+            <span class="breadcrumb__current">${escapeHtml(e.title)}</span>
+          </nav>
+          <div class="spell-hero__badges">
+            <span class="spell-type-badge spell-type-badge--${type}">${escapeHtml(typeMeta.badge)}</span>
+            <span class="spell-affinity-badge"><span class="spell-affinity-badge__ic">${aff.icon}</span>${escapeHtml(aff.label)}</span>
+          </div>
+          <h1 class="spell-hero__title" data-text-reveal>${escapeHtml(e.title)}</h1>
+          ${scopes.length ? `<div class="spell-hero__scopes">${spellScopePills(scopes)}</div>` : ''}
+        </div>
+
+        <div class="spell-entry__body">
+          <aside class="spell-statcard">
+            <span class="section__eyebrow">FICHA</span>
+            <dl class="spell-meta-list">${rows}</dl>
+          </aside>
+          <div class="spell-entry__text">
+            ${longText || '<p class="spell-empty-text">Sem descrição.</p>'}
+          </div>
+        </div>
+
+        <div class="entry__actions-row">
+          ${editButton}
+          ${deleteButton}
+          <a href="#/${tabId}" class="back-link">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+            Voltar a ${escapeHtml(tab.title)}
+          </a>
+        </div>
+      </article>
+    `;
+  }
+
+  /* ── MAGIAS: card na grade da categoria ───────── */
+  function spellCardHTML(e, i) {
+    const f = e.fields || {};
+    const type = isSpellType(e.subtype) ? e.subtype : 'ativa';
+    const aff = affinityMeta(f['Afinidade']);
+    const scopes = spellScopes(f);
+    const custo = f['Custo'];
+    return `
+      <a href="#/${e.tab}/${e.id}" class="spell-card" style="--accent:${aff.accent};--glow:${aff.glow};--hue:${aff.hue};--delay:${i * 45}ms">
+        <div class="spell-card__rune" aria-hidden="true">${aff.icon}</div>
+        <div class="spell-card__head">
+          <span class="spell-type-badge spell-type-badge--${type}">${escapeHtml(SPELL_TYPES[type].badge)}</span>
+          ${custo ? `<span class="spell-card__cost">${escapeHtml(custo)} <small>MP</small></span>` : ''}
+        </div>
+        <h3 class="spell-card__name">${escapeHtml(e.title)}</h3>
+        <div class="spell-card__tags">
+          <span class="spell-card__affinity"><span>${aff.icon}</span>${escapeHtml(aff.label)}</span>
+          <span class="spell-card__tier">Tier ${escapeHtml(f['Tier'] || '—')}</span>
+        </div>
+        ${scopes.length ? `<div class="spell-card__scopes">${spellScopePills(scopes.slice(0, 4))}</div>` : ''}
+      </a>
+    `;
+  }
+
   /* ── EDIT INDEX VIEW ──────────────────────────── */
   function viewEditIndex() {
     if (!auth.isAdmin) return viewForbidden();
@@ -2018,6 +2506,7 @@
   function viewEntry(tabId, entryId) {
     const e = entryById(entryId);
     if (!e || e.tab !== tabId) return viewNotFound(entryId);
+    if (isMagiasTab(tabId)) return spellEntryView(tabId, e);
     const theme = themeOf(tabId);
     const tab = tabById(tabId);
     const fields = Object.entries(e.fields || {});
@@ -3138,6 +3627,7 @@
         animateView();
         attachCategoryFilter();
         attachCreateForm();
+        attachSpellForm();
         attachCharacterForm();
         attachEditIndexForm();
         attachIndexEditButton();
