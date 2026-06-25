@@ -2461,53 +2461,61 @@
     const tierRoman = f['Tier'] || '—';
     const unit = f['CustoUnidade'] || 'MP';
 
-    const stat = (label, value, cls) => value ? `
-      <div class="spell-stat">
-        <span class="spell-stat__label">${escapeHtml(label)}</span>
-        <span class="spell-stat__value ${cls || ''}">${value}</span>
-      </div>` : '';
-
     const area = (f['AreaLargura'] && f['AreaAltura'])
-      ? `${escapeHtml(f['AreaLargura'])} × ${escapeHtml(f['AreaAltura'])} q` : '';
+      ? `${escapeHtml(f['AreaLargura'])} × ${escapeHtml(f['AreaAltura'])} <i>q</i>` : '—';
     const tierVal = `<span class="tier-roman">${escapeHtml(tierRoman)}</span>`;
 
-    const strip = type === 'ativa' ? [
-      stat('Custo', formatCusto(f), 'is-cost'),
-      stat('Tier', tierVal, 'is-tier'),
-      stat('Alcance', f['Alcance'] ? `${escapeHtml(f['Alcance'])} q` : '—', 'is-neutral'),
-      stat('Área', area || '—', 'is-neutral'),
-      stat('Duração', escapeHtml(f['Duração'] || '—'), 'is-duration')
+    const stone = (label, value, cls) => `
+      <div class="runestone ${cls || ''}">
+        <span class="runestone__v">${value}</span>
+        <span class="runestone__l">${escapeHtml(label)}</span>
+      </div>`;
+
+    const stones = type === 'ativa' ? [
+      stone('Custo', formatCusto(f), 'is-cost'),
+      stone('Tier', tierVal, 'is-tier'),
+      stone('Alcance', f['Alcance'] ? `${escapeHtml(f['Alcance'])} <i>q</i>` : '—'),
+      stone('Área', area),
+      stone('Duração', escapeHtml(f['Duração'] || '—'), 'is-duration')
     ].join('') : [
-      stat('Custo', formatCusto(f), 'is-cost'),
-      stat('Tier', tierVal, 'is-tier'),
-      stat('Ativação', escapeHtml(f['Condição de Ativação'] || '—'), 'is-neutral'),
-      stat('Manutenção', f['Manutenção'] ? `${escapeHtml(f['Manutenção'])} ${escapeHtml(unit)}/turno` : '—', 'is-duration')
+      stone('Custo', formatCusto(f), 'is-cost'),
+      stone('Tier', tierVal, 'is-tier'),
+      stone('Ativação', escapeHtml(f['Condição de Ativação'] || '—')),
+      stone('Manutenção', f['Manutenção'] ? `${escapeHtml(f['Manutenção'])} <i>${escapeHtml(unit)}/t</i>` : '—', 'is-duration')
     ].join('');
 
-    const scopeCards = scopeEntries.length ? `
-      <section class="spell-section">
-        <span class="section__eyebrow">ESCOPOS</span>
-        <div class="scope-effects">
+    const sectionHead = (title) => `
+      <h2 class="grimoire-sec__h"><span class="grimoire-sec__rule"></span>${escapeHtml(title)}<span class="grimoire-sec__rule"></span></h2>`;
+
+    const inscriptions = scopeEntries.length ? `
+      <section class="grimoire-sec">
+        ${sectionHead('Escopos')}
+        <div class="inscriptions">
           ${scopeEntries.map((s) => `
-            <div class="scope-effect" style="--pill:${scopeColor(s.tipo)}">
-              <div class="scope-effect__head">
-                <span class="scope-effect__ic">${scopeIcon(s.tipo)}</span>
-                <span class="scope-effect__name">${escapeHtml(s.tipo)}</span>
+            <div class="inscription" style="--pill:${scopeColor(s.tipo)}">
+              <span class="inscription__sigil" aria-hidden="true">${scopeIcon(s.tipo)}</span>
+              <div class="inscription__b">
+                <span class="inscription__name">${escapeHtml(s.tipo)}</span>
+                <p>${s.detalhe ? escapeHtml(s.detalhe) : '—'}</p>
               </div>
-              ${s.detalhe ? `<p class="scope-effect__text">${escapeHtml(s.detalhe)}</p>` : ''}
             </div>`).join('')}
         </div>
       </section>` : '';
 
+    const proseSec = (title, html, cls = '', lead = false) => html ? `
+      <section class="grimoire-sec ${cls}">
+        ${sectionHead(title)}
+        <p class="grimoire-prose ${lead ? 'grimoire-prose--lead' : ''}">${html}</p>
+      </section>` : '';
+
     const mainText = type === 'ativa'
-      ? f['Descrição'] ? `<section class="spell-section"><span class="section__eyebrow">DESCRIÇÃO</span><p class="spell-prose">${escapeHtml(f['Descrição'])}</p></section>` : ''
-      : f['Efeito Contínuo'] ? `<section class="spell-section"><span class="section__eyebrow">EFEITO CONTÍNUO</span><p class="spell-prose">${escapeHtml(f['Efeito Contínuo'])}</p></section>` : '';
+      ? proseSec('Descrição', escapeHtml(f['Descrição'] || ''), '', true)
+      : proseSec('Efeito Contínuo', escapeHtml(f['Efeito Contínuo'] || ''), '', true);
 
     const extraText = (type === 'ativa' && f['Efeito Adicional'])
-      ? `<section class="spell-section spell-section--extra"><span class="section__eyebrow">EFEITO ADICIONAL</span><p class="spell-prose">${escapeHtml(f['Efeito Adicional'])}</p></section>`
+      ? proseSec('Efeito Adicional', escapeHtml(f['Efeito Adicional']), 'grimoire-sec--quote')
       : '';
 
-    // Bloco explicativo para passivas (como o efeito se mantém).
     let howWorks = '';
     if (type === 'passiva') {
       const cond = (f['Condição de Ativação'] || 'Sempre ativa').toLowerCase();
@@ -2515,9 +2523,9 @@
         ? 'Esta passiva fica sempre ativa assim que a magia é aprendida.'
         : `Esta passiva entra em efeito: ${escapeHtml(cond)}.`;
       const upkeep = f['Manutenção']
-        ? ` O custo de manutenção de <b>${escapeHtml(f['Manutenção'])} ${escapeHtml(unit)}/turno</b> é pago no início de cada turno; sem recurso suficiente, o efeito é suspenso até voltar a ser pago.`
+        ? ` O custo de manutenção de <b>${escapeHtml(f['Manutenção'])} ${escapeHtml(unit)}/turno</b> é pago no início de cada turno; sem recurso suficiente, o efeito se encerra até voltar a ser pago.`
         : (f['Custo'] ? ` Custa <b>${escapeHtml(formatCusto(f))}</b> para ativar.` : '');
-      howWorks = `<section class="spell-section spell-section--note"><span class="section__eyebrow">COMO FUNCIONA</span><p class="spell-prose">${condTxt}${upkeep}</p></section>`;
+      howWorks = proseSec('Como funciona', condTxt + upkeep, 'grimoire-sec--note');
     }
 
     const editButton = (e.isUserCreated && auth.isAdmin) ? `
@@ -2531,41 +2539,58 @@
         Apagar magia
       </button>` : '';
 
+    const runeSvg = aff.rune
+      ? `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.1" stroke-linecap="round" stroke-linejoin="round"><path d="${aff.rune}"/></svg>`
+      : aff.icon;
+
     return `
-      <article class="entry spell-sheet" style="--hue:${aff.hue};--accent:${aff.accent};--glow:${aff.glow}">
-        <div class="spell-sheet__aura" aria-hidden="true"></div>
+      <article class="entry grimoire grimoire--${type}" style="--hue:${aff.hue};--accent:${aff.accent};--glow:${aff.glow}">
+        <span class="grimoire__corner grimoire__corner--tl" aria-hidden="true"></span>
+        <span class="grimoire__corner grimoire__corner--tr" aria-hidden="true"></span>
+        <span class="grimoire__corner grimoire__corner--bl" aria-hidden="true"></span>
+        <span class="grimoire__corner grimoire__corner--br" aria-hidden="true"></span>
+
         <nav class="breadcrumb">
           <a href="#/">Codex</a><span>/</span>
           <a href="#/${tabId}">${escapeHtml(tab.title)}</a><span>/</span>
           <span class="breadcrumb__current">${escapeHtml(e.title)}</span>
         </nav>
 
-        <header class="spell-sheet__head">
-          <div class="spell-sigil ${e.image ? 'spell-sigil--img' : ''}" aria-hidden="true">
-            <span class="spell-sigil__ring"></span>
-            ${e.image
-              ? `<img class="spell-sigil__img" src="${e.image}" alt="" onerror="this.parentElement.classList.remove('spell-sigil--img')">`
-              : `<span class="spell-sigil__rune">${aff.rune ? `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"><path d="${aff.rune}"/></svg>` : aff.icon}</span>`}
+        <header class="grimoire__hero">
+          ${e.image ? `<div class="grimoire__bg" style="background-image:url('${e.image}')" aria-hidden="true"></div>` : ''}
+          <div class="arcane-circle ${e.image ? 'has-img' : ''}" aria-hidden="true">
+            <span class="arcane-circle__halo"></span>
+            <span class="arcane-circle__ring arcane-circle__ring--out"></span>
+            <span class="arcane-circle__ring arcane-circle__ring--mid"></span>
+            <span class="arcane-circle__ring arcane-circle__ring--in"></span>
+            <span class="arcane-core">
+              ${e.image ? `<img class="arcane-core__img" src="${e.image}" alt="" onerror="this.closest('.arcane-circle').classList.add('is-fallback')">` : ''}
+              <span class="arcane-core__rune">${runeSvg}</span>
+            </span>
           </div>
-          <div class="spell-sheet__id">
-            <div class="spell-sheet__badges">
+          <div class="grimoire__id">
+            <div class="grimoire__badges">
               <span class="spell-type-badge spell-type-badge--${type}">${escapeHtml(typeMeta.badge)}</span>
               <span class="spell-affinity-badge"><span class="spell-affinity-badge__ic">${aff.icon}</span>${escapeHtml(aff.label)}</span>
             </div>
-            <h1 class="spell-sheet__title" data-text-reveal>${escapeHtml(e.title)}</h1>
-            ${e.summary ? `<p class="spell-sheet__summary">${escapeHtml(e.summary)}</p>` : ''}
-            ${scopeEntries.length ? `<div class="spell-sheet__scopes">${spellScopePills(scopeEntries.map((s) => s.tipo))}</div>` : ''}
+            <h1 class="grimoire__title" data-text-reveal>${escapeHtml(e.title)}</h1>
+            <div class="grimoire__flourish" aria-hidden="true">
+              <svg viewBox="0 0 240 12" fill="none" stroke="currentColor" stroke-width="1.1" stroke-linecap="round"><path d="M4 6h86M236 6h-86"/><path d="M98 6l9-4M98 6l9 4M142 6l-9-4M142 6l-9 4"/></svg>
+              <span class="grimoire__flourish-gem">${aff.icon}</span>
+            </div>
+            ${e.summary ? `<p class="grimoire__summary">${escapeHtml(e.summary)}</p>` : ''}
+            ${scopeEntries.length ? `<div class="grimoire__scopes">${spellScopePills(scopeEntries.map((s) => s.tipo))}</div>` : ''}
           </div>
         </header>
 
-        <div class="spell-strip">${strip}</div>
+        <div class="runestones">${stones}</div>
 
-        <div class="spell-sheet__body">
+        <div class="grimoire__body">
           ${mainText}
-          ${scopeCards}
+          ${inscriptions}
           ${extraText}
           ${howWorks}
-          ${(!mainText && !scopeCards) ? '<p class="spell-empty-text">Sem descrição.</p>' : ''}
+          ${(!mainText && !inscriptions) ? '<p class="spell-empty-text">Sem descrição.</p>' : ''}
         </div>
 
         <div class="entry__actions-row">
@@ -2580,28 +2605,33 @@
     `;
   }
 
-  /* ── MAGIAS: card na grade da categoria ───────── */
+  /* ── MAGIAS: card na grade da categoria (token arcano) ─ */
   function spellCardHTML(e, i) {
     const f = e.fields || {};
     const type = isSpellType(e.subtype) ? e.subtype : 'ativa';
     const aff = affinityMeta(f['Afinidade']);
     const names = spellScopeNames(f);
     const hasCusto = String(f['Custo'] ?? '').trim() !== '';
+    const runeSvg = aff.rune
+      ? `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><path d="${aff.rune}"/></svg>`
+      : aff.icon;
     return `
-      <a href="#/${e.tab}/${e.id}" class="spell-card ${e.image ? 'spell-card--img' : ''}" style="--accent:${aff.accent};--glow:${aff.glow};--hue:${aff.hue};--delay:${i * 45}ms">
-        ${e.image
-          ? `<div class="spell-card__media"><img loading="lazy" src="${e.image}" alt="" onerror="this.closest('.spell-card').classList.remove('spell-card--img')"><div class="spell-card__media-shade"></div></div>`
-          : `<div class="spell-card__rune" aria-hidden="true">${aff.icon}</div>`}
-        <div class="spell-card__head">
-          <span class="spell-type-badge spell-type-badge--${type}">${escapeHtml(SPELL_TYPES[type].badge)}</span>
-          ${hasCusto ? `<span class="spell-card__cost">${escapeHtml(String(f['Custo']))} <small>${escapeHtml(f['CustoUnidade'] || 'MP')}</small></span>` : ''}
+      <a href="#/${e.tab}/${e.id}" class="tome-card grimoire--${type}" style="--accent:${aff.accent};--glow:${aff.glow};--hue:${aff.hue};--delay:${i * 45}ms">
+        <span class="tome-card__bg-rune" aria-hidden="true">${aff.icon}</span>
+        <span class="spell-type-badge spell-type-badge--${type} tome-card__type">${escapeHtml(SPELL_TYPES[type].badge)}</span>
+        ${hasCusto ? `<span class="tome-card__orb"><b>${escapeHtml(String(f['Custo']))}</b><small>${escapeHtml(f['CustoUnidade'] || 'MP')}</small></span>` : ''}
+        <div class="tome-card__medal ${e.image ? 'has-img' : ''}" aria-hidden="true">
+          <span class="tome-card__medal-ring"></span>
+          ${e.image ? `<img class="tome-card__img" loading="lazy" src="${e.image}" alt="" onerror="this.closest('.tome-card__medal').classList.add('is-fallback')">` : ''}
+          <span class="tome-card__medal-rune">${runeSvg}</span>
         </div>
-        <h3 class="spell-card__name">${escapeHtml(e.title)}</h3>
-        <div class="spell-card__tags">
-          <span class="spell-card__affinity"><span>${aff.icon}</span>${escapeHtml(aff.label)}</span>
-          <span class="spell-card__tier">Tier ${escapeHtml(f['Tier'] || '—')}</span>
+        <h3 class="tome-card__name">${escapeHtml(e.title)}</h3>
+        <div class="tome-card__meta">
+          <span class="tome-card__aff"><span>${aff.icon}</span>${escapeHtml(aff.label)}</span>
+          <span class="tome-card__sep">·</span>
+          <span class="tome-card__tier">Tier ${escapeHtml(f['Tier'] || '—')}</span>
         </div>
-        ${names.length ? `<div class="spell-card__scopes">${spellScopePills(names.slice(0, 4))}</div>` : ''}
+        ${names.length ? `<div class="tome-card__runes">${names.slice(0, 5).map((s) => `<span class="rune-chip" style="--pill:${scopeColor(s)}" title="${escapeHtml(s)}">${scopeIcon(s)}</span>`).join('')}</div>` : ''}
       </a>
     `;
   }

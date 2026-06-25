@@ -6436,3 +6436,326 @@ a.spell-card__name:hover { color: var(--primary-3); }
   padding: 0 2px;
   z-index: 1;
 }
+
+/* ════════════════════════════════════════════════════
+   MAGIAS — GRIMÓRIO ARCANO (ficha) + TOKEN (card)
+   ════════════════════════════════════════════════════ */
+
+/* ── Token de magia (card na grade) ── */
+.tome-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 9px;
+  padding: 24px 18px 20px;
+  overflow: hidden;
+  background:
+    radial-gradient(125% 80% at 50% -12%, color-mix(in srgb, var(--glow) 20%, transparent), transparent 60%),
+    var(--surface-2);
+  border: 1px solid var(--line);
+  border-top: 2px solid color-mix(in srgb, var(--accent) 65%, transparent);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm), var(--top-shine);
+  animation: spellCardIn 0.5s var(--ease) both;
+  animation-delay: var(--delay, 0ms);
+  transition: transform 0.22s var(--ease), border-color 0.22s var(--ease), box-shadow 0.22s var(--ease);
+}
+.tome-card:hover {
+  transform: translateY(-5px);
+  border-color: color-mix(in srgb, var(--accent) 55%, var(--line));
+  box-shadow: var(--shadow-md), 0 0 36px color-mix(in srgb, var(--glow) 34%, transparent);
+}
+.tome-card__bg-rune {
+  position: absolute;
+  top: -16px; right: -10px;
+  font-size: 5.2rem; line-height: 1;
+  opacity: 0.07;
+  filter: drop-shadow(0 0 14px var(--glow));
+  pointer-events: none;
+}
+.tome-card__type { position: absolute; top: 14px; left: 14px; z-index: 2; }
+.tome-card__orb {
+  position: absolute; top: 11px; right: 11px; z-index: 2;
+  width: 48px; height: 48px;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(34, 211, 238, 0.28), transparent 70%), var(--bg-deep);
+  border: 1px solid rgba(34, 211, 238, 0.4);
+  box-shadow: 0 0 18px rgba(34, 211, 238, 0.3), inset 0 0 12px rgba(0, 0, 0, 0.5);
+}
+.tome-card__orb b { font-family: 'Cinzel', Georgia, serif; font-size: 1rem; line-height: 1; color: var(--cyan); }
+.tome-card__orb small { font-size: 0.5rem; letter-spacing: 0.05em; color: color-mix(in srgb, var(--cyan) 70%, var(--text)); }
+
+.tome-card__medal {
+  position: relative;
+  width: 96px; aspect-ratio: 1;
+  margin-top: 16px;
+  display: grid; place-items: center;
+}
+.tome-card__medal-ring {
+  position: absolute; inset: 0;
+  border-radius: 50%;
+  border: 1px dashed color-mix(in srgb, var(--accent) 50%, transparent);
+  animation: sigilSpin 16s linear infinite;
+}
+.tome-card__medal::after {
+  content: ''; position: absolute; inset: 9px;
+  border-radius: 50%;
+  background: radial-gradient(circle, color-mix(in srgb, var(--glow) 28%, transparent), transparent 72%), var(--bg-deep);
+  border: 1px solid color-mix(in srgb, var(--accent) 38%, transparent);
+  box-shadow: inset 0 0 18px rgba(0, 0, 0, 0.6), 0 0 26px color-mix(in srgb, var(--glow) 30%, transparent);
+}
+.tome-card__img {
+  position: absolute; inset: 9px;
+  width: calc(100% - 18px); height: calc(100% - 18px);
+  object-fit: cover; border-radius: 50%; z-index: 1;
+}
+.tome-card__medal-rune {
+  position: relative; z-index: 1;
+  width: 44%; color: var(--accent);
+  filter: drop-shadow(0 0 10px var(--glow));
+  display: grid; place-items: center;
+  font-size: 1.7rem; line-height: 1;
+}
+.tome-card__medal-rune svg { width: 100%; height: auto; }
+.tome-card__medal.has-img .tome-card__medal-rune { display: none; }
+.tome-card__medal.has-img.is-fallback .tome-card__medal-rune { display: grid; }
+.tome-card__medal.has-img.is-fallback .tome-card__img { display: none; }
+
+.tome-card__name {
+  margin: 6px 0 0;
+  font-family: 'Cinzel', Georgia, serif;
+  font-weight: 600; font-size: 1.14rem;
+  color: var(--text); line-height: 1.2;
+}
+.tome-card__meta {
+  display: flex; align-items: center; gap: 8px;
+  font-size: 0.78rem; color: var(--muted);
+}
+.tome-card__aff { display: inline-flex; align-items: center; gap: 5px; color: var(--accent); font-weight: 600; }
+.tome-card__tier { color: var(--gold); font-weight: 600; }
+.tome-card__sep { opacity: 0.5; }
+.tome-card__runes { display: flex; gap: 7px; margin-top: 3px; }
+.rune-chip {
+  width: 27px; height: 27px;
+  display: grid; place-items: center;
+  border-radius: 8px; font-size: 0.85rem;
+  color: var(--pill, #9ca3af);
+  background: color-mix(in srgb, var(--pill, #9ca3af) 15%, transparent);
+  border: 1px solid color-mix(in srgb, var(--pill, #9ca3af) 38%, transparent);
+}
+
+/* ── Grimório (ficha) ── */
+.grimoire {
+  position: relative;
+  --pad: clamp(22px, 4vw, 44px);
+  padding: clamp(24px, 4vw, 44px);
+  background:
+    radial-gradient(90% 60% at 50% -5%, hsla(var(--hue), 70%, 45%, 0.16), transparent 60%),
+    linear-gradient(180deg, var(--surface-2), var(--surface-1));
+  border: 1px solid color-mix(in srgb, var(--accent) 22%, var(--line));
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-lg), inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  overflow: hidden;
+}
+.grimoire__corner {
+  position: absolute; width: 26px; height: 26px;
+  border: 2px solid color-mix(in srgb, var(--accent) 60%, transparent);
+  opacity: 0.7; pointer-events: none;
+}
+.grimoire__corner--tl { top: 14px; left: 14px; border-right: 0; border-bottom: 0; border-radius: 6px 0 0 0; }
+.grimoire__corner--tr { top: 14px; right: 14px; border-left: 0; border-bottom: 0; border-radius: 0 6px 0 0; }
+.grimoire__corner--bl { bottom: 14px; left: 14px; border-right: 0; border-top: 0; border-radius: 0 0 0 6px; }
+.grimoire__corner--br { bottom: 14px; right: 14px; border-left: 0; border-top: 0; border-radius: 0 0 6px 0; }
+.grimoire > .breadcrumb { position: relative; z-index: 2; margin-bottom: 22px; }
+
+/* Hero */
+.grimoire__hero {
+  position: relative;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: clamp(20px, 4vw, 44px);
+  align-items: center;
+  padding: clamp(8px, 2vw, 22px) 0 clamp(20px, 3vw, 30px);
+}
+.grimoire__bg {
+  position: absolute; inset: -44px -44px 0;
+  background-size: cover; background-position: center;
+  opacity: 0.16; filter: saturate(1.1);
+  -webkit-mask-image: radial-gradient(120% 100% at 50% 0%, #000 10%, transparent 75%);
+  mask-image: radial-gradient(120% 100% at 50% 0%, #000 10%, transparent 75%);
+  pointer-events: none;
+}
+.grimoire__id { position: relative; z-index: 1; }
+.grimoire__badges { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 14px; }
+.grimoire__title {
+  margin: 0;
+  font-family: 'Cinzel', Georgia, serif;
+  font-weight: 700;
+  font-size: clamp(1.9rem, 5vw, 3.1rem);
+  line-height: 1.06; color: var(--text);
+  text-shadow: 0 0 34px color-mix(in srgb, var(--glow) 40%, transparent);
+}
+.grimoire__flourish {
+  display: flex; align-items: center; justify-content: flex-start;
+  gap: 4px; margin: 12px 0 4px; color: color-mix(in srgb, var(--accent) 75%, var(--muted));
+}
+.grimoire__flourish svg { width: min(240px, 80%); height: 12px; }
+.grimoire__flourish-gem { position: absolute; font-size: 0.8rem; left: 50%; transform: translateX(-50%); filter: drop-shadow(0 0 8px var(--glow)); }
+.grimoire__flourish { position: relative; }
+.grimoire__summary { margin: 12px 0 0; color: var(--text-2); font-size: 1.05rem; line-height: 1.55; max-width: 60ch; }
+.grimoire__scopes { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 16px; }
+
+/* Círculo arcano (sigilo animado) */
+.arcane-circle {
+  position: relative;
+  width: clamp(150px, 22vw, 210px);
+  aspect-ratio: 1;
+  flex: none;
+  display: grid; place-items: center;
+}
+.arcane-circle__halo {
+  position: absolute; inset: -14%;
+  border-radius: 50%;
+  background: radial-gradient(circle, color-mix(in srgb, var(--glow) 30%, transparent), transparent 65%);
+  filter: blur(6px);
+  animation: haloPulse 4.5s ease-in-out infinite;
+}
+@keyframes haloPulse { 0%,100% { opacity: 0.6; } 50% { opacity: 1; } }
+.arcane-circle__ring {
+  position: absolute; border-radius: 50%;
+  border: 1px solid transparent;
+}
+.arcane-circle__ring--out {
+  inset: 0;
+  border: 1.5px dashed color-mix(in srgb, var(--accent) 50%, transparent);
+  animation: sigilSpin 26s linear infinite;
+}
+.arcane-circle__ring--mid {
+  inset: 12%;
+  border: 1px dotted color-mix(in srgb, var(--accent) 65%, transparent);
+  animation: sigilSpin 18s linear infinite reverse;
+}
+.arcane-circle__ring--in {
+  inset: 22%;
+  border: 1px solid color-mix(in srgb, var(--accent) 40%, transparent);
+  box-shadow: 0 0 22px color-mix(in srgb, var(--glow) 35%, transparent), inset 0 0 16px color-mix(in srgb, var(--glow) 20%, transparent);
+}
+.arcane-core {
+  position: relative;
+  width: 56%; aspect-ratio: 1;
+  display: grid; place-items: center;
+  border-radius: 50%;
+  background: radial-gradient(circle, color-mix(in srgb, var(--glow) 22%, transparent), transparent 75%), var(--bg-deep);
+  overflow: hidden;
+}
+.arcane-core__img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.arcane-core__rune {
+  position: relative; z-index: 1;
+  width: 60%; color: var(--accent);
+  display: grid; place-items: center;
+  font-size: 2.2rem; line-height: 1;
+  filter: drop-shadow(0 0 12px var(--glow));
+}
+.arcane-core__rune svg { width: 100%; height: auto; }
+.arcane-circle.has-img .arcane-core__rune { display: none; }
+.arcane-circle.has-img.is-fallback .arcane-core__rune { display: grid; }
+.arcane-circle.has-img.is-fallback .arcane-core__img { display: none; }
+
+/* Runestones (atributos) */
+.runestones {
+  position: relative; z-index: 1;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 12px;
+  margin-top: 8px;
+}
+.runestone {
+  position: relative;
+  display: flex; flex-direction: column; align-items: center; gap: 4px;
+  padding: 16px 12px 13px;
+  background: linear-gradient(180deg, var(--surface-3), var(--surface-1));
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-sm), var(--top-shine);
+}
+.runestone::before {
+  content: ''; position: absolute; top: -1px; left: 22%; right: 22%; height: 2px;
+  background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--accent) 70%, transparent), transparent);
+}
+.runestone__v { font-family: 'Cinzel', Georgia, serif; font-weight: 700; font-size: 1.18rem; color: var(--text); line-height: 1.1; text-align: center; }
+.runestone__v i { font-style: normal; font-size: 0.66em; color: var(--muted); font-weight: 500; }
+.runestone__v .tier-roman { letter-spacing: 0.05em; }
+.runestone__l { font-size: 0.62rem; letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted); }
+.runestone.is-cost .runestone__v { color: var(--cyan); }
+.runestone.is-tier .runestone__v { color: var(--gold); }
+.runestone.is-duration .runestone__v { color: var(--primary-3); }
+
+/* Corpo / seções iluminadas */
+.grimoire__body { position: relative; z-index: 1; margin-top: 28px; display: flex; flex-direction: column; gap: 28px; }
+.grimoire-sec__h {
+  display: flex; align-items: center; gap: 16px;
+  margin: 0 0 14px;
+  font-family: 'Cinzel', Georgia, serif;
+  font-weight: 600; font-size: 0.8rem;
+  letter-spacing: 0.22em; text-transform: uppercase;
+  color: color-mix(in srgb, var(--accent) 60%, var(--text));
+}
+.grimoire-sec__rule { flex: 1; height: 1px; }
+.grimoire-sec__rule:first-child { background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--accent) 45%, var(--line))); }
+.grimoire-sec__rule:last-child { background: linear-gradient(90deg, color-mix(in srgb, var(--accent) 45%, var(--line)), transparent); }
+
+.grimoire-prose { margin: 0; font-size: 1.04rem; line-height: 1.75; color: var(--text-2); }
+.grimoire-prose--lead::first-letter {
+  font-family: 'Cinzel', Georgia, serif;
+  font-size: 3.3em; float: left; line-height: 0.82;
+  padding: 6px 14px 2px 0; color: var(--accent);
+  text-shadow: 0 0 18px var(--glow);
+}
+.grimoire-sec--quote .grimoire-prose,
+.grimoire-sec--note .grimoire-prose {
+  padding: 16px 20px;
+  background: var(--surface-1);
+  border-radius: var(--radius);
+}
+.grimoire-sec--quote .grimoire-prose {
+  border: 1px dashed color-mix(in srgb, var(--accent) 35%, var(--line-strong));
+  font-style: italic;
+}
+.grimoire-sec--note .grimoire-prose { border: 1px solid var(--line); }
+
+/* Inscrições de escopo */
+.inscriptions { display: grid; gap: 12px; }
+.inscription {
+  position: relative; overflow: hidden;
+  display: grid; grid-template-columns: auto 1fr; gap: 16px; align-items: center;
+  padding: 15px 18px;
+  background: linear-gradient(100deg, color-mix(in srgb, var(--pill) 12%, var(--surface-1)), var(--surface-1) 60%);
+  border: 1px solid color-mix(in srgb, var(--pill) 24%, var(--line));
+  border-left: 3px solid var(--pill);
+  border-radius: var(--radius);
+}
+.inscription__sigil {
+  width: 48px; height: 48px; flex: none;
+  display: grid; place-items: center;
+  border-radius: 50%;
+  font-size: 1.4rem; color: var(--pill);
+  background: color-mix(in srgb, var(--pill) 16%, transparent);
+  border: 1px solid color-mix(in srgb, var(--pill) 42%, transparent);
+  filter: drop-shadow(0 0 8px color-mix(in srgb, var(--pill) 55%, transparent));
+}
+.inscription__name {
+  font-family: 'Cinzel', Georgia, serif;
+  font-weight: 700; font-size: 0.8rem;
+  letter-spacing: 0.1em; text-transform: uppercase; color: var(--pill);
+}
+.inscription__b p { margin: 4px 0 0; color: var(--text-2); font-size: 0.96rem; line-height: 1.55; }
+
+@media (max-width: 720px) {
+  .grimoire__hero { grid-template-columns: 1fr; justify-items: center; text-align: center; }
+  .grimoire__badges, .grimoire__scopes, .grimoire__flourish { justify-content: center; }
+  .grimoire__summary { max-width: none; }
+  .grimoire-prose--lead::first-letter { font-size: 2.6em; }
+}
