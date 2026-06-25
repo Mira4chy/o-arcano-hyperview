@@ -2101,6 +2101,22 @@
         </div>
 
         <div class="create-form__field">
+          <label class="create-form__label">Imagem <span class="spell-opt">(opcional)</span></label>
+          <div class="banner-drop banner-drop--spell" id="bannerDrop" tabindex="0" role="button" aria-label="Selecionar imagem da magia">
+            <input type="file" accept="image/*" id="bannerInput" hidden>
+            <div class="banner-drop__preview" id="bannerPreview" ${editing && existingEntry.image ? '' : 'hidden'} style="${editing && existingEntry.image ? `background-image:url('${existingEntry.image}')` : ''}"></div>
+            <div class="banner-drop__placeholder" id="bannerPlaceholder" ${editing && existingEntry.image ? 'hidden' : ''}>
+              <svg viewBox="0 0 24 24" width="38" height="38" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="8.5" cy="10.5" r="1.5"/><path d="M21 17l-5-5-9 9"/></svg>
+              <strong>Clique ou arraste</strong>
+              <span>Sigilo ou ilustração da magia</span>
+            </div>
+            <button type="button" class="banner-drop__clear" id="bannerClear" ${editing && existingEntry.image ? '' : 'hidden'} aria-label="Remover imagem">
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
+            </button>
+          </div>
+        </div>
+
+        <div class="create-form__field">
           <label class="create-form__label">Afinidade</label>
           <div class="affinity-picker" id="affinityPicker">
             ${SPELL_AFFINITY_KEYS.map((key) => {
@@ -2228,6 +2244,7 @@
     const $f = (id) => document.getElementById(id);
     const errorBox = $f('spellError');
     const submitBtn = $f('spellSave');
+    const banner = bindBannerDrop({ initialUrl: existing?.image || '' });
     let type = (existing && isSpellType(existing.subtype)) ? existing.subtype : 'ativa';
 
     const custoHint = $f('spCustoHint');
@@ -2375,24 +2392,50 @@
 
       try {
         if (editing) {
+          const file = banner.getFile();
+          const currentDataUrl = banner.getDataUrl();
+          let nextImage = existing.image || '';
+          let nextImagePath = existing.imagePath || '';
+          const toRemove = [];
+          if (file) {
+            const up = await uploadBanner(file, `spells/${existing.id}`);
+            if (existing.imagePath) toRemove.push(existing.imagePath);
+            nextImage = up.url; nextImagePath = up.path;
+          } else if (!currentDataUrl && existing.image) {
+            if (existing.imagePath) toRemove.push(existing.imagePath);
+            nextImage = ''; nextImagePath = '';
+          }
           const updated = {
             ...existing, tab: tabId, subtype: type,
             title: name, summary: (summary || '').slice(0, 200),
+            image: nextImage, imagePath: nextImagePath,
             fields, bodyHtml: '', tags: []
           };
           await updateUserEntry(updated);
           const i = ARCHIVE.entries.indexOf(existing);
           if (i >= 0) ARCHIVE.entries[i] = updated;
+          for (const p of toRemove) await removeBanner(p);
           location.hash = `#/${tabId}/${updated.id}`;
         } else {
           const id = uniqueId(slugify(name));
+          let imageUrl = '', imagePath = '';
+          const file = banner.getFile();
+          if (file) {
+            const up = await uploadBanner(file, `spells/${id}`);
+            imageUrl = up.url; imagePath = up.path;
+          }
           const newEntry = {
             id, tab: tabId, subtype: type,
             title: name, summary: (summary || '').slice(0, 200),
-            image: '', imagePath: '', bodyHtml: '', tags: [],
+            image: imageUrl, imagePath, bodyHtml: '', tags: [],
             fields, createdAt: Date.now(), isUserCreated: true
           };
-          await persistUserEntry(newEntry);
+          try {
+            await persistUserEntry(newEntry);
+          } catch (err) {
+            if (imagePath) await removeBanner(imagePath);
+            throw err;
+          }
           ARCHIVE.entries.push(newEntry);
           location.hash = `#/${tabId}/${id}`;
         }
@@ -2498,11 +2541,11 @@
         </nav>
 
         <header class="spell-sheet__head">
-          <div class="spell-sigil" aria-hidden="true">
+          <div class="spell-sigil ${e.image ? 'spell-sigil--img' : ''}" aria-hidden="true">
             <span class="spell-sigil__ring"></span>
-            <span class="spell-sigil__rune">
-              ${aff.rune ? `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"><path d="${aff.rune}"/></svg>` : aff.icon}
-            </span>
+            ${e.image
+              ? `<img class="spell-sigil__img" src="${e.image}" alt="" onerror="this.parentElement.classList.remove('spell-sigil--img')">`
+              : `<span class="spell-sigil__rune">${aff.rune ? `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"><path d="${aff.rune}"/></svg>` : aff.icon}</span>`}
           </div>
           <div class="spell-sheet__id">
             <div class="spell-sheet__badges">
@@ -2545,8 +2588,10 @@
     const names = spellScopeNames(f);
     const hasCusto = String(f['Custo'] ?? '').trim() !== '';
     return `
-      <a href="#/${e.tab}/${e.id}" class="spell-card" style="--accent:${aff.accent};--glow:${aff.glow};--hue:${aff.hue};--delay:${i * 45}ms">
-        <div class="spell-card__rune" aria-hidden="true">${aff.icon}</div>
+      <a href="#/${e.tab}/${e.id}" class="spell-card ${e.image ? 'spell-card--img' : ''}" style="--accent:${aff.accent};--glow:${aff.glow};--hue:${aff.hue};--delay:${i * 45}ms">
+        ${e.image
+          ? `<div class="spell-card__media"><img loading="lazy" src="${e.image}" alt="" onerror="this.closest('.spell-card').classList.remove('spell-card--img')"><div class="spell-card__media-shade"></div></div>`
+          : `<div class="spell-card__rune" aria-hidden="true">${aff.icon}</div>`}
         <div class="spell-card__head">
           <span class="spell-type-badge spell-type-badge--${type}">${escapeHtml(SPELL_TYPES[type].badge)}</span>
           ${hasCusto ? `<span class="spell-card__cost">${escapeHtml(String(f['Custo']))} <small>${escapeHtml(f['CustoUnidade'] || 'MP')}</small></span>` : ''}
