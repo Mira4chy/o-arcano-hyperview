@@ -112,7 +112,7 @@ continua funcionando (sem o estado vivo) e a ficha avisa ao tentar salvar HP/sta
 
 ## Editor do Mestre (criar / editar entradas)
 
-Em qualquer categoria criavel (Cenarios, Eras, Sistemas, Mapa, Deuses, Historias, Itens, Racas) o Mestre tem:
+Em qualquer categoria criavel (Cenarios, Eras, Sistemas, Mapa, Deuses, Historias, Itens, Racas, Bestiario, Magias) o Mestre tem:
 
 - **Editor rich-text** com negrito, italico, sublinhado, tachado, H2/H3, paragrafo, citacao (blockquote), listas com marcadores e numeradas, alinhamento, codigo inline, separador horizontal e cor do texto.
 - **Paleta de cores salvas**: clique no `+` ao lado da paleta para guardar a cor atual; ela passa a aparecer na toolbar de todas as suas sessoes (sincroniza pelo Supabase, por usuario).

@@ -45,8 +45,8 @@ window.ARCANO_ARCHIVE = {
     {
       id: "Bestiario",
       title: "Bestiário",
-      tone: "Criaturas, horrores, pragas e inimigos não humanos.",
-      template: ["Tipo", "Habitat", "Instinto", "Perigo", "Espólio"]
+      tone: "Criaturas, horrores, pragas e inimigos não humanos. Crie fichas com habilidades.",
+      portrait: true
     },
     {
       id: "Paises",

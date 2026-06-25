@@ -15,17 +15,18 @@
   });
 
   /* Categorias em que o usuário pode criar histórias */
-  const CREATABLE_TABS = ['Cenarios', 'Eras', 'Sistemas', 'Mapa', 'Deuses', 'Historias', 'Itens', 'Racas', 'Magias'];
+  const CREATABLE_TABS = ['Cenarios', 'Eras', 'Sistemas', 'Mapa', 'Deuses', 'Historias', 'Itens', 'Racas', 'Bestiario', 'Magias'];
   const isCreatable = (id) => CREATABLE_TABS.includes(canonicalTabId(id));
 
   /* Categorias com layout alternativo (imagem ao lado do dossiê).
      O aspect-ratio do banner muda por categoria. */
-  const PORTRAIT_TABS = new Set(['Itens', 'Racas']);
+  const PORTRAIT_TABS = new Set(['Itens', 'Racas', 'Bestiario']);
   const isPortrait = (id) => PORTRAIT_TABS.has(id);
 
   const BANNER_ASPECT = {
     Itens: '4 / 3',
-    Racas: '2 / 3'
+    Racas: '2 / 3',
+    Bestiario: '3 / 4'
   };
   function bannerAspectFor(tabId) {
     return BANNER_ASPECT[tabId] || '16 / 9';
@@ -33,11 +34,13 @@
   function bannerLabelFor(tabId) {
     if (tabId === 'Itens') return { label: 'Banner (4:3)', hint: 'Proporção 4:3 (paisagem) — JPG, PNG ou WebP' };
     if (tabId === 'Racas') return { label: 'Banner (2:3)', hint: 'Proporção 2:3 (retrato) — JPG, PNG ou WebP' };
+    if (tabId === 'Bestiario') return { label: 'Banner (3:4)', hint: 'Proporção 3:4 (retrato) — JPG, PNG ou WebP' };
     return { label: 'Banner (16:9)', hint: 'Proporção 16:9 — JPG, PNG ou WebP' };
   }
   function bannerStyleFor(tabId) {
     if (tabId === 'Itens') return 'aspect-ratio: 4 / 3; max-width: 480px;';
     if (tabId === 'Racas') return 'aspect-ratio: 2 / 3; max-width: 360px;';
+    if (tabId === 'Bestiario') return 'aspect-ratio: 3 / 4; max-width: 380px;';
     return '';
   }
 
@@ -165,7 +168,7 @@
       id: 'surgimento',
       title: 'Surgimento',
       fields: [
-        { key: 'Raridade', type: 'rarity' },
+        { key: 'Raridade', type: 'rarity', promoted: true },
         { key: 'Modificador', type: 'text', placeholder: 'Ex.: +1 Força, -1 Destreza' },
         { key: 'Origem', type: 'text', placeholder: 'Ex.: Continente Norte' },
         { key: 'Ponto forte', type: 'text', placeholder: 'Resistência ao frio…' },
@@ -205,6 +208,65 @@
     }
     return null;
   }
+
+  /* ── BESTIÁRIO: ficha simples (3 seções) ──────────
+     Mesma mecânica de dossiê seccionado de Raças, porém enxuta:
+     Natureza (o que é a criatura), Habilidades (lista) e Vitalidade
+     (HP/Defesa/Mana de combate). O "Perigo" é promovido ao tagline,
+     como a Raridade nas raças. */
+  const BEAST_THREATS = [
+    { value: 'Trivial',    cssClass: 'rarity-chip--common' },
+    { value: 'Perigoso',   cssClass: 'rarity-chip--uncommon' },
+    { value: 'Mortal',     cssClass: 'rarity-chip--rare' },
+    { value: 'Letal',      cssClass: 'rarity-chip--epic' },
+    { value: 'Pesadelo',   cssClass: 'rarity-chip--legendary' },
+    { value: 'Cataclismo', cssClass: 'rarity-chip--unique' }
+  ];
+  const threatCssClass = (value) => {
+    const found = BEAST_THREATS.find((t) => normalize(t.value) === normalize(value));
+    return found ? found.cssClass : 'rarity-chip--default';
+  };
+
+  const BEAST_VITALS = ['HP', 'Defesa'];
+  const BEAST_SECTIONS = [
+    {
+      id: 'natureza',
+      title: 'Natureza',
+      fields: [
+        { key: 'Perigo', type: 'threat', promoted: true },
+        { key: 'Tipo', type: 'text', placeholder: 'Ex.: Aberração, Fera, Morto-vivo' },
+        { key: 'Habitat', type: 'text', placeholder: 'Ex.: Pântanos de mana morta' },
+        { key: 'Instinto', type: 'text', placeholder: 'Ex.: Caçar ao anoitecer / proteger o ninho' },
+        { key: 'Espólio', type: 'text', placeholder: 'Ex.: Glândula de veneno, cristal rachado' }
+      ]
+    },
+    {
+      id: 'habilidades',
+      title: 'Habilidades',
+      fields: [
+        { key: 'Habilidades', type: 'list', bare: true, placeholder: 'Digite uma habilidade e Enter…' }
+      ]
+    },
+    {
+      id: 'vitalidade',
+      title: 'Vitalidade',
+      view: 'vitals',
+      fields: [
+        { key: 'HP', type: 'text', default: '120' },
+        { key: 'Defesa', type: 'text', default: '12' },
+        { key: 'Mana', type: 'mana', default: '', placeholder: 'Opcional — ex.: 30/30' }
+      ]
+    }
+  ];
+
+  /* Dossiês seccionados por categoria (Raças e Bestiário). */
+  const SECTIONED_DOSSIERS = {
+    Racas: { sections: RACE_SECTIONS, rootId: 'raceDossier', promotedKey: 'Raridade' },
+    Bestiario: { sections: BEAST_SECTIONS, rootId: 'beastDossier', promotedKey: 'Perigo' }
+  };
+  const isSectionedTab = (id) => Object.prototype.hasOwnProperty.call(SECTIONED_DOSSIERS, canonicalTabId(id));
+  const sectionsForTab = (id) => (SECTIONED_DOSSIERS[canonicalTabId(id)] || SECTIONED_DOSSIERS.Racas).sections;
+  const dossierConfigFor = (id) => SECTIONED_DOSSIERS[canonicalTabId(id)] || SECTIONED_DOSSIERS.Racas;
 
   /* ── FICHAS DE PERSONAGEM (aba Persona) ───────────
      Atributos do sistema O Arcano. Para mudar a lista, edite só este array.
@@ -1694,7 +1756,7 @@
 
   function createCardHTML(tabId) {
     const theme = themeOf(tabId);
-    const noun = isMagiasTab(tabId) ? 'magia' : (tabId === 'Itens' ? 'item' : (tabId === 'Racas' ? 'raça' : 'história'));
+    const noun = isMagiasTab(tabId) ? 'magia' : (tabId === 'Itens' ? 'item' : (tabId === 'Racas' ? 'raça' : (tabId === 'Bestiario' ? 'criatura' : 'história')));
     const title = tabById(tabId)?.title || tabId;
     return `
       <a href="#/${tabId}/criar" class="entry-card create-card" style="--hue:${theme.hue};--delay:0ms" aria-label="Criar nova ${noun} em ${escapeHtml(title)}">
@@ -1897,27 +1959,31 @@
     const portrait = isPortrait(tabId);
     const isItens = tabId === 'Itens';
     const isRacas = tabId === 'Racas';
+    const isBestiario = tabId === 'Bestiario';
+    const isSectioned = isSectionedTab(tabId);
 
     const banner = bannerLabelFor(tabId);
     const bannerStyle = bannerStyleFor(tabId);
-    const titleLabel = (isItens || isRacas) ? 'Nome' : 'Título';
-    const titlePlaceholder = isItens ? 'Nome do item' : (isRacas ? 'Nome da raça' : 'Dê um nome à sua história');
-    const summaryPlaceholder = `Uma frase curta que descreve ${isItens ? 'o item' : (isRacas ? 'a raça' : 'a história')}`;
-    const descLabel = (isItens || isRacas) ? 'Descrição' : 'Texto';
+    const titleLabel = (isItens || isSectioned) ? 'Nome' : 'Título';
+    const titlePlaceholder = isItens ? 'Nome do item' : (isRacas ? 'Nome da raça' : (isBestiario ? 'Nome da criatura' : 'Dê um nome à sua história'));
+    const summaryPlaceholder = `Uma frase curta que descreve ${isItens ? 'o item' : (isRacas ? 'a raça' : (isBestiario ? 'a criatura' : 'a história'))}`;
+    const descLabel = (isItens || isSectioned) ? 'Descrição' : 'Texto';
 
     const saveLabel = editing
-      ? (isItens ? 'Salvar alterações' : (isRacas ? 'Salvar alterações' : 'Salvar alterações'))
-      : (isItens ? 'Salvar item' : (isRacas ? 'Salvar raça' : 'Salvar história'));
+      ? 'Salvar alterações'
+      : (isItens ? 'Salvar item' : (isRacas ? 'Salvar raça' : (isBestiario ? 'Salvar criatura' : 'Salvar história')));
     const heroSubtitle = editing
       ? 'Atualize os campos e salve para sobrescrever esta entrada.'
       : (isItens
           ? 'Escolha o tipo, anexe uma imagem 4:3 e preencha o dossiê.'
           : isRacas
             ? 'Anexe uma imagem 2:3, preencha as três seções do dossiê e descreva a raça.'
-            : 'Preencha o banner, o título e o relato. Use a barra de ferramentas para formatar e colorir o texto.');
+            : isBestiario
+              ? 'Anexe uma imagem 3:4, preencha a ficha (natureza, habilidades e vitalidade) e descreva a criatura.'
+              : 'Preencha o banner, o título e o relato. Use a barra de ferramentas para formatar e colorir o texto.');
     const heroH1 = editing
-      ? `Editar ${isItens ? 'item' : (isRacas ? 'raça' : 'história')} · `
-      : (isItens ? 'Novo item em ' : (isRacas ? 'Nova raça em ' : 'Nova história em '));
+      ? `Editar ${isItens ? 'item' : (isRacas ? 'raça' : (isBestiario ? 'criatura' : 'história'))} · `
+      : (isItens ? 'Novo item em ' : (isRacas ? 'Nova raça em ' : (isBestiario ? 'Nova criatura em ' : 'Nova história em ')));
     const heroEyebrow = editing ? `EDITAR · ${theme.label}` : `CRIAR · ${theme.label}`;
     const cancelHref = editing ? `#/${tabId}/${entryId}` : `#/${tabId}`;
 
@@ -2000,10 +2066,10 @@
         </div>
         ` : ''}
 
-        ${isRacas ? `
+        ${isSectioned ? `
         <div class="create-form__field">
-          <label class="create-form__label">Dossiê</label>
-          ${raceDossierFormHTML(editing ? initial.fields : {})}
+          <label class="create-form__label">${isBestiario ? 'Ficha' : 'Dossiê'}</label>
+          ${raceDossierFormHTML(tabId, editing ? initial.fields : {})}
         </div>
         ` : ''}
 
@@ -2721,8 +2787,13 @@
 
     const subtypeIcon = (e.subtype && ITEM_SUBTYPES[e.subtype]) ? ITEM_SUBTYPES[e.subtype].icon : '';
     const isRacas = tabId === 'Racas';
+    const isBestiario = tabId === 'Bestiario';
+    const isSectioned = isSectionedTab(tabId);
 
     function dossierValueHTML(key, value) {
+      if (key === 'Perigo') {
+        return `<span class="rarity-chip ${threatCssClass(value)}">${escapeHtml(value)}</span>`;
+      }
       if (key === 'Raridade') {
         const k = normalize(value);
         let cls = 'rarity-chip rarity-chip--default';
@@ -2760,13 +2831,45 @@
       `;
     }
 
-    function renderRaceDossierView(rawFields) {
+    function renderVitalsCard(section, data, sectionHead) {
+      // Bestiário: HP + Defesa como mini-stats, Mana como callout (se houver).
+      const stats = BEAST_VITALS.filter((k) => data[k] != null && data[k] !== '');
+      const hasMana = data['Mana'] != null && data['Mana'] !== '';
+      if (!stats.length && !hasMana) return '';
+      return `
+        <aside class="entry__dossier-side dossier-card--hpmp">
+          ${sectionHead}
+          ${stats.length ? `
+            <div class="hp-grid">
+              ${stats.map((k) => `
+                <div class="hp-part">
+                  <span class="hp-part__name">${escapeHtml(k)}</span>
+                  <span class="hp-part__value">${escapeHtml(String(data[k]))}</span>
+                </div>
+              `).join('')}
+            </div>
+          ` : ''}
+          ${hasMana ? `
+            <div class="mana-callout">
+              <span class="mana-callout__rune" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2c1.5 3 4 5 7 6-3 1-5.5 3-7 6-1.5-3-4-5-7-6 3-1 5.5-3 7-6z"/><circle cx="12" cy="14" r="1.5"/></svg>
+              </span>
+              <span class="mana-callout__label">MANA</span>
+              <strong class="mana-callout__value">${escapeHtml(String(data['Mana']))}</strong>
+            </div>
+          ` : ''}
+        </aside>
+      `;
+    }
+
+    function renderRaceDossierView(viewTabId, rawFields) {
       const data = rawFields || {};
-      const ROMAN = ['I', 'II', 'III'];
-      // Raridade ja aparece com destaque no tagline; nao repetir na lista de Surgimento.
+      const ROMAN = ['I', 'II', 'III', 'IV'];
+      const sections = sectionsForTab(viewTabId);
+      // Campo "promoted" (Raridade/Perigo) já aparece no tagline; não repetir na lista.
       return `
         <div class="race-dossier-view">
-          ${RACE_SECTIONS.map((section, idx) => {
+          ${sections.map((section, idx) => {
             const numeral = ROMAN[idx] || '';
             const sectionHead = `
               <header class="entry__dossier-head dossier-head--ornate">
@@ -2775,6 +2878,8 @@
                 <span class="dossier-rule" aria-hidden="true"></span>
               </header>
             `;
+
+            if (section.view === 'vitals') return renderVitalsCard(section, data, sectionHead);
 
             if (section.id === 'hpmp') {
               const hasAny = RACE_HP_PARTS.some((p) => data[p]) || data['Mana'];
@@ -2805,19 +2910,23 @@
               `;
             }
 
-            // Surgimento: omitir raridade na lista (ja vai como destaque no tagline)
+            // Campo promovido (vai como destaque no tagline) não se repete na lista.
             const visible = section.fields.filter((f) => {
-              if (section.id === 'surgimento' && f.key === 'Raridade') return false;
+              if (f.promoted) return false;
               const v = data[f.key];
               if (f.type === 'list') return Array.isArray(v) && v.length > 0;
               return v != null && v !== '';
             });
             if (!visible.length) return '';
+            // Lista "bare" (ex.: Habilidades): o cabeçalho da seção já nomeia,
+            // então mostramos os itens em largura total, sem repetir o rótulo.
+            const bareLists = visible.filter((f) => f.type === 'list' && f.bare);
+            const rows = visible.filter((f) => !(f.type === 'list' && f.bare));
             return `
               <aside class="entry__dossier-side">
                 ${sectionHead}
-                <dl class="meta-list">
-                  ${visible.map((f) => {
+                ${rows.length ? `<dl class="meta-list">
+                  ${rows.map((f) => {
                     const v = data[f.key];
                     if (f.type === 'list') {
                       return `
@@ -2838,7 +2947,12 @@
                       </div>
                     `;
                   }).join('')}
-                </dl>
+                </dl>` : ''}
+                ${bareLists.map((f) => `
+                  <ul class="ability-list">
+                    ${data[f.key].map((item) => `<li class="ability-list__item">${escapeHtml(item)}</li>`).join('')}
+                  </ul>
+                `).join('')}
               </aside>
             `;
           }).join('')}
@@ -2846,17 +2960,20 @@
       `;
     }
 
-    const dossierMarkup = isRacas
-      ? renderRaceDossierView(e.fields)
+    const dossierMarkup = isSectioned
+      ? renderRaceDossierView(tabId, e.fields)
       : renderItensDossier();
 
-    const raceRarity = isRacas && e.fields ? (e.fields['Raridade'] || '') : '';
-    const raceEmblem = isRacas
-      ? '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l1.7 4.6L18 8l-3.6 2.7 1.4 4.5L12 12.7 8.2 15.2l1.4-4.5L6 8l4.3-1.4L12 2z"/><circle cx="12" cy="20" r="1"/><path d="M9 17h6"/></svg>'
-      : '';
+    const promotedKey = isSectioned ? dossierConfigFor(tabId).promotedKey : '';
+    const raceRarity = isSectioned && e.fields ? (e.fields[promotedKey] || '') : '';
+    const raceEmblem = isBestiario
+      ? '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 9c0-3.3 3.1-6 7-6s7 2.7 7 6c0 2.1-1 3.6-2.2 5.1-.8 1-1.1 1.7-1.3 3.1-.2 1.4-1.4 2.3-3.5 2.3s-3.3-.9-3.5-2.3c-.2-1.4-.5-2.1-1.3-3.1C6 12.6 5 11.1 5 9z"/><path d="M9.5 9.5l-1.5 3M14.5 9.5l1.5 3M12 14v4"/><circle cx="9.5" cy="9" r=".6" fill="currentColor"/><circle cx="14.5" cy="9" r=".6" fill="currentColor"/></svg>'
+      : (isRacas
+        ? '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l1.7 4.6L18 8l-3.6 2.7 1.4 4.5L12 12.7 8.2 15.2l1.4-4.5L6 8l4.3-1.4L12 2z"/><circle cx="12" cy="20" r="1"/><path d="M9 17h6"/></svg>'
+        : '');
 
     const heroPortrait = `
-      <div class="entry__portrait-card ${isRacas ? 'entry__portrait-card--tall' : ''}" style="--hue:${theme.hue}">
+      <div class="entry__portrait-card ${isSectioned ? 'entry__portrait-card--tall' : ''}" style="--hue:${theme.hue}">
         ${subtypeIcon ? `<div class="entry__subtype-emblem" aria-hidden="true">${subtypeIcon}</div>` : ''}
         ${raceEmblem ? `<div class="entry__subtype-emblem entry__subtype-emblem--race" aria-hidden="true">${raceEmblem}</div>` : ''}
         <header class="entry__portrait-header">
@@ -2869,7 +2986,7 @@
           </nav>
           <div class="entry__tagline">
             ${subtypeName ? `<span class="entry__cat entry__cat--subtype">${escapeHtml(subtypeName.toUpperCase())}</span>` : ''}
-            ${raceRarity ? dossierValueHTML('Raridade', raceRarity) : ''}
+            ${raceRarity ? dossierValueHTML(promotedKey, raceRarity) : ''}
             ${tags.length
               ? tags.map((tag) => tagChipHTML(tag, 'story-tag story-tag--hero')).join('')
               : (subtypeName || raceRarity ? '' : `<span class="entry__cat">${escapeHtml(theme.label)}</span>`)}
@@ -2934,14 +3051,14 @@
     const editButton = (e.isUserCreated && auth.isAdmin) ? `
       <a class="back-link back-link--edit" href="#/${tabId}/${encodeURIComponent(e.id)}/editar">
         <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 1 1 3 3L7 19l-4 1 1-4 12.5-12.5z"/></svg>
-        Editar ${tabId === 'Itens' ? 'item' : (tabId === 'Racas' ? 'raça' : 'história')}
+        Editar ${tabId === 'Itens' ? 'item' : (tabId === 'Racas' ? 'raça' : (tabId === 'Bestiario' ? 'criatura' : 'história'))}
       </a>
     ` : '';
 
     const deleteButton = (e.isUserCreated && auth.isAdmin) ? `
       <button type="button" class="back-link back-link--danger" data-delete-entry="${escapeHtml(e.id)}">
         <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"/></svg>
-        Apagar ${tabId === 'Itens' ? 'item' : (tabId === 'Racas' ? 'raça' : 'história')}
+        Apagar ${tabId === 'Itens' ? 'item' : (tabId === 'Racas' ? 'raça' : (tabId === 'Bestiario' ? 'criatura' : 'história'))}
       </button>
     ` : '';
 
@@ -4223,12 +4340,13 @@
     };
   }
 
-  /* Dossier sectioned (Racas): 3 secoes com diferentes tipos de campo. */
-  function raceDossierFormHTML(values) {
+  /* Dossier sectioned (Racas / Bestiario): seções com tipos de campo variados. */
+  function raceDossierFormHTML(tabId, values) {
     const v = values || {};
+    const cfg = dossierConfigFor(tabId);
     return `
-      <div class="race-dossier" id="raceDossier">
-        ${RACE_SECTIONS.map((section) => `
+      <div class="race-dossier" id="${cfg.rootId}">
+        ${cfg.sections.map((section) => `
           <div class="dossier-section">
             <header class="dossier-section__head">
               <span class="section__eyebrow">${escapeHtml(section.title.toUpperCase())}</span>
@@ -4246,12 +4364,13 @@
 
   function raceFieldFormHTML(field, value) {
     const v = value != null ? value : (field.default || '');
-    if (field.type === 'rarity') {
+    if (field.type === 'rarity' || field.type === 'threat') {
+      const opts = field.type === 'threat' ? BEAST_THREATS : RARITY_OPTIONS;
       return `
         <div class="dossier-field">
           <span>${escapeHtml(field.key)}</span>
           <div class="rarity-picker" data-dossier-field="${escapeHtml(field.key)}" data-value="${escapeHtml(v)}" role="radiogroup" aria-label="${escapeHtml(field.key)}">
-            ${RARITY_OPTIONS.map((opt) => `
+            ${opts.map((opt) => `
               <button type="button"
                       class="rarity-chip ${opt.cssClass} rarity-pick ${opt.value === v ? 'is-selected' : ''}"
                       data-rarity="${escapeHtml(opt.value)}"
@@ -4328,8 +4447,8 @@
     `;
   }
 
-  function bindRaceDossier() {
-    const root = document.getElementById('raceDossier');
+  function bindRaceDossier(rootId) {
+    const root = document.getElementById(rootId || 'raceDossier');
     if (!root) return { getFields: () => ({}) };
 
     function readListItems(builder) {
@@ -4930,8 +5049,8 @@
         subtype: existing?.subtype || '',
         fields: existing?.fields || {}
       });
-    } else if (tabId === 'Racas') {
-      const r = bindRaceDossier();
+    } else if (isSectionedTab(tabId)) {
+      const r = bindRaceDossier(dossierConfigFor(tabId).rootId);
       dossier = { getFields: r.getFields, getSubtype: () => null };
     } else {
       dossier = { getFields: () => ({}), getSubtype: () => null };
