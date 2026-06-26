@@ -267,8 +267,9 @@
     {
       id: 'habilidades',
       title: 'Habilidades',
+      view: 'abilities',
       fields: [
-        { key: 'Habilidades', type: 'list', bare: true, placeholder: 'Digite uma habilidade e Enter…' }
+        { key: 'Habilidades', type: 'abilities' }
       ]
     }
   ];
@@ -297,6 +298,7 @@
   const CHAR_RES_ATTR = 'Resistência';
 
   const BEAST_EXTRA_PARTS = ['Cauda', 'Asa', 'Braço Extra', 'Tentáculo', 'Personalizada'];
+  const BEAST_ABILITY_KINDS = ['Ativa', 'Passiva'];
 
   function defaultBeastAttributes() {
     const out = {};
@@ -383,6 +385,65 @@
           quantity: String(drop.quantity || drop.qty || '').trim(),
           chance: String(drop.chance || '').trim(),
           note: String(drop.note || drop.condicao || drop.condição || '').trim()
+        };
+      })
+      .filter(Boolean);
+  }
+
+  function beastAbilityKindFrom(value) {
+    const key = normalize(value);
+    return key === 'passiva' ? 'Passiva' : 'Ativa';
+  }
+
+  function abilityFromMagicEntry(entry, overrides = {}) {
+    const f = (entry && entry.fields) || {};
+    const type = isSpellType(entry && entry.subtype) ? entry.subtype : 'ativa';
+    const isPassive = type === 'passiva';
+    return {
+      source: 'magic',
+      refId: entry ? entry.id : '',
+      name: (entry && entry.title) || overrides.name || '',
+      kind: isPassive ? 'Passiva' : 'Ativa',
+      trigger: isPassive ? (f['Condição de Ativação'] || '') : '',
+      cost: formatCusto(f) === '—' ? '' : formatCusto(f),
+      range: isPassive ? '' : (f['Alcance'] ? `${f['Alcance']}q` : ''),
+      duration: isPassive ? '' : (f['Duração'] || ''),
+      effect: isPassive ? (f['Efeito Contínuo'] || entry?.summary || '') : (f['Descrição'] || entry?.summary || ''),
+      limit: isPassive ? (f['Manutenção'] ? `Manutenção: ${f['Manutenção']}` : '') : (f['Efeito Adicional'] || ''),
+      summary: (entry && entry.summary) || ''
+    };
+  }
+
+  function normalizeBeastAbilities(raw) {
+    if (!Array.isArray(raw)) return [];
+    return raw
+      .map((ability) => {
+        if (typeof ability === 'string') {
+          const name = ability.trim();
+          return name ? {
+            source: 'custom', refId: '', name, kind: 'Ativa',
+            trigger: '', cost: '', range: '', duration: '', effect: name, limit: '', summary: ''
+          } : null;
+        }
+        if (!ability || typeof ability !== 'object') return null;
+        const source = ability.source === 'magic' || ability.refId ? 'magic' : 'custom';
+        const refId = String(ability.refId || '').trim();
+        const linked = source === 'magic' && refId ? entryById(refId) : null;
+        const fromMagic = linked ? abilityFromMagicEntry(linked, ability) : null;
+        const name = String((fromMagic && fromMagic.name) || ability.name || '').trim();
+        if (!name && !refId) return null;
+        return {
+          source,
+          refId,
+          name: name || 'Habilidade',
+          kind: beastAbilityKindFrom(ability.kind || (fromMagic && fromMagic.kind)),
+          trigger: String(ability.trigger || (fromMagic && fromMagic.trigger) || '').trim(),
+          cost: String(ability.cost || (fromMagic && fromMagic.cost) || '').trim(),
+          range: String(ability.range || (fromMagic && fromMagic.range) || '').trim(),
+          duration: String(ability.duration || (fromMagic && fromMagic.duration) || '').trim(),
+          effect: String(ability.effect || (fromMagic && fromMagic.effect) || '').trim(),
+          limit: String(ability.limit || (fromMagic && fromMagic.limit) || '').trim(),
+          summary: String((fromMagic && fromMagic.summary) || ability.summary || '').trim()
         };
       })
       .filter(Boolean);
@@ -3033,6 +3094,34 @@
       `;
     }
 
+    function renderBeastAbilitiesCard(section, data, sectionHead) {
+      const abilities = normalizeBeastAbilities(data['Habilidades']);
+      if (!abilities.length) return '';
+      return `
+        <aside class="entry__dossier-side beast-abilities-card">
+          ${sectionHead}
+          <div class="beast-ability-list">
+            ${abilities.map((ability, index) => {
+              const hasCodex = ability.source === 'magic' && ability.refId && entryById(ability.refId);
+              const detail = ability.effect || ability.summary || ability.trigger || 'Clique para ver detalhes.';
+              return `
+                <article class="beast-ability-item">
+                  <button type="button" class="beast-ability-open" data-beast-ability-index="${index}">
+                    <span class="beast-ability-open__top">
+                      <strong>${escapeHtml(ability.name)}</strong>
+                      <span class="beast-ability-kind">${escapeHtml(ability.kind)}</span>
+                    </span>
+                    <span class="beast-ability-open__text">${escapeHtml(detail)}</span>
+                  </button>
+                  ${hasCodex ? `<a class="beast-ability-codex" href="#/Magias/${encodeURIComponent(ability.refId)}">Codex</a>` : ''}
+                </article>
+              `;
+            }).join('')}
+          </div>
+        </aside>
+      `;
+    }
+
     function renderRaceDossierView(viewTabId, rawFields, opts = {}) {
       const data = rawFields || {};
       const ROMAN = ['I', 'II', 'III', 'IV', 'V'];
@@ -3053,6 +3142,7 @@
 
             if (viewTabId === 'Bestiario' && section.view === 'attributes') return renderBeastAttributesCard(section, data, sectionHead);
             if (viewTabId === 'Bestiario' && section.view === 'drops') return renderBeastDropsCard(section, data, sectionHead);
+            if (viewTabId === 'Bestiario' && section.view === 'abilities') return renderBeastAbilitiesCard(section, data, sectionHead);
             if (section.view === 'vitals') return renderVitalsCard(section, data, sectionHead);
 
             if (section.id === 'hpmp') {
@@ -3157,7 +3247,7 @@
         : '');
 
     const heroPortrait = `
-      <div class="entry__portrait-card ${isSectioned ? 'entry__portrait-card--tall' : ''} ${isBestiario ? 'entry__portrait-card--beast' : ''}" style="--hue:${theme.hue}">
+      <div class="entry__portrait-card ${isSectioned ? 'entry__portrait-card--tall' : ''} ${isBestiario ? 'entry__portrait-card--beast' : ''}" ${isBestiario ? `data-beast-entry-id="${escapeHtml(e.id)}"` : ''} style="--hue:${theme.hue}">
         ${subtypeIcon ? `<div class="entry__subtype-emblem" aria-hidden="true">${subtypeIcon}</div>` : ''}
         ${raceEmblem ? `<div class="entry__subtype-emblem entry__subtype-emblem--race" aria-hidden="true">${raceEmblem}</div>` : ''}
         <header class="entry__portrait-header">
@@ -4130,9 +4220,96 @@
         attachDeleteHandlers();
         attachCharacterDeleteHandlers();
         attachCharacterSheet();
+        attachBeastAbilityCards();
       });
       window.scrollTo({ top: 0, behavior: 'instant' });
     }, 180);
+  }
+
+  function beastAbilityRowsHTML(ability) {
+    const rows = [
+      ['Ativação', ability.trigger],
+      ['Custo', ability.cost],
+      ['Alcance', ability.range],
+      ['Duração', ability.duration],
+      ['Limite', ability.limit]
+    ].filter(([, value]) => value);
+    if (!rows.length) return '';
+    return `
+      <dl class="ability-modal__meta">
+        ${rows.map(([label, value]) => `
+          <div>
+            <dt>${escapeHtml(label)}</dt>
+            <dd>${escapeHtml(value)}</dd>
+          </div>
+        `).join('')}
+      </dl>
+    `;
+  }
+
+  function openBeastAbilityModal(ability) {
+    const existing = document.getElementById('beastAbilityModal');
+    if (existing) existing.remove();
+    const linked = ability.source === 'magic' && ability.refId && entryById(ability.refId);
+    const overlay = document.createElement('div');
+    overlay.id = 'beastAbilityModal';
+    overlay.className = 'ability-modal';
+    overlay.style.setProperty('--hue', themeOf('Bestiario').hue);
+    overlay.innerHTML = `
+      <div class="ability-modal__backdrop" data-ability-close></div>
+      <article class="ability-modal__panel" role="dialog" aria-modal="true" aria-label="${escapeHtml(ability.name)}">
+        <header class="ability-modal__head">
+          <div class="ability-modal__titlewrap">
+            <span class="section__eyebrow">HABILIDADE</span>
+            <h2>${escapeHtml(ability.name)}</h2>
+          </div>
+          <button type="button" class="ability-modal__close" data-ability-close aria-label="Fechar">
+            <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
+          </button>
+        </header>
+        <div class="ability-modal__chips">
+          <span class="beast-ability-kind">${escapeHtml(ability.kind)}</span>
+          <span class="ability-modal__origin">${ability.source === 'magic' ? 'Magia vinculada' : 'Avulsa'}</span>
+          ${linked ? `<a class="beast-ability-codex beast-ability-codex--modal" href="#/Magias/${encodeURIComponent(ability.refId)}">Codex</a>` : ''}
+        </div>
+        ${beastAbilityRowsHTML(ability)}
+        ${ability.effect ? `
+          <section class="ability-modal__effect">
+            <span class="section__eyebrow">EFEITO</span>
+            <p>${escapeHtml(ability.effect)}</p>
+          </section>
+        ` : ''}
+        ${ability.summary && ability.summary !== ability.effect ? `<p class="ability-modal__summary">${escapeHtml(ability.summary)}</p>` : ''}
+      </article>
+    `;
+    document.body.appendChild(overlay);
+    document.body.classList.add('is-modal-open');
+    const close = () => {
+      overlay.remove();
+      document.body.classList.remove('is-modal-open');
+      document.removeEventListener('keydown', onKey);
+    };
+    const onKey = (e) => { if (e.key === 'Escape') close(); };
+    overlay.addEventListener('click', (e) => {
+      if (e.target.closest('[data-ability-close]')) { close(); return; }
+      if (e.target.closest('.beast-ability-codex')) close();
+    });
+    document.addEventListener('keydown', onKey);
+  }
+
+  function attachBeastAbilityCards() {
+    const root = document.querySelector('[data-beast-entry-id]');
+    if (!root || root.dataset.abilitiesBound) return;
+    root.dataset.abilitiesBound = '1';
+    const entry = entryById(root.dataset.beastEntryId);
+    if (!entry) return;
+    root.addEventListener('click', (e) => {
+      const btn = e.target.closest('[data-beast-ability-index]');
+      if (!btn) return;
+      const abilities = normalizeBeastAbilities((entry.fields || {})['Habilidades']);
+      const ability = abilities[Number(btn.dataset.beastAbilityIndex)];
+      if (ability) openBeastAbilityModal(ability);
+    });
   }
 
   /* ── ANIMATIONS ───────────────────────────────── */
@@ -4544,6 +4721,8 @@
                 ? beastVitalsFormHTML(v)
                 : tabId === 'Bestiario' && section.view === 'drops'
                   ? beastDropsFormHTML(v)
+                  : tabId === 'Bestiario' && section.view === 'abilities'
+                    ? beastAbilitiesFormHTML(v)
                   : section.id === 'hpmp'
               ? raceHpFormHTML(v)
               : `<div class="dossier-section__fields">
@@ -4728,6 +4907,70 @@
     `;
   }
 
+  function beastMagicOptionsHTML(selectedId, fallbackName) {
+    const magias = entriesIn('Magias');
+    const hasSelected = selectedId && magias.some((spell) => spell.id === selectedId);
+    return `
+      <option value="">— escolher magia —</option>
+      ${selectedId && !hasSelected ? `<option value="${escapeHtml(selectedId)}" selected>${escapeHtml(fallbackName || 'Magia removida')}</option>` : ''}
+      ${magias.map((spell) => `<option value="${escapeHtml(spell.id)}" ${spell.id === selectedId ? 'selected' : ''}>${escapeHtml(spell.title)}</option>`).join('')}
+    `;
+  }
+
+  function beastAbilityRowHTML(ability, index) {
+    const a = normalizeBeastAbilities([ability])[0] || {
+      source: 'custom', refId: '', name: '', kind: 'Ativa',
+      trigger: '', cost: '', range: '', duration: '', effect: '', limit: '', summary: ''
+    };
+    return `
+      <div class="beast-ability-row" data-beast-ability-row data-ability-name="${escapeHtml(a.name)}" data-ability-summary="${escapeHtml(a.summary)}">
+        <div class="beast-ability-row__top">
+          <select class="create-form__input char-select" data-beast-ability-source aria-label="Origem da habilidade ${index + 1}">
+            <option value="custom" ${a.source === 'custom' ? 'selected' : ''}>Avulsa</option>
+            <option value="magic" ${a.source === 'magic' ? 'selected' : ''}>Magia do Codex</option>
+          </select>
+          <select class="create-form__input char-select" data-beast-ability-kind aria-label="Tipo da habilidade ${index + 1}">
+            ${BEAST_ABILITY_KINDS.map((kind) => `<option value="${escapeHtml(kind)}" ${a.kind === kind ? 'selected' : ''}>${escapeHtml(kind)}</option>`).join('')}
+          </select>
+          <button type="button" class="beast-row-remove" data-beast-ability-remove aria-label="Remover habilidade">
+            <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
+          </button>
+        </div>
+        <div class="beast-ability-row__codex" ${a.source === 'magic' ? '' : 'hidden'}>
+          <select class="create-form__input char-select" data-beast-ability-ref aria-label="Magia vinculada ${index + 1}">
+            ${beastMagicOptionsHTML(a.refId, a.name)}
+          </select>
+        </div>
+        <input type="text" class="create-form__input" data-beast-ability-name
+               value="${escapeHtml(a.source === 'custom' ? a.name : '')}" placeholder="Nome da habilidade avulsa" maxlength="120"
+               ${a.source === 'magic' ? 'hidden' : ''} aria-label="Nome da habilidade ${index + 1}">
+        <div class="beast-ability-row__grid">
+          <input type="text" class="create-form__input" data-beast-ability-trigger value="${escapeHtml(a.trigger)}" placeholder="Ativação / condição" maxlength="120">
+          <input type="text" class="create-form__input" data-beast-ability-cost value="${escapeHtml(a.cost)}" placeholder="Custo" maxlength="60">
+          <input type="text" class="create-form__input" data-beast-ability-range value="${escapeHtml(a.range)}" placeholder="Alcance" maxlength="60">
+          <input type="text" class="create-form__input" data-beast-ability-duration value="${escapeHtml(a.duration)}" placeholder="Duração" maxlength="60">
+        </div>
+        <textarea class="create-form__input beast-ability-row__effect" data-beast-ability-effect rows="2" placeholder="Efeito completo da habilidade" maxlength="700">${escapeHtml(a.effect)}</textarea>
+        <input type="text" class="create-form__input" data-beast-ability-limit value="${escapeHtml(a.limit)}" placeholder="Limite / recarga / observação" maxlength="160">
+      </div>
+    `;
+  }
+
+  function beastAbilitiesFormHTML(values) {
+    const abilities = normalizeBeastAbilities(values['Habilidades']);
+    return `
+      <div class="beast-ability-builder" data-beast-abilities>
+        <div class="beast-ability-list-form" data-beast-ability-list>
+          ${abilities.map((ability, i) => beastAbilityRowHTML(ability, i)).join('')}
+        </div>
+        <button type="button" class="btn btn-ghost beast-ability-add" data-beast-ability-add>
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+          <span>Adicionar habilidade</span>
+        </button>
+      </div>
+    `;
+  }
+
   function listBuilderItemHTML(item, index) {
     return `
       <span class="list-builder__item">
@@ -4853,6 +5096,62 @@
       if (lastSelect) lastSelect.focus();
     }
 
+    function readBeastAbilityRows() {
+      return [...root.querySelectorAll('[data-beast-ability-row]')]
+        .map((row) => {
+          const source = row.querySelector('[data-beast-ability-source]')?.value || 'custom';
+          const refId = (row.querySelector('[data-beast-ability-ref]')?.value || '').trim();
+          const linked = source === 'magic' && refId ? entryById(refId) : null;
+          const name = source === 'magic'
+            ? ((linked && linked.title) || row.dataset.abilityName || '')
+            : (row.querySelector('[data-beast-ability-name]')?.value || '').trim();
+          const ability = {
+            source,
+            refId: source === 'magic' ? refId : '',
+            name,
+            kind: beastAbilityKindFrom(row.querySelector('[data-beast-ability-kind]')?.value || 'Ativa'),
+            trigger: (row.querySelector('[data-beast-ability-trigger]')?.value || '').trim(),
+            cost: (row.querySelector('[data-beast-ability-cost]')?.value || '').trim(),
+            range: (row.querySelector('[data-beast-ability-range]')?.value || '').trim(),
+            duration: (row.querySelector('[data-beast-ability-duration]')?.value || '').trim(),
+            effect: (row.querySelector('[data-beast-ability-effect]')?.value || '').trim(),
+            limit: (row.querySelector('[data-beast-ability-limit]')?.value || '').trim(),
+            summary: (linked && linked.summary) || row.dataset.abilitySummary || ''
+          };
+          if (ability.source === 'magic' && !ability.refId) return null;
+          if (ability.source === 'custom' && !ability.name && !ability.effect) return null;
+          return ability;
+        })
+        .filter(Boolean);
+    }
+
+    function refreshBeastAbilities(abilities) {
+      const list = root.querySelector('[data-beast-ability-list]');
+      if (list) list.innerHTML = abilities.map((ability, i) => beastAbilityRowHTML(ability, i)).join('');
+    }
+
+    function addBeastAbility() {
+      const abilities = readBeastAbilityRows();
+      abilities.push({
+        source: entriesIn('Magias').length ? 'magic' : 'custom',
+        refId: '', name: '', kind: 'Ativa',
+        trigger: '', cost: '', range: '', duration: '', effect: '', limit: '', summary: ''
+      });
+      refreshBeastAbilities(abilities);
+      const last = root.querySelector('[data-beast-ability-list] [data-beast-ability-row]:last-child');
+      const focusable = last && last.querySelector('[data-beast-ability-ref], [data-beast-ability-name]');
+      if (focusable) focusable.focus();
+    }
+
+    function toggleBeastAbilitySource(row) {
+      if (!row) return;
+      const source = row.querySelector('[data-beast-ability-source]')?.value || 'custom';
+      const codex = row.querySelector('.beast-ability-row__codex');
+      const name = row.querySelector('[data-beast-ability-name]');
+      if (codex) codex.hidden = source !== 'magic';
+      if (name) name.hidden = source === 'magic';
+    }
+
     function addItemFrom(input) {
       const builder = input.closest('.list-builder');
       if (!builder) return;
@@ -4930,6 +5229,45 @@
       if (dropRemove) {
         e.preventDefault();
         dropRemove.closest('[data-beast-drop-row]')?.remove();
+        return;
+      }
+      if (e.target.closest('[data-beast-ability-add]')) {
+        e.preventDefault();
+        addBeastAbility();
+        return;
+      }
+      const abilityRemove = e.target.closest('[data-beast-ability-remove]');
+      if (abilityRemove) {
+        e.preventDefault();
+        abilityRemove.closest('[data-beast-ability-row]')?.remove();
+      }
+    });
+
+    root.addEventListener('change', (e) => {
+      if (e.target.matches('[data-beast-ability-source]')) {
+        toggleBeastAbilitySource(e.target.closest('[data-beast-ability-row]'));
+      } else if (e.target.matches('[data-beast-ability-ref]')) {
+        const row = e.target.closest('[data-beast-ability-row]');
+        const spell = entryById(e.target.value);
+        if (row && spell) {
+          const base = abilityFromMagicEntry(spell);
+          row.dataset.abilityName = base.name;
+          row.dataset.abilitySummary = base.summary;
+          const kind = row.querySelector('[data-beast-ability-kind]');
+          const trigger = row.querySelector('[data-beast-ability-trigger]');
+          const cost = row.querySelector('[data-beast-ability-cost]');
+          const range = row.querySelector('[data-beast-ability-range]');
+          const duration = row.querySelector('[data-beast-ability-duration]');
+          const effect = row.querySelector('[data-beast-ability-effect]');
+          const limit = row.querySelector('[data-beast-ability-limit]');
+          if (kind) kind.value = base.kind;
+          if (trigger && !trigger.value) trigger.value = base.trigger;
+          if (cost && !cost.value) cost.value = base.cost;
+          if (range && !range.value) range.value = base.range;
+          if (duration && !duration.value) duration.value = base.duration;
+          if (effect && !effect.value) effect.value = base.effect;
+          if (limit && !limit.value) limit.value = base.limit;
+        }
       }
     });
 
@@ -4973,6 +5311,9 @@
 
           const drops = readBeastDropRows();
           if (drops.length) out['Drops'] = drops;
+
+          const abilities = readBeastAbilityRows();
+          if (abilities.length) out['Habilidades'] = abilities;
         }
         return out;
       }
