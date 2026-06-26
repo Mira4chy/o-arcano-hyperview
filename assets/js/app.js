@@ -62,6 +62,27 @@
       fields: ['Raridade', 'Valor', 'Efeito']
     }
   };
+  const ITEM_EXTRA_FIELD_CUSTOM = '__custom__';
+  const ITEM_EXTRA_FIELD_OPTIONS = [
+    { key: 'Dano', placeholder: 'Ex.: 1d8 corte, 2d6 fogo' },
+    { key: 'Defesa', placeholder: 'Ex.: +2, 14, armadura leve' },
+    { key: 'Slot', placeholder: 'Ex.: Cabeça, mão, anel, peito' },
+    { key: 'Alcance', placeholder: 'Ex.: 6q, toque, arremesso curto' },
+    { key: 'Área', placeholder: 'Ex.: cone 3q, raio 2q' },
+    { key: 'Duração', placeholder: 'Ex.: 3 turnos, cena, permanente' },
+    { key: 'Cargas / usos', placeholder: 'Ex.: 3 cargas, 1/dia, consome ao usar' },
+    { key: 'Recarga', placeholder: 'Ex.: descanso curto, amanhecer' },
+    { key: 'Requisito', placeholder: 'Ex.: Força 14, vínculo arcano' },
+    { key: 'Efeito passivo', placeholder: 'Bônus ou efeito sempre ativo' },
+    { key: 'Condição de uso', placeholder: 'Ex.: apenas à noite, em combate' },
+    { key: 'Penalidade', placeholder: 'Custo, risco ou maldição' },
+    { key: 'Material obtido de', placeholder: 'Ex.: besta, mineral, região' },
+    { key: 'Compatível com', placeholder: 'Ex.: lâminas, alquimia, rituais' },
+    { key: 'Peso', placeholder: 'Ex.: 2 kg, leve, pesado' },
+    { key: 'Origem', placeholder: 'Ex.: ruínas de Veyra, forja real' },
+    { key: 'Observação do mestre', placeholder: 'Nota interna ou condição especial' }
+  ];
+  const ITEM_BASE_FIELD_KEYS = new Set(Object.values(ITEM_SUBTYPES).flatMap((cfg) => cfg.fields));
   const ITEM_SUBTYPE_KEYS = Object.keys(ITEM_SUBTYPES);
   function subtypeFieldsFor(subtype) {
     return (ITEM_SUBTYPES[subtype] || ITEM_SUBTYPES.item).fields;
@@ -1030,6 +1051,84 @@
   const normalize = (s) => String(s ?? '').toLowerCase()
     .normalize('NFD').replace(/[̀-ͯ]/g, '');
 
+  function fieldSearchValues(value) {
+    if (value == null) return [];
+    if (Array.isArray(value)) return value.flatMap(fieldSearchValues);
+    if (typeof value === 'object') return Object.values(value).flatMap(fieldSearchValues);
+    return [String(value)];
+  }
+
+  function normalizeItemExtraFields(raw) {
+    let source = raw;
+    if (typeof raw === 'string') {
+      try {
+        source = JSON.parse(raw);
+      } catch {
+        source = raw.split(/\n+/).map((line) => {
+          const parts = line.split(':');
+          return parts.length > 1
+            ? { key: parts.shift(), value: parts.join(':') }
+            : null;
+        }).filter(Boolean);
+      }
+    }
+    if (!Array.isArray(source)) return [];
+    return source
+      .map((field) => {
+        if (typeof field === 'string') {
+          const parts = field.split(':');
+          const key = (parts.shift() || '').trim();
+          const value = parts.join(':').trim();
+          return key && value ? { key, value } : null;
+        }
+        if (!field || typeof field !== 'object') return null;
+        const key = String(field.key || field.name || field.label || '').trim();
+        const value = String(field.value ?? field.valor ?? field.text ?? '').trim();
+        return key && value ? { key, value } : null;
+      })
+      .filter(Boolean);
+  }
+
+  function itemExtraFieldOption(key) {
+    const wanted = normalize(key);
+    return ITEM_EXTRA_FIELD_OPTIONS.find((opt) => normalize(opt.key) === wanted) || null;
+  }
+
+  function itemExtraFieldPlaceholder(key) {
+    const found = itemExtraFieldOption(key);
+    return found ? found.placeholder : 'Descreva o valor do campo';
+  }
+
+  function itemExtraFieldsForForm(fields) {
+    const data = fields || {};
+    const extras = normalizeItemExtraFields(data.Campos);
+    const seen = new Set(extras.map((field) => normalize(field.key)));
+    Object.entries(data).forEach(([key, value]) => {
+      if (key === 'Campos' || ITEM_BASE_FIELD_KEYS.has(key)) return;
+      if (Array.isArray(value) || (value && typeof value === 'object')) return;
+      const text = String(value ?? '').trim();
+      if (!text || seen.has(normalize(key))) return;
+      extras.push({ key, value: text });
+      seen.add(normalize(key));
+    });
+    return extras;
+  }
+
+  function itemBaseFieldEntries(fields) {
+    return Object.entries(fields || {}).filter(([key, value]) => {
+      if (key === 'Campos') return false;
+      if (Array.isArray(value) || (value && typeof value === 'object')) return false;
+      return String(value ?? '').trim() !== '';
+    });
+  }
+
+  function itemFieldValue(fields, key) {
+    const data = fields || {};
+    if (data[key] != null && data[key] !== '') return data[key];
+    const found = normalizeItemExtraFields(data.Campos).find((field) => normalize(field.key) === normalize(key));
+    return found ? found.value : '';
+  }
+
   const tabById = (id) => ARCHIVE.tabs.find((t) => t.id === canonicalTabId(id));
   const entriesIn = (tabId) => ARCHIVE.entries.filter((e) => canonicalTabId(e.tab) === canonicalTabId(tabId));
   const entryById = (id) => ARCHIVE.entries.find((e) => e.id === id);
@@ -1862,7 +1961,7 @@
       if (!matchesTag) return false;
       if (!q) return true;
       const tagText = entryTags.map((t) => t.label).join(' ');
-      const hay = [e.title, e.summary, tagText, ...(e.body || []), e.bodyHtml || '', ...Object.values(e.fields || {})].join(' ');
+      const hay = [e.title, e.summary, tagText, ...(e.body || []), e.bodyHtml || '', ...fieldSearchValues(e.fields || {})].join(' ');
       return normalize(hay).includes(q);
     });
 
@@ -2976,7 +3075,10 @@
     }
 
     function renderItensDossier() {
-      if (!fields.length) return '';
+      const itemFields = e.fields || {};
+      const baseFields = itemBaseFieldEntries(itemFields);
+      const extraFields = normalizeItemExtraFields(itemFields.Campos);
+      if (!baseFields.length && !extraFields.length) return '';
       return `
         <aside class="entry__dossier-side">
           <header class="entry__dossier-head">
@@ -2986,14 +3088,29 @@
               ${subtypeName ? `<span class="entry__dossier-subtype">${escapeHtml(subtypeName)}</span>` : ''}
             </div>
           </header>
-          <dl class="meta-list">
-            ${fields.map(([k, v]) => `
-              <div class="meta-row">
-                <dt>${escapeHtml(k)}</dt>
-                <dd>${dossierValueHTML(k, v)}</dd>
-              </div>
-            `).join('')}
-          </dl>
+          ${baseFields.length ? `
+            <dl class="meta-list">
+              ${baseFields.map(([k, v]) => `
+                <div class="meta-row">
+                  <dt>${escapeHtml(k)}</dt>
+                  <dd>${dossierValueHTML(k, v)}</dd>
+                </div>
+              `).join('')}
+            </dl>
+          ` : ''}
+          ${extraFields.length ? `
+            <div class="item-extra-view">
+              <span class="section__eyebrow">CAMPOS</span>
+              <dl class="meta-list">
+                ${extraFields.map((field) => `
+                  <div class="meta-row">
+                    <dt>${escapeHtml(field.key)}</dt>
+                    <dd>${dossierValueHTML(field.key, field.value)}</dd>
+                  </div>
+                `).join('')}
+              </dl>
+            </div>
+          ` : ''}
         </aside>
       `;
     }
@@ -4598,11 +4715,12 @@
     if (!tabs || !wrap) return { getFields: () => ({}), getSubtype: () => null };
 
     let current = (subtype && ITEM_SUBTYPES[subtype]) ? subtype : ITEM_SUBTYPE_KEYS[0];
+    let extraFields = itemExtraFieldsForForm(fields);
     const cache = {};
     Object.keys(ITEM_SUBTYPES).forEach((k) => {
       cache[k] = {};
       ITEM_SUBTYPES[k].fields.forEach((f) => {
-        cache[k][f] = (k === current && fields && fields[f] != null) ? String(fields[f]) : '';
+        cache[k][f] = (fields && fields[f] != null) ? String(fields[f]) : '';
       });
     });
 
@@ -4621,11 +4739,28 @@
       return (el.value || '').toString();
     }
 
+    function readExtraFieldsFromDOM() {
+      const list = wrap.querySelector('[data-item-fields-list]');
+      if (!list) return extraFields.slice();
+      return Array.from(list.querySelectorAll('[data-item-field-row]'))
+        .map((row) => {
+          const selector = row.querySelector('[data-item-field-key]');
+          const custom = row.querySelector('[data-item-field-custom]');
+          const valueInput = row.querySelector('[data-item-field-value]');
+          const selected = selector ? selector.value : '';
+          const key = (selected === ITEM_EXTRA_FIELD_CUSTOM ? (custom?.value || '') : selected).trim();
+          const value = String(valueInput?.value || '').trim();
+          return key && value ? { key, value } : null;
+        })
+        .filter(Boolean);
+    }
+
     function persistCurrent() {
       wrap.querySelectorAll('[data-dossier-field]').forEach((el) => {
         const k = el.dataset.dossierField;
         if (cache[current]) cache[current][k] = readValue(el);
       });
+      extraFields = readExtraFieldsFromDOM();
     }
 
     function fieldHTML(field) {
@@ -4658,22 +4793,94 @@
       `;
     }
 
-    function render() {
-      persistCurrent();
+    function extraFieldOptionsHTML(selected) {
+      const known = itemExtraFieldOption(selected);
+      const selectedValue = known ? known.key : ITEM_EXTRA_FIELD_CUSTOM;
+      return `
+        ${ITEM_EXTRA_FIELD_OPTIONS.map((opt) => `
+          <option value="${escapeHtml(opt.key)}" ${opt.key === selectedValue ? 'selected' : ''}>${escapeHtml(opt.key)}</option>
+        `).join('')}
+        <option value="${escapeHtml(ITEM_EXTRA_FIELD_CUSTOM)}" ${selectedValue === ITEM_EXTRA_FIELD_CUSTOM ? 'selected' : ''}>Campo personalizado</option>
+      `;
+    }
+
+    function extraFieldRowHTML(field = {}) {
+      const rawKey = field.key || ITEM_EXTRA_FIELD_OPTIONS[0].key;
+      const known = itemExtraFieldOption(rawKey);
+      const customHidden = known ? 'hidden' : '';
+      const customValue = known ? '' : rawKey;
+      const placeholder = itemExtraFieldPlaceholder(rawKey);
+      return `
+        <div class="item-field-row" data-item-field-row>
+          <select class="create-form__input char-select item-field-select" data-item-field-key aria-label="Campo adicional">
+            ${extraFieldOptionsHTML(rawKey)}
+          </select>
+          <input type="text" class="create-form__input item-field-custom" data-item-field-custom ${customHidden}
+                 placeholder="Nome do campo" value="${escapeHtml(customValue)}" maxlength="48">
+          <input type="text" class="create-form__input item-field-value" data-item-field-value
+                 placeholder="${escapeHtml(placeholder)}" value="${escapeHtml(field.value || '')}" maxlength="220">
+          <button type="button" class="item-field-remove" data-item-field-remove aria-label="Remover campo">
+            <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
+          </button>
+        </div>
+      `;
+    }
+
+    function extraFieldsHTML() {
+      return `
+        <section class="item-field-builder">
+          <header class="item-field-builder__head">
+            <span class="item-field-builder__title">Campos adicionais</span>
+            <button type="button" class="item-field-add" data-item-field-add>
+              <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+              <span>Adicionar campo</span>
+            </button>
+          </header>
+          <div class="item-field-list" data-item-fields-list>
+            ${extraFields.map(extraFieldRowHTML).join('')}
+          </div>
+        </section>
+      `;
+    }
+
+    function render(options = {}) {
+      if (options.persist !== false) persistCurrent();
       const fields = subtypeFieldsFor(current);
-      wrap.innerHTML = fields.map(fieldHTML).join('');
+      wrap.innerHTML = `
+        <div class="dossier-fields__base">
+          ${fields.map(fieldHTML).join('')}
+        </div>
+        ${extraFieldsHTML()}
+      `;
     }
 
     tabs.addEventListener('click', (e) => {
       const btn = e.target.closest('.subtype-tab');
       if (!btn) return;
+      persistCurrent();
       tabs.querySelectorAll('.subtype-tab').forEach((b) => b.classList.toggle('is-active', b === btn));
       current = btn.dataset.subtype;
-      render();
+      render({ persist: false });
     });
 
-    // Delegacao: clique nos chips de raridade.
+    // Delegacao: chips de raridade e campos adicionais.
     wrap.addEventListener('click', (e) => {
+      const addBtn = e.target.closest('[data-item-field-add]');
+      if (addBtn) {
+        e.preventDefault();
+        extraFields = readExtraFieldsFromDOM();
+        extraFields.push({ key: ITEM_EXTRA_FIELD_OPTIONS[0].key, value: '' });
+        render({ persist: false });
+        return;
+      }
+      const removeBtn = e.target.closest('[data-item-field-remove]');
+      if (removeBtn) {
+        e.preventDefault();
+        const row = removeBtn.closest('[data-item-field-row]');
+        if (row) row.remove();
+        extraFields = readExtraFieldsFromDOM();
+        return;
+      }
       const btn = e.target.closest('.rarity-pick');
       if (!btn) return;
       e.preventDefault();
@@ -4689,16 +4896,34 @@
       });
     });
 
-    render();
+    wrap.addEventListener('change', (e) => {
+      const selector = e.target.closest('[data-item-field-key]');
+      if (!selector) return;
+      const row = selector.closest('[data-item-field-row]');
+      if (!row) return;
+      const custom = row.querySelector('[data-item-field-custom]');
+      const valueInput = row.querySelector('[data-item-field-value]');
+      const isCustom = selector.value === ITEM_EXTRA_FIELD_CUSTOM;
+      if (custom) {
+        custom.hidden = !isCustom;
+        if (!isCustom) custom.value = '';
+      }
+      if (valueInput) valueInput.placeholder = itemExtraFieldPlaceholder(selector.value);
+    });
+
+    render({ persist: false });
 
     return {
       getSubtype: () => current,
       getFields: () => {
+        persistCurrent();
         const out = {};
         wrap.querySelectorAll('[data-dossier-field]').forEach((el) => {
           const v = readValue(el).trim();
           if (v) out[el.dataset.dossierField] = v;
         });
+        const extras = readExtraFieldsFromDOM();
+        if (extras.length) out.Campos = extras;
         return out;
       }
     };
@@ -6538,7 +6763,7 @@
       let item = null;
       if (sel.value) {
         const e = entryById(sel.value);
-        if (e) item = { refId: e.id, name: e.title, summary: e.summary || '', defense: isInv ? parseDefense((e.fields || {})['Defesa']) : 0 };
+        if (e) item = { refId: e.id, name: e.title, summary: e.summary || '', defense: isInv ? parseDefense(itemFieldValue(e.fields, 'Defesa')) : 0 };
       } else if ((custom.value || '').trim()) {
         item = { refId: '', name: custom.value.trim(), summary: '', defense: 0 };
       }
@@ -6737,7 +6962,7 @@
     }
     const matches = ARCHIVE.entries.filter((e) => {
       const tagText = sanitizeTags(e.tags).map((tag) => tag.label).join(' ');
-      const hay = [e.title, e.summary, tagText, ...(e.body || []), e.bodyHtml || '', ...Object.values(e.fields || {})].join(' ');
+      const hay = [e.title, e.summary, tagText, ...(e.body || []), e.bodyHtml || '', ...fieldSearchValues(e.fields || {})].join(' ');
       return normalize(hay).includes(query);
     }).slice(0, 8);
 

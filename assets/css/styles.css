@@ -2748,6 +2748,103 @@ img { display: block; max-width: 100%; }
   color: hsl(var(--hue), 70%, 75%);
 }
 
+.dossier-fields__base {
+  display: grid;
+  gap: 10px;
+}
+
+.item-field-builder {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background:
+    linear-gradient(135deg, hsla(var(--hue), 65%, 45%, 0.08), transparent 52%),
+    rgba(0, 0, 0, 0.18);
+}
+
+.item-field-builder__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.item-field-builder__title {
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-size: 0.64rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: hsl(var(--hue), 75%, 76%);
+}
+
+.item-field-list {
+  display: grid;
+  gap: 9px;
+}
+
+.item-field-row {
+  display: grid;
+  grid-template-columns: minmax(150px, 0.82fr) minmax(130px, 0.7fr) minmax(190px, 1.35fr) 34px;
+  gap: 8px;
+  align-items: center;
+}
+
+.item-field-custom[hidden] { display: none; }
+
+.item-field-add,
+.item-field-remove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--line);
+  color: var(--text-2);
+  background: rgba(255, 255, 255, 0.03);
+  cursor: pointer;
+  transition: all 180ms var(--ease);
+}
+
+.item-field-add {
+  gap: 7px;
+  min-height: 34px;
+  padding: 0 12px;
+  border-radius: 8px;
+  font-family: 'Inter', system-ui, sans-serif;
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
+.item-field-remove {
+  width: 34px;
+  height: 34px;
+  border-radius: 8px;
+}
+
+.item-field-add:hover,
+.item-field-remove:hover {
+  border-color: hsl(var(--hue), 65%, 58%);
+  color: #fff;
+  background: hsla(var(--hue), 60%, 32%, 0.28);
+}
+
+.item-extra-view {
+  display: grid;
+  gap: 9px;
+  padding-top: 4px;
+}
+
+@media (max-width: 760px) {
+  .item-field-row {
+    grid-template-columns: 1fr;
+  }
+
+  .item-field-remove {
+    width: 100%;
+  }
+}
+
 /* ── Banner em formato alternativo (Itens 4:3, Raças 2:3) ── */
 /* O aspect-ratio e max-width agora vem inline pelo JS por categoria. */
 .create-form--portrait .banner-drop,
