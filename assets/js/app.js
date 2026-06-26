@@ -209,11 +209,9 @@
     return null;
   }
 
-  /* ── BESTIÁRIO: ficha simples (3 seções) ──────────
-     Mesma mecânica de dossiê seccionado de Raças, porém enxuta:
-     Natureza (o que é a criatura), Habilidades (lista) e Vitalidade
-     (HP/Defesa/Mana de combate). O "Perigo" é promovido ao tagline,
-     como a Raridade nas raças. */
+  /* ── BESTIÁRIO: ficha de criatura ────────────────
+     Usa o dossiê seccionado de Raças, com atributos, HP anatômico
+     flexível e drops vinculados aos Itens do codex. */
   const BEAST_THREATS = [
     { value: 'Trivial',    cssClass: 'rarity-chip--common' },
     { value: 'Perigoso',   cssClass: 'rarity-chip--uncommon' },
@@ -227,7 +225,7 @@
     return found ? found.cssClass : 'rarity-chip--default';
   };
 
-  const BEAST_VITALS = ['HP', 'Defesa'];
+  const BEAST_VITALS = ['Defesa'];
   const BEAST_SECTIONS = [
     {
       id: 'natureza',
@@ -236,15 +234,15 @@
         { key: 'Perigo', type: 'threat', promoted: true },
         { key: 'Tipo', type: 'text', placeholder: 'Ex.: Aberração, Fera, Morto-vivo' },
         { key: 'Habitat', type: 'text', placeholder: 'Ex.: Pântanos de mana morta' },
-        { key: 'Instinto', type: 'text', placeholder: 'Ex.: Caçar ao anoitecer / proteger o ninho' },
-        { key: 'Espólio', type: 'text', placeholder: 'Ex.: Glândula de veneno, cristal rachado' }
+        { key: 'Instinto', type: 'text', placeholder: 'Ex.: Caçar ao anoitecer / proteger o ninho' }
       ]
     },
     {
-      id: 'habilidades',
-      title: 'Habilidades',
+      id: 'atributos',
+      title: 'Atributos',
+      view: 'attributes',
       fields: [
-        { key: 'Habilidades', type: 'list', bare: true, placeholder: 'Digite uma habilidade e Enter…' }
+        { key: 'Atributos', type: 'attributes' }
       ]
     },
     {
@@ -252,9 +250,25 @@
       title: 'Vitalidade',
       view: 'vitals',
       fields: [
-        { key: 'HP', type: 'text', default: '120' },
+        { key: 'PartesHP', type: 'hpParts' },
         { key: 'Defesa', type: 'text', default: '12' },
         { key: 'Mana', type: 'mana', default: '', placeholder: 'Opcional — ex.: 30/30' }
+      ]
+    },
+    {
+      id: 'drops',
+      title: 'Drops',
+      view: 'drops',
+      fields: [
+        { key: 'Drops', type: 'drops' },
+        { key: 'Espólio', type: 'text', placeholder: 'Nota narrativa opcional / legado' }
+      ]
+    },
+    {
+      id: 'habilidades',
+      title: 'Habilidades',
+      fields: [
+        { key: 'Habilidades', type: 'list', bare: true, placeholder: 'Digite uma habilidade e Enter…' }
       ]
     }
   ];
@@ -281,6 +295,98 @@
   const CHAR_ATTR_MAX = 16;
   const CHAR_MAGE_RES_CAP = 14;
   const CHAR_RES_ATTR = 'Resistência';
+
+  const BEAST_EXTRA_PARTS = ['Cauda', 'Asa', 'Braço Extra', 'Tentáculo', 'Personalizada'];
+
+  function defaultBeastAttributes() {
+    const out = {};
+    CHAR_ATTRIBUTES.forEach((a) => { out[a] = CHAR_ATTR_BASE; });
+    return out;
+  }
+
+  function normalizeBeastAttributes(raw, fillDefaults = false) {
+    const out = fillDefaults ? defaultBeastAttributes() : {};
+    if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
+      CHAR_ATTRIBUTES.forEach((a) => {
+        if (raw[a] != null && raw[a] !== '') {
+          const n = parseInt(raw[a], 10);
+          out[a] = Number.isFinite(n) ? n : CHAR_ATTR_BASE;
+        }
+      });
+    }
+    return out;
+  }
+
+  function beastAttrMod(score) {
+    return Math.floor((Number(score || CHAR_ATTR_BASE) - CHAR_ATTR_BASE) / 2);
+  }
+
+  function defaultBeastHpParts() {
+    return RACE_HP_PARTS.map((name) => ({ name, hp: defaultHpFor(name) }));
+  }
+
+  function normalizeBeastHpParts(raw) {
+    const source = Array.isArray(raw)
+      ? raw
+      : (raw && typeof raw === 'object'
+        ? Object.entries(raw).map(([name, hp]) => ({ name, hp }))
+        : []);
+    return source
+      .map((part) => {
+        if (part && typeof part === 'object') {
+          return {
+            name: String(part.name || part.nome || part.part || '').trim(),
+            hp: String(part.hp || part.HP || part.value || '').trim()
+          };
+        }
+        return null;
+      })
+      .filter((part) => part && part.name);
+  }
+
+  function legacyBeastHpParts(fields) {
+    const data = fields || {};
+    const parts = RACE_HP_PARTS
+      .filter((p) => data[p] != null && data[p] !== '')
+      .map((p) => ({ name: p, hp: String(data[p]) }));
+    if (parts.length) return parts;
+    return data.HP != null && data.HP !== ''
+      ? [{ name: 'HP Total', hp: String(data.HP) }]
+      : [];
+  }
+
+  function beastHpPartsForForm(fields) {
+    const parts = normalizeBeastHpParts((fields || {}).PartesHP);
+    if (parts.length) return parts;
+    const legacy = legacyBeastHpParts(fields);
+    return legacy.length ? legacy : defaultBeastHpParts();
+  }
+
+  function beastHpPartsForView(fields) {
+    const parts = normalizeBeastHpParts((fields || {}).PartesHP);
+    return parts.length ? parts : legacyBeastHpParts(fields);
+  }
+
+  function normalizeBeastDrops(raw) {
+    if (!Array.isArray(raw)) return [];
+    return raw
+      .map((drop) => {
+        if (!drop || typeof drop !== 'object') return null;
+        const refId = String(drop.refId || drop.id || '').trim();
+        const item = refId ? entryById(refId) : null;
+        const name = String((item && item.title) || drop.name || '').trim();
+        if (!refId && !name) return null;
+        return {
+          refId,
+          name,
+          summary: String((item && item.summary) || drop.summary || '').trim(),
+          quantity: String(drop.quantity || drop.qty || '').trim(),
+          chance: String(drop.chance || '').trim(),
+          note: String(drop.note || drop.condicao || drop.condição || '').trim()
+        };
+      })
+      .filter(Boolean);
+  }
 
   /* O Despertar: rolagens de 1d100. */
   const AWAKEN_MAGE_MIN = 71;   // 1–70 não-mago, 71–100 mago
@@ -2832,15 +2938,22 @@
     }
 
     function renderVitalsCard(section, data, sectionHead) {
-      // Bestiário: HP + Defesa como mini-stats, Mana como callout (se houver).
+      // Bestiário: HP anatômico + Defesa como mini-stats, Mana como callout.
+      const hpParts = beastHpPartsForView(data);
       const stats = BEAST_VITALS.filter((k) => data[k] != null && data[k] !== '');
       const hasMana = data['Mana'] != null && data['Mana'] !== '';
-      if (!stats.length && !hasMana) return '';
+      if (!hpParts.length && !stats.length && !hasMana) return '';
       return `
         <aside class="entry__dossier-side dossier-card--hpmp">
           ${sectionHead}
-          ${stats.length ? `
+          ${(hpParts.length || stats.length) ? `
             <div class="hp-grid">
+              ${hpParts.map((part) => `
+                <div class="hp-part">
+                  <span class="hp-part__name">${escapeHtml(part.name)}</span>
+                  <span class="hp-part__value">${escapeHtml(String(part.hp))}<em>HP</em></span>
+                </div>
+              `).join('')}
               ${stats.map((k) => `
                 <div class="hp-part">
                   <span class="hp-part__name">${escapeHtml(k)}</span>
@@ -2862,9 +2975,67 @@
       `;
     }
 
+    function renderBeastAttributesCard(section, data, sectionHead) {
+      const attrs = normalizeBeastAttributes(data['Atributos'], false);
+      const hasAny = Object.keys(attrs).length > 0;
+      if (!hasAny) return '';
+      return `
+        <aside class="entry__dossier-side beast-attr-card">
+          ${sectionHead}
+          <div class="beast-attr-grid">
+            ${CHAR_ATTRIBUTES.map((attr) => {
+              const score = attrs[attr] != null ? attrs[attr] : CHAR_ATTR_BASE;
+              return `
+                <div class="beast-attr">
+                  <span class="beast-attr__name">${escapeHtml(attr)}</span>
+                  <strong class="beast-attr__score">${escapeHtml(String(score))}</strong>
+                  <em class="beast-attr__mod">${fmtMod(beastAttrMod(score))}</em>
+                </div>
+              `;
+            }).join('')}
+          </div>
+        </aside>
+      `;
+    }
+
+    function renderBeastDropsCard(section, data, sectionHead) {
+      const drops = normalizeBeastDrops(data['Drops']);
+      const spoil = data['Espólio'] || data['Espolio'] || '';
+      if (!drops.length && !spoil) return '';
+      return `
+        <aside class="entry__dossier-side beast-drops-card">
+          ${sectionHead}
+          ${drops.length ? `
+            <ul class="beast-drop-list">
+              ${drops.map((drop) => {
+                const linked = drop.refId && entryById(drop.refId);
+                const name = drop.name || 'Item';
+                return `
+                  <li class="beast-drop-item">
+                    <div class="beast-drop-item__main">
+                      ${linked
+                        ? `<a href="#/Itens/${encodeURIComponent(drop.refId)}" class="beast-drop-item__name">${escapeHtml(name)}</a>`
+                        : `<span class="beast-drop-item__name">${escapeHtml(name)}</span>`}
+                      ${drop.summary ? `<span class="beast-drop-item__summary">${escapeHtml(drop.summary)}</span>` : ''}
+                    </div>
+                    <div class="beast-drop-item__meta">
+                      ${drop.quantity ? `<span>${escapeHtml(drop.quantity)}</span>` : ''}
+                      ${drop.chance ? `<span>${escapeHtml(drop.chance)}%</span>` : ''}
+                    </div>
+                    ${drop.note ? `<p class="beast-drop-item__note">${escapeHtml(drop.note)}</p>` : ''}
+                  </li>
+                `;
+              }).join('')}
+            </ul>
+          ` : ''}
+          ${spoil ? `<p class="beast-spoil-note">${escapeHtml(spoil)}</p>` : ''}
+        </aside>
+      `;
+    }
+
     function renderRaceDossierView(viewTabId, rawFields) {
       const data = rawFields || {};
-      const ROMAN = ['I', 'II', 'III', 'IV'];
+      const ROMAN = ['I', 'II', 'III', 'IV', 'V'];
       const sections = sectionsForTab(viewTabId);
       // Campo "promoted" (Raridade/Perigo) já aparece no tagline; não repetir na lista.
       return `
@@ -2879,6 +3050,8 @@
               </header>
             `;
 
+            if (viewTabId === 'Bestiario' && section.view === 'attributes') return renderBeastAttributesCard(section, data, sectionHead);
+            if (viewTabId === 'Bestiario' && section.view === 'drops') return renderBeastDropsCard(section, data, sectionHead);
             if (section.view === 'vitals') return renderVitalsCard(section, data, sectionHead);
 
             if (section.id === 'hpmp') {
@@ -4351,7 +4524,13 @@
             <header class="dossier-section__head">
               <span class="section__eyebrow">${escapeHtml(section.title.toUpperCase())}</span>
             </header>
-            ${section.id === 'hpmp'
+            ${tabId === 'Bestiario' && section.view === 'attributes'
+              ? beastAttributesFormHTML(v)
+              : tabId === 'Bestiario' && section.view === 'vitals'
+                ? beastVitalsFormHTML(v)
+                : tabId === 'Bestiario' && section.view === 'drops'
+                  ? beastDropsFormHTML(v)
+                  : section.id === 'hpmp'
               ? raceHpFormHTML(v)
               : `<div class="dossier-section__fields">
                    ${section.fields.map((f) => raceFieldFormHTML(f, v[f.key])).join('')}
@@ -4413,6 +4592,128 @@
     `;
   }
 
+  function beastAttributesFormHTML(values) {
+    const attrs = normalizeBeastAttributes(values['Atributos'], true);
+    return `
+      <div class="beast-attr-form">
+        ${CHAR_ATTRIBUTES.map((attr) => `
+          <label class="beast-attr-field">
+            <span>${escapeHtml(attr)}</span>
+            <input type="number" class="create-form__input" data-beast-attr="${escapeHtml(attr)}"
+                   min="0" max="30" value="${escapeHtml(String(attrs[attr] ?? CHAR_ATTR_BASE))}">
+          </label>
+        `).join('')}
+      </div>
+    `;
+  }
+
+  function beastHpPartRowHTML(part, index) {
+    const p = part || {};
+    return `
+      <div class="beast-part-row" data-beast-part-row>
+        <input type="text" class="create-form__input" data-beast-part-name
+               value="${escapeHtml(p.name || '')}" placeholder="Parte do corpo" maxlength="80"
+               aria-label="Nome da parte ${index + 1}">
+        <input type="text" inputmode="numeric" class="create-form__input hp-form__input" data-beast-part-hp
+               value="${escapeHtml(p.hp || '')}" placeholder="HP" maxlength="8"
+               aria-label="HP da parte ${index + 1}">
+        <span class="hp-form__suffix">HP</span>
+        <button type="button" class="beast-row-remove" data-beast-part-remove aria-label="Remover parte">
+          <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
+        </button>
+      </div>
+    `;
+  }
+
+  function beastVitalsFormHTML(values) {
+    const parts = beastHpPartsForForm(values);
+    return `
+      <div class="beast-part-builder" data-beast-parts>
+        <div class="beast-part-list" data-beast-part-list>
+          ${parts.map((part, i) => beastHpPartRowHTML(part, i)).join('')}
+        </div>
+        <div class="beast-part-add">
+          <select class="create-form__input char-select" data-beast-part-preset aria-label="Tipo de parte">
+            ${BEAST_EXTRA_PARTS.map((part) => `<option value="${escapeHtml(part)}">${escapeHtml(part)}</option>`).join('')}
+          </select>
+          <input type="text" class="create-form__input" data-beast-part-custom placeholder="ou nome personalizado..." maxlength="80">
+          <button type="button" class="btn btn-ghost" data-beast-part-add>
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+            <span>Adicionar parte</span>
+          </button>
+        </div>
+      </div>
+      <div class="create-form__row beast-vitals-row">
+        <label class="dossier-field">
+          <span>Defesa</span>
+          <input type="text" class="create-form__input" data-dossier-field="Defesa"
+                 value="${escapeHtml(values['Defesa'] != null ? values['Defesa'] : '12')}"
+                 placeholder="12" maxlength="20">
+        </label>
+        <label class="dossier-field dossier-field--mana">
+          <span>Mana</span>
+          <input type="text" class="create-form__input" data-dossier-field="Mana"
+                 value="${escapeHtml(values['Mana'] != null ? values['Mana'] : '')}"
+                 placeholder="Opcional — ex.: 30/30" maxlength="20">
+        </label>
+      </div>
+    `;
+  }
+
+  function beastDropOptionsHTML(selectedId, fallbackName) {
+    const items = entriesIn('Itens');
+    const hasSelected = selectedId && items.some((item) => item.id === selectedId);
+    return `
+      <option value="">— escolher item —</option>
+      ${selectedId && !hasSelected ? `<option value="${escapeHtml(selectedId)}" selected>${escapeHtml(fallbackName || 'Item removido')}</option>` : ''}
+      ${items.map((item) => `<option value="${escapeHtml(item.id)}" ${item.id === selectedId ? 'selected' : ''}>${escapeHtml(item.title)}</option>`).join('')}
+    `;
+  }
+
+  function beastDropRowHTML(drop, index) {
+    const d = normalizeBeastDrops([drop])[0] || { refId: '', name: '', summary: '', quantity: '', chance: '', note: '' };
+    return `
+      <div class="beast-drop-row" data-beast-drop-row data-drop-name="${escapeHtml(d.name)}" data-drop-summary="${escapeHtml(d.summary)}">
+        <select class="create-form__input char-select beast-drop-select" data-beast-drop-ref aria-label="Item do drop ${index + 1}">
+          ${beastDropOptionsHTML(d.refId, d.name)}
+        </select>
+        <input type="text" class="create-form__input beast-drop-qty" data-beast-drop-qty
+               value="${escapeHtml(d.quantity)}" placeholder="Qtd." maxlength="20" aria-label="Quantidade do drop ${index + 1}">
+        <input type="number" class="create-form__input beast-drop-chance" data-beast-drop-chance
+               value="${escapeHtml(d.chance)}" min="0" max="100" placeholder="%" aria-label="Chance do drop ${index + 1}">
+        <input type="text" class="create-form__input beast-drop-note" data-beast-drop-note
+               value="${escapeHtml(d.note)}" placeholder="Condição / observação" maxlength="120" aria-label="Observação do drop ${index + 1}">
+        <button type="button" class="beast-row-remove" data-beast-drop-remove aria-label="Remover drop">
+          <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
+        </button>
+      </div>
+    `;
+  }
+
+  function beastDropsFormHTML(values) {
+    const drops = normalizeBeastDrops(values['Drops']);
+    const hasItems = entriesIn('Itens').length > 0;
+    const spoil = values['Espólio'] || values['Espolio'] || '';
+    return `
+      <div class="beast-drop-builder" data-beast-drops>
+        <div class="beast-drop-list-form" data-beast-drop-list>
+          ${drops.map((drop, i) => beastDropRowHTML(drop, i)).join('')}
+        </div>
+        ${hasItems ? `
+          <button type="button" class="btn btn-ghost beast-drop-add" data-beast-drop-add>
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+            <span>Adicionar drop</span>
+          </button>
+        ` : '<p class="beast-builder-hint">Nenhum item cadastrado. Crie itens na aba Itens para vincular drops.</p>'}
+      </div>
+      <label class="dossier-field beast-spoil-field">
+        <span>Nota de espólio</span>
+        <input type="text" class="create-form__input" data-dossier-field="Espólio"
+               value="${escapeHtml(spoil)}" placeholder="Espólio narrativo opcional / legado" maxlength="200">
+      </label>
+    `;
+  }
+
   function listBuilderItemHTML(item, index) {
     return `
       <span class="list-builder__item">
@@ -4459,6 +4760,83 @@
       builder.dataset.items = JSON.stringify(items);
       const list = builder.querySelector('.list-builder__items');
       list.innerHTML = items.map((item, i) => listBuilderItemHTML(item, i)).join('');
+    }
+
+    function readBeastPartRows() {
+      return [...root.querySelectorAll('[data-beast-part-row]')]
+        .map((row) => ({
+          name: (row.querySelector('[data-beast-part-name]')?.value || '').trim(),
+          hp: (row.querySelector('[data-beast-part-hp]')?.value || '').trim()
+        }))
+        .filter((part) => part.name);
+    }
+
+    function refreshBeastParts(parts) {
+      const list = root.querySelector('[data-beast-part-list]');
+      if (list) list.innerHTML = parts.map((part, i) => beastHpPartRowHTML(part, i)).join('');
+    }
+
+    function uniquePartName(name, parts) {
+      let next = name;
+      let n = 2;
+      const exists = (candidate) => parts.some((part) => normalize(part.name) === normalize(candidate));
+      while (exists(next)) next = `${name} ${n++}`;
+      return next;
+    }
+
+    function addBeastPart() {
+      const builder = root.querySelector('[data-beast-parts]');
+      if (!builder) return;
+      const select = builder.querySelector('[data-beast-part-preset]');
+      const custom = builder.querySelector('[data-beast-part-custom]');
+      const raw = ((custom && custom.value.trim()) || (select && select.value) || '').trim();
+      if (!raw || raw === 'Personalizada') {
+        if (custom) custom.focus();
+        return;
+      }
+      const parts = readBeastPartRows();
+      parts.push({ name: uniquePartName(raw, parts), hp: '' });
+      refreshBeastParts(parts);
+      if (custom) custom.value = '';
+      const lastHp = root.querySelector('[data-beast-part-list] [data-beast-part-row]:last-child [data-beast-part-hp]');
+      if (lastHp) lastHp.focus();
+    }
+
+    function readBeastDropRows() {
+      return [...root.querySelectorAll('[data-beast-drop-row]')]
+        .map((row) => {
+          const select = row.querySelector('[data-beast-drop-ref]');
+          const refId = (select?.value || '').trim();
+          if (!refId) return null;
+          const item = entryById(refId);
+          const selectedLabel = select && select.selectedOptions[0] ? select.selectedOptions[0].textContent.trim() : '';
+          return {
+            refId,
+            name: (item && item.title) || row.dataset.dropName || selectedLabel,
+            summary: (item && item.summary) || row.dataset.dropSummary || '',
+            quantity: (row.querySelector('[data-beast-drop-qty]')?.value || '').trim(),
+            chance: (row.querySelector('[data-beast-drop-chance]')?.value || '').trim(),
+            note: (row.querySelector('[data-beast-drop-note]')?.value || '').trim()
+          };
+        })
+        .filter(Boolean);
+    }
+
+    function refreshBeastDrops(drops) {
+      const list = root.querySelector('[data-beast-drop-list]');
+      if (list) list.innerHTML = drops.map((drop, i) => beastDropRowHTML(drop, i)).join('');
+    }
+
+    function addBeastDrop() {
+      if (!entriesIn('Itens').length) {
+        alert('Crie ao menos um item na aba Itens antes de vincular drops.');
+        return;
+      }
+      const drops = readBeastDropRows();
+      drops.push({ refId: '', name: '', summary: '', quantity: '1', chance: '', note: '' });
+      refreshBeastDrops(drops);
+      const lastSelect = root.querySelector('[data-beast-drop-list] [data-beast-drop-row]:last-child [data-beast-drop-ref]');
+      if (lastSelect) lastSelect.focus();
     }
 
     function addItemFrom(input) {
@@ -4516,6 +4894,28 @@
         const items = readListItems(builder);
         items.splice(idx, 1);
         refreshListItems(builder, items);
+        return;
+      }
+      if (e.target.closest('[data-beast-part-add]')) {
+        e.preventDefault();
+        addBeastPart();
+        return;
+      }
+      const partRemove = e.target.closest('[data-beast-part-remove]');
+      if (partRemove) {
+        e.preventDefault();
+        partRemove.closest('[data-beast-part-row]')?.remove();
+        return;
+      }
+      if (e.target.closest('[data-beast-drop-add]')) {
+        e.preventDefault();
+        addBeastDrop();
+        return;
+      }
+      const dropRemove = e.target.closest('[data-beast-drop-remove]');
+      if (dropRemove) {
+        e.preventDefault();
+        dropRemove.closest('[data-beast-drop-row]')?.remove();
       }
     });
 
@@ -4523,6 +4923,9 @@
       if (e.target.classList.contains('list-builder__input') && e.key === 'Enter') {
         e.preventDefault();
         addItemFrom(e.target);
+      } else if (e.target.matches('[data-beast-part-custom]') && e.key === 'Enter') {
+        e.preventDefault();
+        addBeastPart();
       }
     });
 
@@ -4542,6 +4945,21 @@
           const items = readListItems(el).map((s) => String(s).trim()).filter(Boolean);
           if (items.length) out[el.dataset.dossierField] = items;
         });
+        if (root.id === 'beastDossier') {
+          const attrs = {};
+          root.querySelectorAll('[data-beast-attr]').forEach((inp) => {
+            const key = inp.dataset.beastAttr;
+            const value = parseInt(inp.value, 10);
+            attrs[key] = Number.isFinite(value) ? value : CHAR_ATTR_BASE;
+          });
+          if (Object.keys(attrs).length) out['Atributos'] = attrs;
+
+          const hpParts = readBeastPartRows();
+          if (hpParts.length) out['PartesHP'] = hpParts;
+
+          const drops = readBeastDropRows();
+          if (drops.length) out['Drops'] = drops;
+        }
         return out;
       }
     };
