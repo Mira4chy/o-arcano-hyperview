@@ -3033,7 +3033,7 @@
       `;
     }
 
-    function renderRaceDossierView(viewTabId, rawFields) {
+    function renderRaceDossierView(viewTabId, rawFields, opts = {}) {
       const data = rawFields || {};
       const ROMAN = ['I', 'II', 'III', 'IV', 'V'];
       const sections = sectionsForTab(viewTabId);
@@ -3041,6 +3041,7 @@
       return `
         <div class="race-dossier-view">
           ${sections.map((section, idx) => {
+            if (opts.skipAttributes && section.view === 'attributes') return '';
             const numeral = ROMAN[idx] || '';
             const sectionHead = `
               <header class="entry__dossier-head dossier-head--ornate">
@@ -3133,8 +3134,18 @@
       `;
     }
 
+    const beastAttrMarkup = isBestiario
+      ? renderBeastAttributesCard(null, e.fields || {}, `
+          <header class="entry__dossier-head dossier-head--ornate">
+            <span class="dossier-mark">II</span>
+            <span class="section__eyebrow">ATRIBUTOS</span>
+            <span class="dossier-rule" aria-hidden="true"></span>
+          </header>
+        `)
+      : '';
+
     const dossierMarkup = isSectioned
-      ? renderRaceDossierView(tabId, e.fields)
+      ? renderRaceDossierView(tabId, e.fields, { skipAttributes: isBestiario })
       : renderItensDossier();
 
     const promotedKey = isSectioned ? dossierConfigFor(tabId).promotedKey : '';
@@ -3146,7 +3157,7 @@
         : '');
 
     const heroPortrait = `
-      <div class="entry__portrait-card ${isSectioned ? 'entry__portrait-card--tall' : ''}" style="--hue:${theme.hue}">
+      <div class="entry__portrait-card ${isSectioned ? 'entry__portrait-card--tall' : ''} ${isBestiario ? 'entry__portrait-card--beast' : ''}" style="--hue:${theme.hue}">
         ${subtypeIcon ? `<div class="entry__subtype-emblem" aria-hidden="true">${subtypeIcon}</div>` : ''}
         ${raceEmblem ? `<div class="entry__subtype-emblem entry__subtype-emblem--race" aria-hidden="true">${raceEmblem}</div>` : ''}
         <header class="entry__portrait-header">
@@ -3168,10 +3179,13 @@
           ${e.summary ? `<p class="entry__summary">${escapeHtml(e.summary)}</p>` : ''}
         </header>
         <div class="entry__portrait-grid">
-          <div class="entry__portrait" style="aspect-ratio: ${bannerAspectFor(tabId)};">
-            ${e.image ? `<img class="entry__portrait-img" src="${e.image}" alt="" onerror="this.parentElement.classList.add('is-fallback')">` : ''}
-            <div class="entry__portrait-fallback">${iconOf(tabId)}</div>
-            <div class="entry__portrait-shine" aria-hidden="true"></div>
+          <div class="entry__portrait-stack">
+            <div class="entry__portrait" style="aspect-ratio: ${bannerAspectFor(tabId)};">
+              ${e.image ? `<img class="entry__portrait-img" src="${e.image}" alt="" onerror="this.parentElement.classList.add('is-fallback')">` : ''}
+              <div class="entry__portrait-fallback">${iconOf(tabId)}</div>
+              <div class="entry__portrait-shine" aria-hidden="true"></div>
+            </div>
+            ${beastAttrMarkup}
           </div>
           ${dossierMarkup}
         </div>

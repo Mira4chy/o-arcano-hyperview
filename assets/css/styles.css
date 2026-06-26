@@ -2818,6 +2818,17 @@ img { display: block; max-width: 100%; }
   grid-template-columns: minmax(260px, 340px) minmax(0, 1fr);
 }
 
+.entry__portrait-card--beast {
+  gap: 18px;
+  padding-top: 22px;
+}
+
+.entry__portrait-stack {
+  display: grid;
+  gap: 14px;
+  align-content: start;
+}
+
 .entry__portrait {
   position: relative;
   aspect-ratio: 4 / 3;
@@ -3088,6 +3099,20 @@ img { display: block; max-width: 100%; }
   padding: 20px 22px 22px;
 }
 
+.entry__portrait-card--beast .race-dossier-view .entry__dossier-side {
+  gap: 10px;
+  padding-top: 16px;
+}
+
+.entry__portrait-card--beast .race-dossier-view .dossier-head--ornate {
+  padding-bottom: 8px;
+  margin-bottom: 0;
+}
+
+.entry__portrait-card--beast .race-dossier-view .meta-row {
+  padding: 7px 0;
+}
+
 /* Cabeçalho ornado: numeral romano + eyebrow + linha gradient */
 .dossier-head--ornate {
   display: flex;
@@ -3224,6 +3249,40 @@ img { display: block; max-width: 100%; }
   font-family: 'JetBrains Mono', ui-monospace, monospace;
   font-size: 0.68rem;
   color: var(--text-2);
+}
+
+.entry__portrait-stack .beast-attr-card {
+  padding: 16px;
+  align-self: start;
+  box-shadow: 0 10px 26px hsla(var(--hue), 60%, 18%, 0.34);
+}
+
+.entry__portrait-stack .dossier-head--ornate {
+  padding-bottom: 8px;
+  margin-bottom: 0;
+}
+
+.entry__portrait-stack .beast-attr-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.entry__portrait-stack .beast-attr {
+  padding: 8px 7px;
+  gap: 3px;
+}
+
+.entry__portrait-stack .beast-attr__name {
+  font-size: 0.56rem;
+  letter-spacing: 0.1em;
+}
+
+.entry__portrait-stack .beast-attr__score {
+  font-size: 1rem;
+}
+
+.entry__portrait-stack .beast-attr__mod {
+  font-size: 0.6rem;
 }
 
 .beast-drop-list {
