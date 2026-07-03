@@ -82,6 +82,53 @@
     { key: 'Origem', placeholder: 'Ex.: ruínas de Veyra, forja real' },
     { key: 'Observação do mestre', placeholder: 'Nota interna ou condição especial' }
   ];
+  const ITEM_SUBTYPE_HINTS = {
+    item: 'Objeto comum ou relíquia sem regra de equipar. Bom para chaves, livros, materiais e tesouros.',
+    equipavel: 'Armas, armaduras e acessórios que podem ir para o inventário equipado da ficha.',
+    consumivel: 'Poções, pergaminhos, bombas e itens que somem ou gastam cargas quando usados.'
+  };
+  const ITEM_FIELD_HINTS = {
+    Raridade: 'Ajuda o Mestre e os jogadores a entenderem disponibilidade, preço e peso narrativo.',
+    Valor: 'Use uma moeda, faixa de preço ou marque como inestimável quando for único.',
+    Defesa: 'Itens equipáveis podem somar defesa na ficha quando estiverem equipados.',
+    Efeito: 'Descreva o efeito de mesa em uma frase objetiva.',
+    Slot: 'Indica onde o item ocupa espaço: mão, peito, cabeça, anel e similares.',
+    Dano: 'Use dados, tipo de dano e qualquer modificador relevante.',
+    Alcance: 'Pode ser em quadrados, metros ou descrição curta como toque.',
+    Area: 'Use cone, linha, raio ou alvo único quando fizer sentido.',
+    Duracao: 'Tempo de efeito: turno, cena, descanso ou permanente.',
+    'Cargas / usos': 'Quantidade de usos antes de recarregar, quebrar ou ser consumido.',
+    Recarga: 'Quando o item recupera uso: descanso, amanhecer, ritual ou custo.',
+    Requisito: 'Atributo, raça, perícia, vínculo ou condição para usar.',
+    'Efeito passivo': 'Bônus constante enquanto portar ou equipar o item.',
+    'Condicao de uso': 'Restrição situacional, gatilho ou momento certo de ativação.',
+    Penalidade: 'Custo, risco, corrupção, maldição ou efeito colateral.',
+    'Material obtido de': 'Origem de crafting ou criatura que fornece o componente.',
+    'Compativel com': 'Outros itens, rituais ou sistemas que combinam com este item.',
+    Peso: 'Peso exato ou categoria prática: leve, pesado, volumoso.',
+    Origem: 'Lugar, povo, forja, facção ou evento ligado ao item.',
+    'Observacao do mestre': 'Anotação privada de regra, segredo ou condição especial.'
+  };
+  const ITEM_SUBTYPE_GUIDES = {
+    item: {
+      title: 'Item de mundo',
+      text: 'Use para objetos de lore, materiais, chaves, tesouros e relíquias sem regra de equipamento.',
+      checks: ['Nome reconhecível', 'Valor ou raridade', 'Origem no texto'],
+      suggestions: ['Origem', 'Peso', 'Material obtido de', 'Compatível com', 'Observação do mestre']
+    },
+    equipavel: {
+      title: 'Equipável de ficha',
+      text: 'Use para armas, armaduras e acessórios. Defesa preenchida aqui pode ser aproveitada no inventário da Persona.',
+      checks: ['Slot claro', 'Defesa quando houver', 'Efeito em uma frase'],
+      suggestions: ['Dano', 'Cargas / usos', 'Requisito', 'Efeito passivo', 'Penalidade']
+    },
+    consumivel: {
+      title: 'Consumível de uso',
+      text: 'Use para poções, bombas, pergaminhos e cargas gastáveis. Priorize gatilho, efeito e limite de uso.',
+      checks: ['Quando usar', 'O que acontece', 'Se some ou recarrega'],
+      suggestions: ['Cargas / usos', 'Duração', 'Condição de uso', 'Alcance', 'Penalidade']
+    }
+  };
   const ITEM_BASE_FIELD_KEYS = new Set(Object.values(ITEM_SUBTYPES).flatMap((cfg) => cfg.fields));
   const ITEM_SUBTYPE_KEYS = Object.keys(ITEM_SUBTYPES);
   function subtypeFieldsFor(subtype) {
@@ -171,6 +218,76 @@
     return `${v} ${unit}`;
   }
   const isMagiasTab = (id) => canonicalTabId(id) === 'Magias';
+
+  const EMPTY_SPELL_FILTERS = { type: '', affinity: '', tier: '' };
+  function normalizeSpellFilters(filters) {
+    const src = filters || {};
+    const type = isSpellType(src.type) ? src.type : '';
+    const affinity = SPELL_AFFINITY_KEYS.includes(src.affinity) ? src.affinity : '';
+    const tier = TIER_OPTIONS.includes(src.tier) ? src.tier : '';
+    return { type, affinity, tier };
+  }
+  function hasSpellFilters(filters) {
+    const f = normalizeSpellFilters(filters);
+    return !!(f.type || f.affinity || f.tier);
+  }
+  function spellFilterStats(entries) {
+    const types = SPELL_TYPE_KEYS.map((key) => ({ key, label: SPELL_TYPES[key].label, count: 0 }));
+    const affinities = SPELL_AFFINITY_KEYS.map((key) => ({ key, label: SPELL_AFFINITIES[key].label, count: 0, meta: SPELL_AFFINITIES[key] }));
+    const tiers = TIER_OPTIONS.map((key) => ({ key, label: key, count: 0 }));
+    const byType = Object.fromEntries(types.map((row) => [row.key, row]));
+    const byAffinity = Object.fromEntries(affinities.map((row) => [row.key, row]));
+    const byTier = Object.fromEntries(tiers.map((row) => [row.key, row]));
+
+    entries.forEach((entry) => {
+      const fields = entry.fields || {};
+      const type = isSpellType(entry.subtype) ? entry.subtype : 'ativa';
+      if (byType[type]) byType[type].count += 1;
+      if (byAffinity[fields['Afinidade']]) byAffinity[fields['Afinidade']].count += 1;
+      if (byTier[fields['Tier']]) byTier[fields['Tier']].count += 1;
+    });
+
+    return {
+      types: types.filter((row) => row.count > 0),
+      affinities: affinities.filter((row) => row.count > 0),
+      tiers: tiers.filter((row) => row.count > 0)
+    };
+  }
+  function spellCategoryFiltersHTML(entries, filters) {
+    const active = normalizeSpellFilters(filters);
+    const stats = spellFilterStats(entries);
+    if (!stats.types.length && !stats.affinities.length && !stats.tiers.length) return '';
+
+    const group = (label, key, rows, renderLabel) => rows.length ? `
+      <div class="spell-filter-group" aria-label="${escapeHtml(label)}">
+        <span class="spell-filter-group__label">${escapeHtml(label)}</span>
+        <div class="spell-filter-group__chips">
+          <button type="button" class="spell-filter-chip ${!active[key] ? 'is-active' : ''}" data-spell-filter="${key}" data-spell-filter-value="">
+            Todas
+          </button>
+          ${rows.map((row) => `
+            <button type="button" class="spell-filter-chip ${active[key] === row.key ? 'is-active' : ''}"
+                    data-spell-filter="${key}" data-spell-filter-value="${escapeHtml(row.key)}"
+                    ${row.meta ? `style="--chip-hue:${row.meta.hue};--chip-color:${row.meta.accent}"` : ''}>
+              ${renderLabel(row)}
+              <small>${row.count}</small>
+            </button>
+          `).join('')}
+        </div>
+      </div>` : '';
+
+    return `
+      <section class="spell-filter-panel" aria-label="Filtros de magia">
+        <div class="spell-filter-panel__head">
+          <span>Refinar grimório</span>
+          ${hasSpellFilters(active) ? '<button type="button" class="spell-filter-reset" data-spell-filter-reset>Limpar filtros</button>' : ''}
+        </div>
+        ${group('Tipo', 'type', stats.types, (row) => `<span>${escapeHtml(SPELL_TYPES[row.key].badge)}</span>`)}
+        ${group('Afinidade', 'affinity', stats.affinities, (row) => `<span class="spell-filter-chip__icon">${row.meta.icon}</span><span>${escapeHtml(row.label)}</span>`)}
+        ${group('Tier', 'tier', stats.tiers, (row) => `<span class="tier-roman">${escapeHtml(row.label)}</span>`)}
+      </section>
+    `;
+  }
 
   /* Raridades possiveis em ordem crescente. As classes CSS batem com .rarity-chip--<x>. */
   const RARITY_OPTIONS = [
@@ -1010,6 +1127,7 @@
     Eras:      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>',
     Sistemas:  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M2 12h3M19 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1"/></svg>',
     Persona:   '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 4-7 8-7s8 3 8 7"/></svg>',
+    Mesa:      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 3v18M15 3v18M3 9h18M3 15h18"/><circle cx="12" cy="12" r="2.2" fill="currentColor" stroke="none"/></svg>',
     Historias: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3"/><circle cx="17" cy="9" r="2.5"/><path d="M3 20c0-3 3-5 6-5s6 2 6 5M14 20c0-2 2-3.5 4.5-3.5S22 18 22 20"/></svg>',
     Racas:     '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="7" cy="7" r="3"/><circle cx="17" cy="7" r="3"/><circle cx="12" cy="17" r="3"/><path d="M7 10v3M17 10v3M9 15l1.5-1M15 15l-1.5-1"/></svg>',
     Mapa:      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6l6-2 6 2 6-2v14l-6 2-6-2-6 2V6z"/><line x1="9" y1="4" x2="9" y2="18"/><line x1="15" y1="6" x2="15" y2="20"/></svg>',
@@ -1027,6 +1145,7 @@
     Eras:      { hue: 45,  label: 'TEMPO' },
     Sistemas:  { hue: 160, label: 'REGRAS' },
     Persona:   { hue: 320, label: 'PESSOAS' },
+    Mesa:      { hue: 185, label: 'MESA' },
     Historias: { hue: 250, label: 'HISTÓRIAS' },
     Racas:     { hue: 130, label: 'POVOS' },
     Mapa:      { hue: 195, label: 'MUNDO' },
@@ -1050,6 +1169,30 @@
 
   const normalize = (s) => String(s ?? '').toLowerCase()
     .normalize('NFD').replace(/[̀-ͯ]/g, '');
+
+  const hintIconSvg = '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 17v-5"/><path d="M12 8h.01"/></svg>';
+
+  function uiHint(text, label = 'Dica') {
+    const safe = escapeHtml(text || '');
+    if (!safe) return '';
+    return `<span class="ui-hint" tabindex="0" role="img" aria-label="${escapeHtml(label)}: ${safe}" title="${safe}">
+      ${hintIconSvg}
+      <span class="ui-hint__bubble" role="tooltip">${safe}</span>
+    </span>`;
+  }
+
+  function hintedLabel(label, hint) {
+    return `<span class="field-label-inline"><span>${escapeHtml(label)}</span>${uiHint(hint)}</span>`;
+  }
+
+  function itemHintFor(field) {
+    const key = Object.keys(ITEM_FIELD_HINTS).find((k) => normalize(k) === normalize(field));
+    return key ? ITEM_FIELD_HINTS[key] : '';
+  }
+
+  function itemSubtypeGuide(subtype) {
+    return ITEM_SUBTYPE_GUIDES[subtype] || ITEM_SUBTYPE_GUIDES.item;
+  }
 
   function fieldSearchValues(value) {
     if (value == null) return [];
@@ -1132,19 +1275,189 @@
   const tabById = (id) => ARCHIVE.tabs.find((t) => t.id === canonicalTabId(id));
   const entriesIn = (tabId) => ARCHIVE.entries.filter((e) => canonicalTabId(e.tab) === canonicalTabId(tabId));
   const entryById = (id) => ARCHIVE.entries.find((e) => e.id === id);
-  /* Persona conta fichas de personagem; demais abas contam entries. */
-  const tabCount = (id) => canonicalTabId(id) === 'Persona'
-    ? (auth.user ? CHARACTERS.filter((c) => auth.isAdmin || c.userId === auth.user.id).length : 0)
-    : entriesIn(id).length;
+  /* Persona conta fichas; Mesa conta tokens; demais abas contam entries. */
+  const tabCount = (id) => {
+    const tabId = canonicalTabId(id);
+    if (tabId === 'Persona') {
+      return auth.user ? CHARACTERS.filter((c) => auth.isAdmin || c.userId === auth.user.id).length : 0;
+    }
+    if (tabId === 'Mesa') return MESA_STATE.tokens.length;
+    return entriesIn(id).length;
+  };
 
   const themeOf = (id) => THEMES[canonicalTabId(id)] || { hue: 268, label: 'CODEX' };
   const iconOf = (id) => ICONS[canonicalTabId(id)] || ICONS.Index;
   const TAG_COLOR_RE = /^#[0-9a-f]{6}$/i;
   const DEFAULT_TAG_COLOR = '#f59e0b';
   const categoryState = {};
+  const MESA_STORAGE_KEY = 'arcano.mesa.active.v1';
+  const MESA_GRID_LIMITS = {
+    minW: 6,
+    maxW: 36,
+    minH: 6,
+    maxH: 28,
+    minCell: 28,
+    maxCell: 64
+  };
+  const MESA_DEFAULT_COLOR = '#22d3ee';
+  const MESA_ACTIVE_ID = 'active';
+  let MESA_STATE = normalizeMesaState();
+  let mesaSelectedTokenId = '';
+  let mesaSyncWarning = '';
 
   function slugify(str) {
     return normalize(str).replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 80) || 'historia';
+  }
+
+  function clampNumber(value, min, max, fallback) {
+    const n = Number(value);
+    if (!Number.isFinite(n)) return fallback;
+    return Math.max(min, Math.min(max, Math.round(n)));
+  }
+
+  function mesaTokenId(prefix = 'tok') {
+    return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
+  }
+
+  function normalizeMesaToken(token, index = 0, grid = {}) {
+    const width = grid.width || 18;
+    const height = grid.height || 12;
+    const size = clampNumber(token?.size, 1, 4, 1);
+    return {
+      id: String(token?.id || mesaTokenId()),
+      name: String(token?.name || `Token ${index + 1}`).trim().slice(0, 80) || `Token ${index + 1}`,
+      refType: String(token?.refType || 'custom'),
+      refId: String(token?.refId || ''),
+      ownerId: String(token?.ownerId || ''),
+      ownerLabel: String(token?.ownerLabel || ''),
+      image: String(token?.image || ''),
+      color: TAG_COLOR_RE.test(String(token?.color || '')) ? token.color : MESA_DEFAULT_COLOR,
+      x: clampNumber(token?.x, 0, Math.max(0, width - size), index % width),
+      y: clampNumber(token?.y, 0, Math.max(0, height - size), Math.floor(index / width)),
+      size,
+      hp: String(token?.hp || '').slice(0, 30),
+      note: String(token?.note || '').slice(0, 160),
+      hidden: !!token?.hidden,
+      locked: !!token?.locked
+    };
+  }
+
+  function normalizeMesaState(raw = {}) {
+    const width = clampNumber(raw.width, MESA_GRID_LIMITS.minW, MESA_GRID_LIMITS.maxW, 18);
+    const height = clampNumber(raw.height, MESA_GRID_LIMITS.minH, MESA_GRID_LIMITS.maxH, 12);
+    const cellSize = clampNumber(raw.cellSize, MESA_GRID_LIMITS.minCell, MESA_GRID_LIMITS.maxCell, 42);
+    const grid = { width, height };
+    return {
+      id: String(raw.id || MESA_ACTIVE_ID),
+      title: String(raw.title || 'Cena ativa').trim().slice(0, 90) || 'Cena ativa',
+      width,
+      height,
+      cellSize,
+      background: String(raw.background || '#101421').trim().slice(0, 80) || '#101421',
+      showGrid: raw.showGrid !== false,
+      allowPlayerMove: raw.allowPlayerMove !== false,
+      tokens: Array.isArray(raw.tokens)
+        ? raw.tokens.slice(0, 80).map((token, i) => normalizeMesaToken(token, i, grid))
+        : [],
+      updatedAt: raw.updatedAt || Date.now()
+    };
+  }
+
+  function loadMesaLocal() {
+    try {
+      const raw = localStorage.getItem(MESA_STORAGE_KEY);
+      return raw ? normalizeMesaState(JSON.parse(raw)) : normalizeMesaState();
+    } catch {
+      return normalizeMesaState();
+    }
+  }
+
+  function saveMesaLocal() {
+    MESA_STATE.updatedAt = Date.now();
+    try {
+      localStorage.setItem(MESA_STORAGE_KEY, JSON.stringify(MESA_STATE));
+    } catch (err) {
+      console.warn('Falha ao salvar Mesa local:', err);
+    }
+  }
+
+  async function loadMesaState() {
+    MESA_STATE = loadMesaLocal();
+    mesaSyncWarning = '';
+    if (!sb || !auth.canRead) return;
+    try {
+      const { data, error } = await sb
+        .from('battle_grids')
+        .select('id,title,state,updated_at')
+        .eq('is_active', true)
+        .order('updated_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (error) throw error;
+      if (data && data.state) {
+        MESA_STATE = normalizeMesaState({ ...data.state, id: data.id || data.state.id, title: data.title || data.state.title });
+        saveMesaLocal();
+      }
+    } catch (err) {
+      mesaSyncWarning = 'Mesa em modo local. Rode supabase-battle-grid.sql para sincronizar entre jogadores.';
+      console.warn('Mesa sem sincronização Supabase:', err);
+    }
+  }
+
+  async function saveMesaState() {
+    MESA_STATE = normalizeMesaState(MESA_STATE);
+    saveMesaLocal();
+    if (!sb || !auth.canRead) return;
+    try {
+      const payload = {
+        id: MESA_STATE.id || MESA_ACTIVE_ID,
+        title: MESA_STATE.title,
+        state: MESA_STATE,
+        is_active: true,
+        updated_at: new Date().toISOString()
+      };
+      const { error } = await sb.from('battle_grids').upsert(payload, { onConflict: 'id' });
+      if (error) throw error;
+      mesaSyncWarning = '';
+    } catch (err) {
+      mesaSyncWarning = 'Mesa salva neste navegador, mas ainda sem sincronização Supabase.';
+      console.warn('Falha ao sincronizar Mesa:', err);
+    }
+  }
+
+  function mesaCanUse() {
+    return !sb || auth.canRead;
+  }
+
+  function mesaIsMaster() {
+    return !sb || auth.isAdmin;
+  }
+
+  function mesaCanMove(token) {
+    if (!token) return false;
+    if (mesaIsMaster()) return true;
+    if (token.locked) return false;
+    return !!(MESA_STATE.allowPlayerMove && auth.user && token.ownerId === auth.user.id);
+  }
+
+  function mesaVisibleTokens() {
+    return MESA_STATE.tokens.filter((token) => mesaIsMaster() || !token.hidden || (auth.user && token.ownerId === auth.user.id));
+  }
+
+  function mesaTokenById(id) {
+    return MESA_STATE.tokens.find((token) => token.id === id) || null;
+  }
+
+  function mesaTokenInitials(name) {
+    const parts = String(name || '?').trim().split(/\s+/).filter(Boolean);
+    return (parts.length > 1 ? `${parts[0][0]}${parts[1][0]}` : (parts[0] || '?').slice(0, 2)).toUpperCase();
+  }
+
+  function mesaPlaceToken(token, x, y) {
+    if (!token || !mesaCanMove(token)) return false;
+    token.x = clampNumber(x, 0, Math.max(0, MESA_STATE.width - token.size), token.x);
+    token.y = clampNumber(y, 0, Math.max(0, MESA_STATE.height - token.size), token.y);
+    return true;
   }
 
   function safeTagColor(color) {
@@ -1947,18 +2260,26 @@
   }
 
   /* ── CATEGORY VIEW ────────────────────────────── */
-  function viewCategory(tabId, query, selectedTag) {
+  function viewCategory(tabId, query, selectedTag, spellFilters) {
     const tab = tabById(tabId);
     if (!tab) return viewNotFound(tabId);
     const theme = themeOf(tabId);
     const all = entriesIn(tabId);
     const q = normalize(query || '');
     const tag = tagKey(selectedTag || '');
+    const spellFilter = normalizeSpellFilters(spellFilters);
     const tagStats = categoryTagStats(all);
     const list = all.filter((e) => {
       const entryTags = sanitizeTags(e.tags);
       const matchesTag = !tag || entryTags.some((t) => tagKey(t.label) === tag);
       if (!matchesTag) return false;
+      if (isMagiasTab(tabId)) {
+        const fields = e.fields || {};
+        const type = isSpellType(e.subtype) ? e.subtype : 'ativa';
+        if (spellFilter.type && type !== spellFilter.type) return false;
+        if (spellFilter.affinity && fields['Afinidade'] !== spellFilter.affinity) return false;
+        if (spellFilter.tier && fields['Tier'] !== spellFilter.tier) return false;
+      }
       if (!q) return true;
       const tagText = entryTags.map((t) => t.label).join(' ');
       const hay = [e.title, e.summary, tagText, ...(e.body || []), e.bodyHtml || '', ...fieldSearchValues(e.fields || {})].join(' ');
@@ -1990,6 +2311,8 @@
         </label>
         <span class="filter-count">${totalCards} ${totalCards === 1 ? 'item' : 'itens'}</span>
       </section>
+
+      ${isMagiasTab(tabId) ? spellCategoryFiltersHTML(all, spellFilter) : ''}
 
       ${tagStats.length ? `
         <section class="tag-filter" aria-label="Filtrar por tag">
@@ -2285,10 +2608,13 @@
             style="--hue:${theme.hue}" novalidate>
         ${isItens ? `
         <div class="create-form__field">
-          <label class="create-form__label">Tipo</label>
+          <label class="create-form__label">${hintedLabel('Tipo', 'Escolha o modelo do item para carregar os campos certos sem preencher dados desnecessários.')}</label>
           <div class="subtype-tabs" id="subtypeTabs" role="tablist">
             ${ITEM_SUBTYPE_KEYS.map((key) => `
-              <button type="button" class="subtype-tab ${key === subtypeActiveKey ? 'is-active' : ''}" data-subtype="${key}" role="tab">
+              <button type="button" class="subtype-tab ${key === subtypeActiveKey ? 'is-active' : ''}" data-subtype="${key}" role="tab"
+                      aria-selected="${key === subtypeActiveKey ? 'true' : 'false'}"
+                      data-tip="${escapeHtml(ITEM_SUBTYPE_HINTS[key] || '')}"
+                      aria-label="${escapeHtml(ITEM_SUBTYPES[key].label)}. ${escapeHtml(ITEM_SUBTYPE_HINTS[key] || '')}">
                 <span class="subtype-tab__icon">${ITEM_SUBTYPES[key].icon}</span>
                 <span class="subtype-tab__label">${escapeHtml(ITEM_SUBTYPES[key].label)}</span>
               </button>
@@ -2298,7 +2624,7 @@
         ` : ''}
 
         <div class="create-form__field">
-          <label class="create-form__label">${escapeHtml(banner.label)}</label>
+          <label class="create-form__label">${hintedLabel(banner.label, isItens ? 'Imagem 4:3 funciona melhor para cards e detalhes de item. Evite texto pequeno na arte.' : banner.hint)}</label>
           <div class="banner-drop ${portrait ? 'banner-drop--portrait' : ''}" id="bannerDrop"
                style="${bannerStyle}"
                tabindex="0" role="button" aria-label="Selecionar imagem do banner">
@@ -2316,18 +2642,18 @@
         </div>
 
         <div class="create-form__field">
-          <label class="create-form__label" for="titleInput">${escapeHtml(titleLabel)}</label>
+          <label class="create-form__label" for="titleInput">${isItens ? hintedLabel(titleLabel, 'Use um nome curto e distinto; ele aparece em listas, busca e inventário.') : escapeHtml(titleLabel)}</label>
           <input type="text" id="titleInput" class="create-form__input" placeholder="${escapeHtml(titlePlaceholder)}" maxlength="120" required value="${editing ? escapeHtml(initial.title) : ''}">
         </div>
 
         <div class="create-form__field">
-          <label class="create-form__label" for="summaryInput">Resumo (opcional)</label>
+          <label class="create-form__label" for="summaryInput">${isItens ? hintedLabel('Resumo (opcional)', 'Uma linha clara ajuda a reconhecer o item no inventário e nos resultados de busca.') : 'Resumo (opcional)'}</label>
           <input type="text" id="summaryInput" class="create-form__input" placeholder="${escapeHtml(summaryPlaceholder)}" maxlength="200" value="${editing ? escapeHtml(initial.summary) : ''}">
         </div>
 
         ${isItens ? `
         <div class="create-form__field">
-          <label class="create-form__label">Dossiê</label>
+          <label class="create-form__label">${hintedLabel('Dossiê', 'Preencha só o que afeta regra, economia ou narrativa; campos vazios não aparecem na ficha do item.')}</label>
           <div class="dossier-fields" id="dossierFields"></div>
         </div>
         ` : ''}
@@ -2359,7 +2685,7 @@
         </div>
 
         <div class="create-form__field">
-          <label class="create-form__label">${escapeHtml(descLabel)}</label>
+          <label class="create-form__label">${isItens ? hintedLabel(descLabel, 'Use este espaço para lore, aparência, origem e consequências que não cabem no dossiê técnico.') : escapeHtml(descLabel)}</label>
           ${editorToolbarHTML(editing ? initial.bodyHtml : '')}
         </div>
 
@@ -4269,6 +4595,208 @@
   }
 
   /* ── NOT FOUND ────────────────────────────────── */
+  /* MESA / GRID TATICO */
+  function viewMesa() {
+    if (!mesaCanUse()) return viewForbidden();
+    MESA_STATE = normalizeMesaState(MESA_STATE);
+    const theme = themeOf('Mesa');
+    const isMaster = mesaIsMaster();
+    const visibleTokens = mesaVisibleTokens();
+    const selected = mesaTokenById(mesaSelectedTokenId);
+    const playerChars = CHARACTERS.filter((c) => isMaster || (auth.user && c.userId === auth.user.id));
+    const beasts = entriesIn('Bestiario');
+    const cells = [];
+    for (let y = 0; y < MESA_STATE.height; y++) {
+      for (let x = 0; x < MESA_STATE.width; x++) {
+        cells.push(`<button type="button" class="mesa-cell" data-mesa-cell data-x="${x}" data-y="${y}" aria-label="Casa ${x + 1}, ${y + 1}"></button>`);
+      }
+    }
+
+    const charOptions = playerChars.length
+      ? playerChars.map((c) => `<option value="${escapeHtml(c.id)}">${escapeHtml(c.name || 'Persona')}</option>`).join('')
+      : '<option value="">Nenhuma Persona disponivel</option>';
+    const beastOptions = beasts.length
+      ? beasts.map((b) => `<option value="${escapeHtml(b.id)}">${escapeHtml(b.title)}</option>`).join('')
+      : '<option value="">Nenhuma criatura cadastrada</option>';
+
+    const selectedPanel = selected ? `
+      <section class="mesa-panel mesa-selected">
+        <div class="mesa-panel__head">
+          <span>Token selecionado</span>
+          <strong>${escapeHtml(selected.name)}</strong>
+        </div>
+        <div class="mesa-token-meta">
+          <span>X ${selected.x + 1}</span>
+          <span>Y ${selected.y + 1}</span>
+          <span>${selected.size}x${selected.size}</span>
+          ${selected.hp ? `<span>${escapeHtml(selected.hp)}</span>` : ''}
+        </div>
+        <div class="mesa-token-actions">
+          ${isMaster ? `
+            <button type="button" class="mesa-mini-btn" data-mesa-token-toggle-hidden="${escapeHtml(selected.id)}">${selected.hidden ? 'Revelar' : 'Ocultar'}</button>
+            <button type="button" class="mesa-mini-btn" data-mesa-token-toggle-lock="${escapeHtml(selected.id)}">${selected.locked ? 'Destravar' : 'Travar'}</button>
+          ` : ''}
+          ${(isMaster || (auth.user && selected.ownerId === auth.user.id)) ? `
+            <button type="button" class="mesa-mini-btn mesa-mini-btn--danger" data-mesa-token-remove="${escapeHtml(selected.id)}">Remover</button>
+          ` : ''}
+        </div>
+      </section>
+    ` : `
+      <section class="mesa-panel mesa-selected">
+        <div class="mesa-panel__head">
+          <span>Token selecionado</span>
+          <strong>Nenhum</strong>
+        </div>
+        <p class="mesa-help">Clique em um token para ver ações. Clique em uma casa vazia para mover o token selecionado.</p>
+      </section>
+    `;
+
+    return `
+      <section class="cat-hero" style="--hue:${theme.hue}">
+        <div class="cat-hero__icon">${iconOf('Mesa')}</div>
+        <div class="cat-hero__body">
+          <span class="cat-hero__eyebrow">${escapeHtml(theme.label)}</span>
+          <h1 class="cat-hero__title" data-text-reveal>Mesa</h1>
+          <p class="cat-hero__tone">Grid tatico para cenas ativas, movimentacao de tokens e entrada das Personas dos jogadores.</p>
+        </div>
+      </section>
+
+      <section class="mesa-app" style="--hue:${theme.hue};--mesa-cols:${MESA_STATE.width};--mesa-rows:${MESA_STATE.height};--mesa-cell:${MESA_STATE.cellSize}px;--mesa-bg:${escapeHtml(MESA_STATE.background)}">
+        <aside class="mesa-side">
+          <section class="mesa-panel">
+            <div class="mesa-panel__head">
+              <span>Cena ativa</span>
+              <strong>${escapeHtml(MESA_STATE.title)}</strong>
+            </div>
+            <div class="mesa-stats">
+              <span>${MESA_STATE.width} x ${MESA_STATE.height}</span>
+              <span>${MESA_STATE.cellSize}px</span>
+              <span>${MESA_STATE.tokens.length} tokens</span>
+            </div>
+            ${mesaSyncWarning ? `<p class="mesa-sync">${escapeHtml(mesaSyncWarning)}</p>` : ''}
+          </section>
+
+          ${isMaster ? `
+            <form class="mesa-panel mesa-form" data-mesa-config>
+              <div class="mesa-panel__head">
+                <span>Configurar grid</span>
+                <strong>Mestre</strong>
+              </div>
+              <label>Nome da cena
+                <input class="create-form__input" name="title" maxlength="90" value="${escapeHtml(MESA_STATE.title)}">
+              </label>
+              <div class="mesa-form__grid">
+                <label>Largura
+                  <input class="create-form__input" name="width" type="number" min="${MESA_GRID_LIMITS.minW}" max="${MESA_GRID_LIMITS.maxW}" value="${MESA_STATE.width}">
+                </label>
+                <label>Altura
+                  <input class="create-form__input" name="height" type="number" min="${MESA_GRID_LIMITS.minH}" max="${MESA_GRID_LIMITS.maxH}" value="${MESA_STATE.height}">
+                </label>
+                <label>Célula
+                  <input class="create-form__input" name="cellSize" type="number" min="${MESA_GRID_LIMITS.minCell}" max="${MESA_GRID_LIMITS.maxCell}" value="${MESA_STATE.cellSize}">
+                </label>
+              </div>
+              <label>Fundo
+                <input class="create-form__input" name="background" maxlength="80" value="${escapeHtml(MESA_STATE.background)}" placeholder="#101421">
+              </label>
+              <div class="mesa-checks">
+                <label><input type="checkbox" name="showGrid" ${MESA_STATE.showGrid ? 'checked' : ''}> Grade visível</label>
+                <label><input type="checkbox" name="allowPlayerMove" ${MESA_STATE.allowPlayerMove ? 'checked' : ''}> Jogadores movem seus tokens</label>
+              </div>
+              <button type="submit" class="btn btn-primary">Aplicar cena</button>
+            </form>
+          ` : ''}
+
+          <form class="mesa-panel mesa-form" data-mesa-join>
+            <div class="mesa-panel__head">
+              <span>Entrar na cena</span>
+              <strong>Persona</strong>
+            </div>
+            <label>Ficha
+              <select class="create-form__input char-select" name="characterId" ${playerChars.length ? '' : 'disabled'}>
+                ${charOptions}
+              </select>
+            </label>
+            <button type="submit" class="btn btn-ghost" ${playerChars.length ? '' : 'disabled'}>Adicionar Persona</button>
+          </form>
+
+          ${isMaster ? `
+            <form class="mesa-panel mesa-form" data-mesa-custom>
+              <div class="mesa-panel__head">
+                <span>Adicionar token</span>
+                <strong>Avulso</strong>
+              </div>
+              <label>Nome
+                <input class="create-form__input" name="name" maxlength="80" placeholder="Guarda, altar, criatura...">
+              </label>
+              <div class="mesa-form__grid">
+                <label>Cor
+                  <input class="create-form__input" name="color" type="color" value="${MESA_DEFAULT_COLOR}">
+                </label>
+                <label>Tamanho
+                  <input class="create-form__input" name="size" type="number" min="1" max="4" value="1">
+                </label>
+              </div>
+              <button type="submit" class="btn btn-ghost">Adicionar avulso</button>
+            </form>
+
+            <form class="mesa-panel mesa-form" data-mesa-beast>
+              <div class="mesa-panel__head">
+                <span>Adicionar criatura</span>
+                <strong>Bestiário</strong>
+              </div>
+              <label>Criatura
+                <select class="create-form__input char-select" name="beastId" ${beasts.length ? '' : 'disabled'}>
+                  ${beastOptions}
+                </select>
+              </label>
+              <button type="submit" class="btn btn-ghost" ${beasts.length ? '' : 'disabled'}>Adicionar criatura</button>
+            </form>
+          ` : ''}
+
+          ${selectedPanel}
+        </aside>
+
+        <main class="mesa-stage">
+          <div class="mesa-stage__bar">
+            <div>
+              <span class="section__eyebrow">CENA</span>
+              <strong>${escapeHtml(MESA_STATE.title)}</strong>
+            </div>
+            <div class="mesa-stage__actions">
+              <button type="button" class="mesa-mini-btn" data-mesa-center>Centralizar</button>
+              ${isMaster ? `<button type="button" class="mesa-mini-btn mesa-mini-btn--danger" data-mesa-clear>Limpar tokens</button>` : ''}
+            </div>
+          </div>
+          <div class="mesa-board-wrap">
+            <div class="mesa-board ${MESA_STATE.showGrid ? '' : 'is-grid-hidden'}" data-mesa-board>
+              ${cells.join('')}
+              ${visibleTokens.map((token) => {
+                const canMove = mesaCanMove(token);
+                const selectedClass = token.id === mesaSelectedTokenId ? ' is-selected' : '';
+                const hiddenClass = token.hidden ? ' is-hidden' : '';
+                const lockedClass = token.locked ? ' is-locked' : '';
+                const image = token.image ? `<img src="${escapeHtml(token.image)}" alt="">` : '';
+                return `
+                  <button type="button"
+                          class="mesa-token${selectedClass}${hiddenClass}${lockedClass}"
+                          data-mesa-token="${escapeHtml(token.id)}"
+                          draggable="${canMove ? 'true' : 'false'}"
+                          style="--token:${escapeHtml(token.color)};grid-column:${token.x + 1} / span ${token.size};grid-row:${token.y + 1} / span ${token.size};"
+                          aria-label="${escapeHtml(token.name)}">
+                    ${image || `<span>${escapeHtml(mesaTokenInitials(token.name))}</span>`}
+                    <b>${escapeHtml(token.name)}</b>
+                  </button>
+                `;
+              }).join('')}
+            </div>
+          </div>
+          <p class="mesa-help">Arraste tokens para mover. Também é possível selecionar um token e clicar em uma casa do grid.</p>
+        </main>
+      </section>
+    `;
+  }
+
   function viewNotFound(what) {
     return `
       <section class="not-found">
@@ -4312,12 +4840,13 @@
       else if (entry) html = viewCharacterSheet(entry);
       else html = viewPersonaRoster();
     }
+    else if (tab === 'Mesa') html = viewMesa();
     else if (action === 'criar' && !entry) html = viewCreate(tab);
     else if (action === 'editar' && entry) html = viewCreate(tab, entry);
     else if (entry) html = viewEntry(tab, entry);
     else {
       const state = categoryState[tab] || {};
-      html = viewCategory(tab, state.query || '', state.tag || '');
+      html = viewCategory(tab, state.query || '', state.tag || '', state.spell || EMPTY_SPELL_FILTERS);
     }
 
     view.classList.add('is-leaving');
@@ -4337,6 +4866,7 @@
         attachDeleteHandlers();
         attachCharacterDeleteHandlers();
         attachCharacterSheet();
+        attachMesaGrid();
         attachBeastAbilityCards();
       });
       window.scrollTo({ top: 0, behavior: 'instant' });
@@ -4450,12 +4980,14 @@
   function attachCategoryFilter() {
     const input = document.getElementById('catSearch');
     const tagButtons = document.querySelectorAll('[data-tag-filter]');
-    if (!input && !tagButtons.length) return;
+    const spellFilterButtons = document.querySelectorAll('[data-spell-filter]');
+    const spellReset = document.querySelector('[data-spell-filter-reset]');
+    if (!input && !tagButtons.length && !spellFilterButtons.length && !spellReset) return;
 
     const refreshCategory = ({ keepFocus = false, cursor = null } = {}) => {
       const { tab } = parseHash();
       const state = categoryState[tab] || {};
-      view.innerHTML = viewCategory(tab, state.query || '', state.tag || '');
+      view.innerHTML = viewCategory(tab, state.query || '', state.tag || '', state.spell || EMPTY_SPELL_FILTERS);
       animateView();
       attachCategoryFilter();
       if (keepFocus) {
@@ -4495,6 +5027,38 @@
         refreshCategory();
       });
     });
+
+    spellFilterButtons.forEach((btn) => {
+      if (btn.dataset.bound) return;
+      btn.dataset.bound = '1';
+      btn.addEventListener('click', () => {
+        const { tab } = parseHash();
+        const state = categoryState[tab] || {};
+        const current = normalizeSpellFilters(state.spell);
+        const key = btn.dataset.spellFilter;
+        if (!Object.prototype.hasOwnProperty.call(current, key)) return;
+        categoryState[tab] = {
+          ...state,
+          spell: {
+            ...current,
+            [key]: btn.dataset.spellFilterValue || ''
+          }
+        };
+        refreshCategory();
+      });
+    });
+
+    if (spellReset && !spellReset.dataset.bound) {
+      spellReset.dataset.bound = '1';
+      spellReset.addEventListener('click', () => {
+        const { tab } = parseHash();
+        categoryState[tab] = {
+          ...(categoryState[tab] || {}),
+          spell: { ...EMPTY_SPELL_FILTERS }
+        };
+        refreshCategory();
+      });
+    }
   }
 
   /* ── FORM HELPERS ──────────────────────────────── */
@@ -4729,6 +5293,7 @@
         case 'Valor': return 'Ex.: 30 moedas, Inestimável';
         case 'Efeito': return 'O que ele faz quando usado';
         case 'Slot': return 'Cabeça, Mão, Peito, Anel…';
+        case 'Defesa': return 'Ex.: +2, 14, armadura leve';
         default: return field;
       }
     }
@@ -4763,12 +5328,57 @@
       extraFields = readExtraFieldsFromDOM();
     }
 
+    function usedFieldKeys() {
+      const used = new Set(subtypeFieldsFor(current).map((key) => normalize(key)));
+      extraFields.forEach((field) => used.add(normalize(field.key)));
+      return used;
+    }
+
+    function addExtraField(key) {
+      extraFields = readExtraFieldsFromDOM();
+      const used = new Set(extraFields.map((field) => normalize(field.key)));
+      if (used.has(normalize(key)) || subtypeFieldsFor(current).some((field) => normalize(field) === normalize(key))) return false;
+      extraFields.push({ key, value: '' });
+      return true;
+    }
+
+    function nextExtraFieldKey() {
+      const used = new Set([
+        ...subtypeFieldsFor(current).map((key) => normalize(key)),
+        ...extraFields.map((field) => normalize(field.key))
+      ]);
+      const guide = itemSubtypeGuide(current);
+      const suggested = guide.suggestions.find((key) => !used.has(normalize(key)));
+      if (suggested) return suggested;
+      const fallback = ITEM_EXTRA_FIELD_OPTIONS.find((opt) => !used.has(normalize(opt.key)));
+      return fallback ? fallback.key : ITEM_EXTRA_FIELD_OPTIONS[0].key;
+    }
+
+    function guideHTML() {
+      const guide = itemSubtypeGuide(current);
+      return `
+        <section class="item-guide" aria-live="polite">
+          <div class="item-guide__mark" aria-hidden="true">${ITEM_SUBTYPES[current].icon}</div>
+          <div class="item-guide__body">
+            <div class="item-guide__top">
+              <strong>${escapeHtml(guide.title)}</strong>
+              <span>${escapeHtml(subtypeLabel(current))}</span>
+            </div>
+            <p>${escapeHtml(guide.text)}</p>
+            <div class="item-guide__checks">
+              ${guide.checks.map((check) => `<span>${escapeHtml(check)}</span>`).join('')}
+            </div>
+          </div>
+        </section>
+      `;
+    }
+
     function fieldHTML(field) {
       const value = cache[current][field] || '';
       if (field === 'Raridade') {
         return `
           <div class="dossier-field">
-            <span>${escapeHtml(field)}</span>
+            ${hintedLabel(field, itemHintFor(field))}
             <div class="rarity-picker" data-dossier-field="${escapeHtml(field)}" data-value="${escapeHtml(value)}" role="radiogroup" aria-label="Raridade">
               ${RARITY_OPTIONS.map((opt) => `
                 <button type="button"
@@ -4785,9 +5395,10 @@
       }
       return `
         <label class="dossier-field">
-          <span>${escapeHtml(field)}</span>
+          ${hintedLabel(field, itemHintFor(field))}
           <input type="text" class="create-form__input" data-dossier-field="${escapeHtml(field)}"
                  placeholder="${escapeHtml(placeholderFor(field))}"
+                 title="${escapeHtml(itemHintFor(field))}"
                  value="${escapeHtml(value)}" maxlength="160">
         </label>
       `;
@@ -4810,15 +5421,17 @@
       const customHidden = known ? 'hidden' : '';
       const customValue = known ? '' : rawKey;
       const placeholder = itemExtraFieldPlaceholder(rawKey);
+      const hint = itemHintFor(rawKey);
       return `
         <div class="item-field-row" data-item-field-row>
-          <select class="create-form__input char-select item-field-select" data-item-field-key aria-label="Campo adicional">
+          <select class="create-form__input char-select item-field-select" data-item-field-key aria-label="Campo adicional" title="Escolha um campo comum ou personalize.">
             ${extraFieldOptionsHTML(rawKey)}
           </select>
           <input type="text" class="create-form__input item-field-custom" data-item-field-custom ${customHidden}
-                 placeholder="Nome do campo" value="${escapeHtml(customValue)}" maxlength="48">
+                 placeholder="Nome do campo" value="${escapeHtml(customValue)}" maxlength="48" title="Nome curto do campo personalizado.">
           <input type="text" class="create-form__input item-field-value" data-item-field-value
-                 placeholder="${escapeHtml(placeholder)}" value="${escapeHtml(field.value || '')}" maxlength="220">
+                 placeholder="${escapeHtml(placeholder)}" value="${escapeHtml(field.value || '')}" maxlength="220"
+                 aria-label="${escapeHtml(rawKey)}" title="${escapeHtml(hint || placeholder)}">
           <button type="button" class="item-field-remove" data-item-field-remove aria-label="Remover campo">
             <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
           </button>
@@ -4827,17 +5440,34 @@
     }
 
     function extraFieldsHTML() {
+      const used = usedFieldKeys();
+      const guide = itemSubtypeGuide(current);
+      const suggestions = guide.suggestions.filter((key) => !used.has(normalize(key)));
       return `
         <section class="item-field-builder">
           <header class="item-field-builder__head">
-            <span class="item-field-builder__title">Campos adicionais</span>
+            <span class="item-field-builder__title">${hintedLabel('Campos adicionais', 'Use campos extras para regras específicas sem sobrecarregar todos os itens.')}</span>
             <button type="button" class="item-field-add" data-item-field-add>
               <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
               <span>Adicionar campo</span>
             </button>
           </header>
+          ${suggestions.length ? `
+            <div class="item-field-suggestions" aria-label="Campos sugeridos para ${escapeHtml(subtypeLabel(current))}">
+              <span>Adicionar rápido</span>
+              <div class="item-field-suggestions__list">
+                ${suggestions.map((key) => `
+                  <button type="button" class="item-field-suggest" data-item-field-suggest="${escapeHtml(key)}" title="${escapeHtml(itemHintFor(key) || itemExtraFieldPlaceholder(key))}">
+                    ${escapeHtml(key)}
+                  </button>
+                `).join('')}
+              </div>
+            </div>
+          ` : ''}
           <div class="item-field-list" data-item-fields-list>
-            ${extraFields.map(extraFieldRowHTML).join('')}
+            ${extraFields.length
+              ? extraFields.map(extraFieldRowHTML).join('')
+              : '<p class="item-field-empty">Nenhum campo adicional. Use as sugestões acima apenas quando o item precisar de regra extra.</p>'}
           </div>
         </section>
       `;
@@ -4847,6 +5477,7 @@
       if (options.persist !== false) persistCurrent();
       const fields = subtypeFieldsFor(current);
       wrap.innerHTML = `
+        ${guideHTML()}
         <div class="dossier-fields__base">
           ${fields.map(fieldHTML).join('')}
         </div>
@@ -4859,6 +5490,7 @@
       if (!btn) return;
       persistCurrent();
       tabs.querySelectorAll('.subtype-tab').forEach((b) => b.classList.toggle('is-active', b === btn));
+      tabs.querySelectorAll('.subtype-tab').forEach((b) => b.setAttribute('aria-selected', b === btn ? 'true' : 'false'));
       current = btn.dataset.subtype;
       render({ persist: false });
     });
@@ -4868,8 +5500,14 @@
       const addBtn = e.target.closest('[data-item-field-add]');
       if (addBtn) {
         e.preventDefault();
-        extraFields = readExtraFieldsFromDOM();
-        extraFields.push({ key: ITEM_EXTRA_FIELD_OPTIONS[0].key, value: '' });
+        addExtraField(nextExtraFieldKey());
+        render({ persist: false });
+        return;
+      }
+      const suggestBtn = e.target.closest('[data-item-field-suggest]');
+      if (suggestBtn) {
+        e.preventDefault();
+        addExtraField(suggestBtn.dataset.itemFieldSuggest || ITEM_EXTRA_FIELD_OPTIONS[0].key);
         render({ persist: false });
         return;
       }
@@ -4908,7 +5546,13 @@
         custom.hidden = !isCustom;
         if (!isCustom) custom.value = '';
       }
-      if (valueInput) valueInput.placeholder = itemExtraFieldPlaceholder(selector.value);
+      if (valueInput) {
+        const placeholder = itemExtraFieldPlaceholder(selector.value);
+        const key = isCustom ? (custom?.value || 'Campo personalizado') : selector.value;
+        valueInput.placeholder = placeholder;
+        valueInput.title = itemHintFor(selector.value) || placeholder;
+        valueInput.setAttribute('aria-label', key);
+      }
     });
 
     render({ persist: false });
@@ -6661,6 +7305,196 @@
   }
 
   /* ── FICHA VIVA: handlers (HP, status, inventário, magias) ── */
+  function attachMesaGrid() {
+    const root = document.querySelector('.mesa-app');
+    if (!root || root.dataset.bound) return;
+    root.dataset.bound = '1';
+
+    const rerender = async () => {
+      await saveMesaState();
+      render(true);
+    };
+
+    root.querySelector('[data-mesa-config]')?.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      if (!mesaIsMaster()) return;
+      const form = e.currentTarget;
+      const width = clampNumber(form.width.value, MESA_GRID_LIMITS.minW, MESA_GRID_LIMITS.maxW, MESA_STATE.width);
+      const height = clampNumber(form.height.value, MESA_GRID_LIMITS.minH, MESA_GRID_LIMITS.maxH, MESA_STATE.height);
+      MESA_STATE.title = form.title.value.trim() || 'Cena ativa';
+      MESA_STATE.width = width;
+      MESA_STATE.height = height;
+      MESA_STATE.cellSize = clampNumber(form.cellSize.value, MESA_GRID_LIMITS.minCell, MESA_GRID_LIMITS.maxCell, MESA_STATE.cellSize);
+      MESA_STATE.background = form.background.value.trim() || '#101421';
+      MESA_STATE.showGrid = !!form.showGrid.checked;
+      MESA_STATE.allowPlayerMove = !!form.allowPlayerMove.checked;
+      MESA_STATE.tokens = MESA_STATE.tokens.map((token, i) => normalizeMesaToken(token, i, MESA_STATE));
+      await rerender();
+    });
+
+    root.querySelector('[data-mesa-join]')?.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const id = e.currentTarget.characterId.value;
+      const c = CHARACTERS.find((row) => row.id === id);
+      if (!c) return;
+      const existing = MESA_STATE.tokens.find((token) => token.refType === 'character' && token.refId === c.id);
+      if (existing) {
+        mesaSelectedTokenId = existing.id;
+        render(true);
+        return;
+      }
+      const ownerLabel = c.identity?.ownerLabel || c.name || 'Jogador';
+      const token = normalizeMesaToken({
+        id: mesaTokenId('char'),
+        name: c.name || 'Persona',
+        refType: 'character',
+        refId: c.id,
+        ownerId: c.userId || (auth.user && auth.user.id) || '',
+        ownerLabel,
+        image: c.image || '',
+        color: '#ec4899',
+        x: Math.min(MESA_STATE.tokens.length % MESA_STATE.width, MESA_STATE.width - 1),
+        y: Math.min(Math.floor(MESA_STATE.tokens.length / MESA_STATE.width), MESA_STATE.height - 1),
+        size: 1
+      }, MESA_STATE.tokens.length, MESA_STATE);
+      MESA_STATE.tokens.push(token);
+      mesaSelectedTokenId = token.id;
+      await rerender();
+    });
+
+    root.querySelector('[data-mesa-custom]')?.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      if (!mesaIsMaster()) return;
+      const form = e.currentTarget;
+      const name = form.name.value.trim();
+      if (!name) {
+        form.name.focus();
+        return;
+      }
+      const token = normalizeMesaToken({
+        id: mesaTokenId('custom'),
+        name,
+        refType: 'custom',
+        color: form.color.value || MESA_DEFAULT_COLOR,
+        size: form.size.value,
+        x: Math.min(MESA_STATE.tokens.length % MESA_STATE.width, MESA_STATE.width - 1),
+        y: Math.min(Math.floor(MESA_STATE.tokens.length / MESA_STATE.width), MESA_STATE.height - 1)
+      }, MESA_STATE.tokens.length, MESA_STATE);
+      MESA_STATE.tokens.push(token);
+      mesaSelectedTokenId = token.id;
+      await rerender();
+    });
+
+    root.querySelector('[data-mesa-beast]')?.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      if (!mesaIsMaster()) return;
+      const id = e.currentTarget.beastId.value;
+      const beast = entryById(id);
+      if (!beast) return;
+      const token = normalizeMesaToken({
+        id: mesaTokenId('beast'),
+        name: beast.title || 'Criatura',
+        refType: 'beast',
+        refId: beast.id,
+        image: beast.image || '',
+        color: '#f43f5e',
+        size: 1,
+        hp: itemFieldValue(beast.fields, 'HP') || '',
+        x: Math.min(MESA_STATE.tokens.length % MESA_STATE.width, MESA_STATE.width - 1),
+        y: Math.min(Math.floor(MESA_STATE.tokens.length / MESA_STATE.width), MESA_STATE.height - 1)
+      }, MESA_STATE.tokens.length, MESA_STATE);
+      MESA_STATE.tokens.push(token);
+      mesaSelectedTokenId = token.id;
+      await rerender();
+    });
+
+    root.addEventListener('click', async (e) => {
+      const tokenBtn = e.target.closest('[data-mesa-token]');
+      if (tokenBtn) {
+        mesaSelectedTokenId = tokenBtn.dataset.mesaToken;
+        render(true);
+        return;
+      }
+
+      const cell = e.target.closest('[data-mesa-cell]');
+      if (cell && mesaSelectedTokenId) {
+        const token = mesaTokenById(mesaSelectedTokenId);
+        if (mesaPlaceToken(token, Number(cell.dataset.x), Number(cell.dataset.y))) await rerender();
+        return;
+      }
+
+      const hiddenBtn = e.target.closest('[data-mesa-token-toggle-hidden]');
+      if (hiddenBtn && mesaIsMaster()) {
+        const token = mesaTokenById(hiddenBtn.dataset.mesaTokenToggleHidden);
+        if (token) token.hidden = !token.hidden;
+        await rerender();
+        return;
+      }
+
+      const lockBtn = e.target.closest('[data-mesa-token-toggle-lock]');
+      if (lockBtn && mesaIsMaster()) {
+        const token = mesaTokenById(lockBtn.dataset.mesaTokenToggleLock);
+        if (token) token.locked = !token.locked;
+        await rerender();
+        return;
+      }
+
+      const removeBtn = e.target.closest('[data-mesa-token-remove]');
+      if (removeBtn) {
+        const token = mesaTokenById(removeBtn.dataset.mesaTokenRemove);
+        if (!token) return;
+        if (!(mesaIsMaster() || (auth.user && token.ownerId === auth.user.id))) return;
+        MESA_STATE.tokens = MESA_STATE.tokens.filter((row) => row.id !== token.id);
+        if (mesaSelectedTokenId === token.id) mesaSelectedTokenId = '';
+        await rerender();
+        return;
+      }
+
+      if (e.target.closest('[data-mesa-clear]') && mesaIsMaster()) {
+        if (!confirm('Remover todos os tokens da cena?')) return;
+        MESA_STATE.tokens = [];
+        mesaSelectedTokenId = '';
+        await rerender();
+        return;
+      }
+
+      if (e.target.closest('[data-mesa-center]')) {
+        root.querySelector('.mesa-board-wrap')?.scrollTo({ left: 0, top: 0, behavior: 'smooth' });
+      }
+    });
+
+    root.addEventListener('dragstart', (e) => {
+      const tokenBtn = e.target.closest('[data-mesa-token]');
+      const token = tokenBtn ? mesaTokenById(tokenBtn.dataset.mesaToken) : null;
+      if (!token || !mesaCanMove(token)) {
+        e.preventDefault();
+        return;
+      }
+      mesaSelectedTokenId = token.id;
+      e.dataTransfer.setData('text/plain', token.id);
+      e.dataTransfer.effectAllowed = 'move';
+    });
+
+    root.addEventListener('dragover', (e) => {
+      if (e.target.closest('[data-mesa-cell]')) {
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'move';
+      }
+    });
+
+    root.addEventListener('drop', async (e) => {
+      const cell = e.target.closest('[data-mesa-cell]');
+      if (!cell) return;
+      e.preventDefault();
+      const id = e.dataTransfer.getData('text/plain');
+      const token = mesaTokenById(id);
+      if (mesaPlaceToken(token, Number(cell.dataset.x), Number(cell.dataset.y))) {
+        mesaSelectedTokenId = token.id;
+        await rerender();
+      }
+    });
+  }
+
   function attachCharacterSheet() {
     const root = document.getElementById('charSheet');
     if (!root || root.dataset.bound) return;
@@ -7140,6 +7974,7 @@
 
     if (!sb) {
       // Sem Supabase: roda offline com defaults
+      await loadMesaState();
       render();
       return;
     }
@@ -7163,7 +7998,7 @@
 
     // Logado: carrega dados e renderiza
     try {
-      await Promise.all([loadIndexCustom(), loadUserEntries(), loadMasterPalette(), loadCharacters()]);
+      await Promise.all([loadIndexCustom(), loadUserEntries(), loadMasterPalette(), loadCharacters(), loadMesaState()]);
     } catch (err) {
       console.error('Erro ao sincronizar com Supabase:', err);
     }

@@ -75,6 +75,11 @@ window.ARCANO_ARCHIVE = {
       tone: "Crie e gerencie suas fichas de personagem — raça, atributos e mais."
     },
     {
+      id: "Mesa",
+      title: "Mesa",
+      tone: "Grid tático de sessão para cenas, tokens e movimentação dos jogadores."
+    },
+    {
       id: "Historias",
       title: "Histórias",
       tone: "Crônicas, relatos, campanhas e acontecimentos marcantes."

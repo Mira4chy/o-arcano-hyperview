@@ -23,6 +23,7 @@ A pagina inicial fica em `index`. Cada registro fica em `entries` e usa uma aba 
 - `Eras`
 - `Sistemas`
 - `Persona`
+- `Mesa`
 - `Historias`
 - `Racas`
 - `Mapa`
@@ -52,6 +53,23 @@ Rode os arquivos abaixo UMA VEZ no Supabase > SQL Editor, na ordem:
 4. `supabase-master-palette.sql` — paleta de cores personalizada do Mestre (necessaria para salvar cores no editor de texto).
 5. `supabase-characters.sql` — tabela `characters` (fichas de personagem dos jogadores) + RLS. Depende da funcao criada em `supabase-access-requests.sql`.
 6. `supabase-characters-sheet.sql` — colunas da ficha interativa (`vitals`, `statuses`, `inventory`, `spells`) na tabela `characters`.
+7. `supabase-battle-grid.sql` — tabela `battle_grids` para sincronizar a aba **Mesa** entre Mestre e jogadores.
+
+## Mesa — grid tatico de sessao
+
+A aba **Mesa** e o MVP de grid para cenas ativas da campanha. Ela fica no menu lateral logo
+apos **Persona** e permite:
+
+- o **Mestre** configurar largura, altura, tamanho da celula, fundo e permissao de movimento;
+- adicionar tokens avulsos, tokens de **Bestiario** e Personas dos jogadores;
+- jogadores entrarem na cena com uma de suas Personas;
+- arrastar tokens ou selecionar um token e clicar em uma casa do grid;
+- ocultar, travar, remover e limpar tokens pelo Mestre.
+
+Sem Supabase, a Mesa salva no `localStorage` do navegador. Com `supabase-battle-grid.sql`
+rodado, a cena ativa sincroniza na tabela `battle_grids` em formato JSONB. Este MVP usa
+permissao ampla para contas aprovadas editarem a cena ativa; a proxima evolucao recomendada e
+separar tokens em uma tabela propria para RLS por dono do token.
 
 ## Persona — criador de personagens
 
