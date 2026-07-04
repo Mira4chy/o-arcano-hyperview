@@ -3574,18 +3574,18 @@
     const arrivingClass = ['next', 'prev'].includes(arrivingTurn) ? ` is-page-arriving is-page-arriving--${arrivingTurn}` : '';
     const pageTurnButton = (target, dir, label) => target ? `
       <button type="button" class="spell-page-button spell-page-button--${dir}" data-spell-page-turn="${dir}" data-target-hash="#/${tabId}/${encodeURIComponent(target.id)}" aria-label="${escapeHtml(label)}: ${escapeHtml(target.title)}">
-        <span class="spell-page-button__k">${dir === 'prev' ? 'Anterior' : 'Proxima'}</span>
+        <span class="spell-page-button__k">${dir === 'prev' ? 'Anterior' : 'Pr\u00f3xima'}</span>
         <strong>${escapeHtml(target.title)}</strong>
       </button>` : '';
     const pageTurnEdge = (target, dir) => target ? `
-      <button type="button" class="spell-page-edge spell-page-edge--${dir}" data-spell-page-turn="${dir}" data-target-hash="#/${tabId}/${encodeURIComponent(target.id)}" title="${escapeHtml(dir === 'prev' ? 'Magia anterior' : 'Proxima magia')}: ${escapeHtml(target.title)}" aria-label="${escapeHtml(dir === 'prev' ? 'Magia anterior' : 'Proxima magia')}: ${escapeHtml(target.title)}">
+      <button type="button" class="spell-page-edge spell-page-edge--${dir}" data-spell-page-turn="${dir}" data-target-hash="#/${tabId}/${encodeURIComponent(target.id)}" title="${escapeHtml(dir === 'prev' ? 'Magia anterior' : 'Pr\u00f3xima magia')}: ${escapeHtml(target.title)}" aria-label="${escapeHtml(dir === 'prev' ? 'Magia anterior' : 'Pr\u00f3xima magia')}: ${escapeHtml(target.title)}">
         <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="${dir === 'prev' ? 'M15 18l-6-6 6-6' : 'M9 6l6 6-6 6'}"/></svg>
       </button>` : '';
     const pageTurnControls = hasPageTurns ? `
-      <div class="spell-page-controls" aria-label="Virar paginas do grimorio">
+      <div class="spell-page-controls" aria-label="Virar p\u00e1ginas do grim\u00f3rio">
         ${pageTurnButton(prevSpell, 'prev', 'Magia anterior')}
         <span class="spell-page-counter">${bookIndex + 1}<i>/</i>${spellBookEntries.length}</span>
-        ${pageTurnButton(nextSpell, 'next', 'Proxima magia')}
+        ${pageTurnButton(nextSpell, 'next', 'Pr\u00f3xima magia')}
       </div>` : '';
 
     return `
