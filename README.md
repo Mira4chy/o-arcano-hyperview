@@ -79,10 +79,10 @@ personagem dos jogadores**. Cada ficha fica vinculada ao usuario (coluna `user_i
 - Qualquer conta aprovada cria/edita as **proprias** fichas (varias por conta); o **Mestre**
   (admin) ve as fichas de todos os jogadores.
 - A ficha tem: **raca** (puxa HP por parte do corpo e Mana do dossie da raca, editaveis),
-  **atributos** (todos comecam em 10 + 6 pontos para distribuir; a cada 2 pontos, +1 de
-  modificador; o `Modificador` da raca soma no modificador final), **O Despertar**
-  (ver abaixo), **pericias/talentos** e **identidade narrativa** (papel, desejo, ferida e
-  historia em rich-text).
+  **atributos** (todos comecam em 10 + 6 pontos para distribuir; a cada 2 pontos acima da
+  base, +1d6 nos testes; o `Modificador` da raca soma dados), **DA** configuravel por
+  atributo, **O Despertar** (ver abaixo), **pericias/talentos** e **identidade narrativa**
+  (papel, desejo, ferida e historia em rich-text).
 
 ### O Despertar (mago / nao-mago)
 
@@ -92,15 +92,18 @@ animacao de ritual:
 - **1–70:** nasce **Nao-Mago**. **71–100:** nasce **Mago**.
 - Mago pode **Aceitar a Mana** (rola 1d100 da Escola: 1–50 Elemental, 51–85 Arcanista,
   86–95 Druidico, 96–100 Celestial) ou **Renunciar** (vira nao-mago).
-- **Mago que aceitou:** Resistencia travada em **14** na criacao (o Mestre pode exceder
-  narrativamente).
-- **Nao-Mago / renunciou:** **+1 Nivel de HP** (adicionado manualmente nas partes do corpo)
-  e **+1 ponto em um atributo aleatorio** (rolado no Despertar, respeitando o teto).
+- **Mago que aceitou:** recebe Mana e escola arcana; ao chegar a 0 Mana, entra em
+  **Colapso Arcano** e fica inconsciente/incapaz de agir, lutar, conjurar ou mover-se sozinho.
+- **Fragilidade Arcana:** mago sofre **-1d6** apenas em testes de Resistencia para exaustao
+  prolongada, doenca, sangramento ou recuperacao fisica.
+- **Nao-Mago / renunciou:** nao tem Mana natural, nao sofre Colapso Arcano, recebe **+1
+  Nivel de HP** e **+1 ponto em um atributo aleatorio** (rolado no Despertar, respeitando o
+  teto).
 
-Para ajustar a lista de atributos, os numeros (base 10 / pool 6 / teto 16 / trava 14 do mago)
-ou as faixas/escolas, edite as constantes `CHAR_ATTRIBUTES`, `CHAR_ATTR_BASE`,
-`CHAR_POINT_POOL`, `CHAR_ATTR_MAX`, `CHAR_MAGE_RES_CAP`, `AWAKEN_MAGE_MIN` e `MAGIC_SCHOOLS`
-no topo de `assets/js/app.js`.
+Para ajustar a lista de atributos, os numeros (base 10 / pool 6 / teto 16), as faixas/escolas
+ou a reducao de DF/DM, edite as constantes `CHAR_ATTRIBUTES`, `CHAR_ATTR_BASE`,
+`CHAR_POINT_POOL`, `CHAR_ATTR_MAX`, `AWAKEN_MAGE_MIN`, `MAGIC_SCHOOLS` e `DEF_REDUCTION` no
+topo de `assets/js/app.js`.
 
 Observacao: entradas antigas de `stories` com `tab = 'Persona'` (se existirem no banco) deixam
 de aparecer nessa aba, que agora lista somente fichas da tabela `characters`.
@@ -108,22 +111,26 @@ de aparecer nessa aba, que agora lista somente fichas da tabela `characters`.
 ### Ficha viva (interativa)
 
 Depois de criada, a ficha (`#/Persona/<id>`) funciona como um documento vivo, organizado em
-**abas**: Visao Geral (atributos, despertar, identidade, pericias), Combate (defesa, HP, status),
-Inventario, Magias e Historia. Um cabecalho mostra retrato, nome e o resumo (Defesa/HP/Mana).
+**abas**: Visao Geral (atributos, despertar, identidade, pericias), Combate (DA, DF/DM, HP,
+status), Inventario, Magias e Historia. Um cabecalho mostra retrato, nome e o resumo
+(DA/DF/DM/HP/Mana).
 O **dono** e o **Mestre** podem alterar; mudancas salvam sozinhas no Supabase:
 
 - **Pontos de Vida:** cada parte do corpo tem uma barra (atual/maximo) com campo de valor e
-  botoes **Dano**/**Curar**; a Mana tem **Gastar**/**Restaurar**. A cor da barra muda conforme
-  a vida cai (verde → ambar → vermelho).
-- **Defesa (escudo):** um escudo no topo dos vitais mostra a Defesa total = **base** (campo
-  editavel) **+** soma dos **itens equipados**. Itens equipaveis do codex tem um campo
-  `Defesa` (o Mestre define ao criar); na ficha da pra ajustar a defesa de cada item.
+  botoes **Dano**/**Curar**; a Mana tem **Gastar**/**Restaurar**. Se a Mana de um mago cai a
+  0, a ficha adiciona o status automatico de Colapso Arcano; se a Mana voltar, remove o status.
+- **Testes e DA:** atributos rolam `Nd6 + 1d12 de Destino`. A aba Combate tem rolagem de
+  **Dificuldade de Acerto** usando o atributo base escolhido na criacao.
+- **DF / DM:** a ficha separa **Defesa Fisica** e **Defesa Magica**. Cada uma soma nivel base
+  + itens equipados e mostra a porcentagem de reducao de dano conforme a tabela do sistema
+  (0%, 10%, 20%, 35%, 50%, 65%, 75%).
 - **Status:** lista de condicoes (ex.: Sangramento) que da pra adicionar/remover. (Os efeitos
   mecanicos de cada status serao desenvolvidos depois.)
-- **Inventario:** dividido em **Mochila** (espaco ilimitado) e **Equipado** (ate 5 itens).
+- **Inventario:** dividido em **Mochila** (espaco ilimitado) e **Equipado** (ate 6 itens).
   Da pra **Equipar/Desequipar** e ajustar quantidade. Itens vem da aba **Itens** (puxa
-  nome/resumo/defesa do codex e viram link) ou **avulsos** escritos a mao.
-- **Livro de Magias:** adicione magias da aba **Magias** (vira link) ou avulsas.
+  nome/resumo/DF/DM do codex e viram link) ou **avulsos** escritos a mao.
+- **Livro de Magias:** adicione magias da aba **Magias** (vira link) ou avulsas; quando houver
+  custo em MP, a ficha permite gastar Mana pela propria magia.
 
 Requer a migracao `supabase-characters-sheet.sql`. Se ela nao tiver rodado, a criacao de ficha
 continua funcionando (sem o estado vivo) e a ficha avisa ao tentar salvar HP/status/itens.

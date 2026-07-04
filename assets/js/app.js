@@ -54,7 +54,7 @@
     equipavel: {
       label: 'Equipável',
       icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><polyline points="14.5 17.5 3 6 3 3 6 3 17.5 14.5"/><line x1="13" x2="19" y1="19" y2="13"/><line x1="16" x2="20" y1="16" y2="20"/><line x1="19" x2="21" y1="21" y2="19"/></svg>',
-      fields: ['Raridade', 'Valor', 'Defesa', 'Efeito', 'Slot']
+      fields: ['Raridade', 'Valor', 'DF', 'DM', 'Efeito', 'Slot']
     },
     consumivel: {
       label: 'Consumível',
@@ -65,7 +65,9 @@
   const ITEM_EXTRA_FIELD_CUSTOM = '__custom__';
   const ITEM_EXTRA_FIELD_OPTIONS = [
     { key: 'Dano', placeholder: 'Ex.: 1d8 corte, 2d6 fogo' },
-    { key: 'Defesa', placeholder: 'Ex.: +2, 14, armadura leve' },
+    { key: 'DF', placeholder: 'Nivel 0-6 contra dano fisico' },
+    { key: 'DM', placeholder: 'Nivel 0-6 contra dano magico' },
+    { key: 'Defesa', placeholder: 'Campo antigo; prefira DF/DM nos itens novos' },
     { key: 'Slot', placeholder: 'Ex.: Cabeça, mão, anel, peito' },
     { key: 'Alcance', placeholder: 'Ex.: 6q, toque, arremesso curto' },
     { key: 'Área', placeholder: 'Ex.: cone 3q, raio 2q' },
@@ -90,7 +92,9 @@
   const ITEM_FIELD_HINTS = {
     Raridade: 'Ajuda o Mestre e os jogadores a entenderem disponibilidade, preço e peso narrativo.',
     Valor: 'Use uma moeda, faixa de preço ou marque como inestimável quando for único.',
-    Defesa: 'Itens equipáveis podem somar defesa na ficha quando estiverem equipados.',
+    DF: 'Nivel de Defesa Fisica que o item soma na ficha quando equipado (0 a 6).',
+    DM: 'Nivel de Defesa Magica que o item soma na ficha quando equipado (0 a 6).',
+    Defesa: 'Campo antigo mantido por compatibilidade; nos itens novos, prefira DF e DM separados.',
     Efeito: 'Descreva o efeito de mesa em uma frase objetiva.',
     Slot: 'Indica onde o item ocupa espaço: mão, peito, cabeça, anel e similares.',
     Dano: 'Use dados, tipo de dano e qualquer modificador relevante.',
@@ -118,8 +122,8 @@
     },
     equipavel: {
       title: 'Equipável de ficha',
-      text: 'Use para armas, armaduras e acessórios. Defesa preenchida aqui pode ser aproveitada no inventário da Persona.',
-      checks: ['Slot claro', 'Defesa quando houver', 'Efeito em uma frase'],
+      text: 'Use para armas, armaduras e acessórios. DF e DM preenchidos aqui entram no inventário da Persona.',
+      checks: ['Slot claro', 'DF/DM quando houver', 'Efeito em uma frase'],
       suggestions: ['Dano', 'Cargas / usos', 'Requisito', 'Efeito passivo', 'Penalidade']
     },
     consumivel: {
@@ -130,6 +134,7 @@
     }
   };
   const ITEM_BASE_FIELD_KEYS = new Set(Object.values(ITEM_SUBTYPES).flatMap((cfg) => cfg.fields));
+  ['Defesa', 'Defesa Fisica', 'Defesa Física', 'Defesa Magica', 'Defesa Mágica'].forEach((key) => ITEM_BASE_FIELD_KEYS.add(key));
   const ITEM_SUBTYPE_KEYS = Object.keys(ITEM_SUBTYPES);
   function subtypeFieldsFor(subtype) {
     return (ITEM_SUBTYPES[subtype] || ITEM_SUBTYPES.item).fields;
@@ -424,15 +429,14 @@
   /* ── FICHAS DE PERSONAGEM (aba Persona) ───────────
      Atributos do sistema O Arcano. Para mudar a lista, edite só este array.
      Todos começam em CHAR_ATTR_BASE (10) e distribuem CHAR_POINT_POOL (6)
-     pontos, com teto de CHAR_ATTR_MAX (16) por atributo. A cada 2 pontos
-     acima de 10 ganha-se +1 de modificador (piso((valor-10)/2)); o
-     "Modificador" da raça soma por cima do modificador final.
-     Magos que aceitam a Mana têm a Resistência travada em CHAR_MAGE_RES_CAP (14). */
+     pontos, com teto de CHAR_ATTR_MAX (16) por atributo. A ficha converte
+     cada valor em uma pilha de d6 para os testes; o "Modificador" da raca
+     soma dados ao atributo final. Magos usam Fragilidade Arcana em testes
+     fisicos prolongados, sem trava fixa de Resistencia. */
   const CHAR_ATTRIBUTES = ['Força', 'Destreza', 'Inteligência', 'Resistência', 'Carisma', 'Sabedoria'];
   const CHAR_ATTR_BASE = 10;
   const CHAR_POINT_POOL = 6;
   const CHAR_ATTR_MAX = 16;
-  const CHAR_MAGE_RES_CAP = 14;
   const CHAR_RES_ATTR = 'Resistência';
 
   const BEAST_EXTRA_PARTS = ['Cauda', 'Asa', 'Braço Extra', 'Tentáculo', 'Personalizada'];
@@ -607,12 +611,11 @@
   function schoolById(id) {
     return MAGIC_SCHOOLS.find((s) => s.id === id) || null;
   }
-  /* Teto de um atributo na criação (mago aceito tem Resistência travada em 14). */
+  /* Teto de um atributo na criacao; o sistema atual nao trava Resistencia de mago. */
   function attrCapFor(attr, isMageAccepted) {
-    if (isMageAccepted && attr === CHAR_RES_ATTR) return CHAR_MAGE_RES_CAP;
     return CHAR_ATTR_MAX;
   }
-  /* Modificador final = piso((valor-10)/2) + modificador da raça. */
+  /* Valor legado: mantido para telas antigas que ainda leem modificador. */
   function attrModifierFor(score, attr, raceMod) {
     return Math.floor((Number(score) - 10) / 2) + Number((raceMod && raceMod[attr]) || 0);
   }
@@ -637,13 +640,41 @@
     dice:   '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="3"/><circle cx="9" cy="9" r="1.1" fill="currentColor" stroke="none"/><circle cx="15" cy="15" r="1.1" fill="currentColor" stroke="none"/><circle cx="15" cy="9" r="1.1" fill="currentColor" stroke="none"/><circle cx="9" cy="15" r="1.1" fill="currentColor" stroke="none"/></svg>'
   };
 
-  /* Modificadores de atributo já com bônus do Despertar aplicado. */
+  /* Dados de atributo já com bônus do Despertar aplicado. */
+  function attrDiceForScore(score, raceMod = 0) {
+    const baseDice = Math.floor((Number(score || CHAR_ATTR_BASE) - CHAR_ATTR_BASE) / 2) + 1;
+    return Math.max(1, baseDice + Number(raceMod || 0));
+  }
+  const fmtDice = (n) => `${Math.max(1, Number(n) || 1)}d6`;
+  function rollDicePool(dice) {
+    const d6s = [];
+    const n = Math.max(1, Number(dice) || 1);
+    for (let i = 0; i < n; i++) d6s.push(1 + Math.floor(Math.random() * 6));
+    const destiny = 1 + Math.floor(Math.random() * 12);
+    return {
+      dice: n,
+      d6s,
+      destiny,
+      total: destiny + d6s.reduce((sum, v) => sum + v, 0)
+    };
+  }
+  function destinyReading(n) {
+    const v = Number(n) || 0;
+    if (v === 1) return { title: 'Complicacao grave', text: 'O mundo piora a situacao, mesmo se a acao tiver sucesso.' };
+    if (v >= 2 && v <= 6) return { title: 'Sem vantagem', text: 'Sucesso direto ou falha direta, sem abertura extra.' };
+    if (v >= 7 && v <= 9) return { title: 'Custo', text: 'O resultado cobra dano, tempo, ruido, recurso ou exposicao.' };
+    if (v >= 10 && v <= 11) return { title: 'Limpo', text: 'Resultado sem custo adicional relevante.' };
+    if (v === 12) return { title: 'Oportunidade', text: 'Surge vantagem, informacao, abertura ou caminho alternativo.' };
+    return { title: 'Destino', text: '' };
+  }
+
   function attrModsView(c, mod, bonusAttr) {
     const out = {};
     CHAR_ATTRIBUTES.forEach((a) => {
       const bonus = (bonusAttr && bonusAttr === a) ? 1 : 0;
       const score = (c.attributes && c.attributes[a] != null ? Number(c.attributes[a]) : CHAR_ATTR_BASE) + bonus;
-      out[a] = { score, m: attrModifierFor(score, a, mod), bonus };
+      const raceMod = Number((mod && mod[a]) || 0);
+      out[a] = { score, m: attrModifierFor(score, a, mod), dice: attrDiceForScore(score, raceMod), bonus, raceMod };
     });
     return out;
   }
@@ -1840,6 +1871,28 @@
       out.mana = { cur: Math.min(prevCur, mmax), max: mmax };
     }
     return out;
+  }
+
+  function syncArcaneCollapse(c) {
+    if (!c) return false;
+    c.statuses = Array.isArray(c.statuses) ? c.statuses : [];
+    const isMage = awkIsAcceptedMage(normalizeAwakening(c.magic));
+    const mana = c.vitals && c.vitals.mana;
+    const idx = c.statuses.findIndex((s) => s && (s.source === 'auto-mana-collapse' || normalize(s.name) === 'colapso arcano'));
+    if (isMage && mana && Number(mana.cur) <= 0) {
+      if (idx < 0) {
+        c.statuses.push({
+          name: 'Colapso Arcano',
+          source: 'auto-mana-collapse',
+          note: 'Mana chegou a 0: inconsciente, incapaz de agir, lutar, conjurar ou mover-se sozinho.'
+        });
+        return true;
+      }
+    } else if (idx >= 0 && c.statuses[idx].source === 'auto-mana-collapse') {
+      c.statuses.splice(idx, 1);
+      return true;
+    }
+    return false;
   }
 
   async function loadIndexCustom() {
@@ -3955,21 +4008,46 @@
   }
   function vbarPct(cur, max) { return max > 0 ? Math.max(0, Math.min(100, Math.round(cur / max * 100))) : 0; }
 
-  /* Defesa (escudo): valor base + soma dos itens equipados. */
+  const DEF_REDUCTION = [0, 10, 20, 35, 50, 65, 75];
+  const DEF_MAX_LEVEL = DEF_REDUCTION.length - 1;
   function parseDefense(v) {
     const m = String(v == null ? '' : v).match(/-?\d+/);
     return m ? parseInt(m[0], 10) : 0;
   }
-  function defenseBaseOf(c) {
-    return Number((c.vitals && c.vitals.defense) || 0);
+  function clampDefLevel(v) {
+    return Math.max(0, Math.min(DEF_MAX_LEVEL, parseInt(v, 10) || 0));
   }
-  function defenseFromItems(c) {
+  function defPct(level) {
+    return DEF_REDUCTION[clampDefLevel(level)] || 0;
+  }
+  function itemDf(it) {
+    return Number(it && (it.df ?? it.defense) || 0);
+  }
+  function itemDm(it) {
+    return Number(it && (it.dm ?? it.magicDefense) || 0);
+  }
+  function dfBaseOf(c) {
+    const v = (c.vitals && (c.vitals.df ?? c.vitals.defense)) || 0;
+    return clampDefLevel(v);
+  }
+  function dmBaseOf(c) {
+    return clampDefLevel(c.vitals && c.vitals.dm);
+  }
+  function dfFromItems(c) {
     return (Array.isArray(c.inventory) ? c.inventory : [])
       .filter((it) => it.equipped)
-      .reduce((sum, it) => sum + (Number(it.defense) || 0), 0);
+      .reduce((sum, it) => sum + itemDf(it), 0);
   }
-  function totalDefense(c) {
-    return defenseBaseOf(c) + defenseFromItems(c);
+  function dmFromItems(c) {
+    return (Array.isArray(c.inventory) ? c.inventory : [])
+      .filter((it) => it.equipped)
+      .reduce((sum, it) => sum + itemDm(it), 0);
+  }
+  function totalDf(c) {
+    return clampDefLevel(dfBaseOf(c) + dfFromItems(c));
+  }
+  function totalDm(c) {
+    return clampDefLevel(dmBaseOf(c) + dmFromItems(c));
   }
   function equippedCount(c) {
     return (Array.isArray(c.inventory) ? c.inventory : []).filter((it) => it.equipped).length;
@@ -3977,8 +4055,40 @@
   const MAX_EQUIPPED = 6;
   /* Atualiza o escudo no DOM sem re-renderizar o bloco inteiro. */
   function refreshDefense(c) {
-    document.querySelectorAll('[data-def-total]').forEach((el) => { el.textContent = totalDefense(c); });
-    document.querySelectorAll('[data-def-items]').forEach((el) => { el.textContent = defenseFromItems(c); });
+    document.querySelectorAll('[data-df-total], [data-def-total]').forEach((el) => { el.textContent = totalDf(c); });
+    document.querySelectorAll('[data-df-items], [data-def-items]').forEach((el) => { el.textContent = dfFromItems(c); });
+    document.querySelectorAll('[data-df-pct]').forEach((el) => { el.textContent = defPct(totalDf(c)) + '%'; });
+    document.querySelectorAll('[data-dm-total]').forEach((el) => { el.textContent = totalDm(c); });
+    document.querySelectorAll('[data-dm-items]').forEach((el) => { el.textContent = dmFromItems(c); });
+    document.querySelectorAll('[data-dm-pct]').forEach((el) => { el.textContent = defPct(totalDm(c)) + '%'; });
+  }
+  function daAttrOf(c) {
+    const idn = (c && c.identity) || {};
+    return CHAR_ATTRIBUTES.includes(idn.daAttr) ? idn.daAttr : 'Destreza';
+  }
+  function daStateOf(c) {
+    const raw = c && c.vitals ? c.vitals.da : null;
+    if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
+      return {
+        value: Number(raw.value) || 0,
+        attr: CHAR_ATTRIBUTES.includes(raw.attr) ? raw.attr : daAttrOf(c),
+        destiny: Number(raw.destiny) || 0,
+        dice: Number(raw.dice) || 0,
+        d6s: Array.isArray(raw.d6s) ? raw.d6s : []
+      };
+    }
+    return { value: Number(raw) || 0, attr: daAttrOf(c), destiny: 0, dice: 0, d6s: [] };
+  }
+  function rollResultHTML(attr, roll, label = 'Resultado') {
+    const reading = destinyReading(roll.destiny);
+    const d6Text = Array.isArray(roll.d6s) && roll.d6s.length ? roll.d6s.join(' + ') : '-';
+    return `
+      <span class="saves-roll__attr">${escapeHtml(attr)}</span>
+      <span class="saves-roll__parts">${fmtDice(roll.dice)} <b>${d6Text}</b> + 1d12 <b>${roll.destiny || '-'}</b></span>
+      <span class="saves-roll__eq">=</span>
+      <span class="saves-roll__total">${roll.total}</span>
+      <span class="saves-roll__destiny"><strong>${escapeHtml(label)} · ${escapeHtml(reading.title)}</strong>${reading.text ? ` ${escapeHtml(reading.text)}` : ''}</span>
+    `;
   }
 
   function vitalRowHTML(key, label, slot, canEdit, opts = {}) {
@@ -4007,28 +4117,36 @@
   }
 
   function defenseShieldHTML(c, canEdit) {
-    return `
+    const block = (kind, label, total, base, items, pct) => `
       <div class="defense">
         <span class="defense__shield" aria-hidden="true">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7 3v5c0 4.5-3 8.2-7 9.5C8 19.2 5 15.5 5 11V6l7-3z"/></svg>
-          <strong class="defense__total" data-def-total>${totalDefense(c)}</strong>
+          <strong class="defense__total" data-${kind}-total>${total}</strong>
         </span>
         <div class="defense__info">
-          <span class="defense__label">DEFESA</span>
+          <span class="defense__label">${label}</span>
           <span class="defense__detail">
             base
             ${canEdit
-              ? `<input type="number" class="defense__base" data-def-base value="${defenseBaseOf(c)}" min="0" aria-label="Defesa base">`
-              : `<strong>${defenseBaseOf(c)}</strong>`}
-            + itens <strong data-def-items>${defenseFromItems(c)}</strong>
+              ? `<input type="number" class="defense__base" data-${kind}-base value="${base}" min="0" max="${DEF_MAX_LEVEL}" aria-label="${label} base">`
+              : `<strong>${base}</strong>`}
+            + itens <strong data-${kind}-items>${items}</strong>
           </span>
+          <span class="defense__detail"><strong data-${kind}-pct>${pct}%</strong> de reducao</span>
         </div>
+      </div>
+    `;
+    return `
+      <div class="defense-grid">
+        ${block('df', 'DF FISICA', totalDf(c), dfBaseOf(c), dfFromItems(c), defPct(totalDf(c)))}
+        ${block('dm', 'DM MAGICA', totalDm(c), dmBaseOf(c), dmFromItems(c), defPct(totalDm(c)))}
       </div>
     `;
   }
 
   function charVitalsInner(c, canEdit) {
     const v = ensureVitals(c);
+    syncArcaneCollapse(c);
     const parts = RACE_HP_PARTS.filter((p) => v.hp && v.hp[p]);
     const head = `<h3 class="fcard__h"><span class="fcard__ico">${FICON.heart}</span>Vitais</h3>`;
     const shield = defenseShieldHTML(c, canEdit);
@@ -4057,6 +4175,41 @@
   }
 
   /* Livro de magias — grade de cards (estado vivo). */
+  function spellRuntimeInfo(it) {
+    const entry = it && it.refId ? entryById(it.refId) : null;
+    const f = (entry && entry.fields) || {};
+    const costValue = parseInt((f['Custo'] ?? it.costValue ?? ''), 10);
+    const costUnit = String(f['CustoUnidade'] || it.costUnit || 'MP').trim() || 'MP';
+    const costText = Number.isFinite(costValue) && costValue > 0 ? `${costValue} ${costUnit}` : '';
+    return {
+      costValue: Number.isFinite(costValue) && costValue > 0 ? costValue : 0,
+      costUnit,
+      costText,
+      tier: f['Tier'] || it.tier || '',
+      affinity: f['Afinidade'] || it.affinity || '',
+      duration: f['Duração'] || it.duration || ''
+    };
+  }
+
+  function spellRuntimeMetaHTML(it, canEdit, index, vitals) {
+    const info = spellRuntimeInfo(it);
+    const chips = [
+      info.costText ? `Custo ${info.costText}` : '',
+      info.tier ? `Tier ${info.tier}` : '',
+      info.affinity || '',
+      info.duration ? `Duracao ${info.duration}` : ''
+    ].filter(Boolean);
+    if (!chips.length && !(canEdit && info.costUnit === 'MP' && info.costValue && vitals.mana)) return '';
+    return `
+      <div class="spell-card__meta">
+        ${chips.map((chip) => `<span>${escapeHtml(chip)}</span>`).join('')}
+        ${canEdit && info.costUnit === 'MP' && info.costValue && vitals.mana
+          ? `<button type="button" class="spell-use" data-spell-cast="${index}" data-spell-cost="${info.costValue}">Gastar ${info.costValue} MP</button>`
+          : ''}
+      </div>
+    `;
+  }
+
   function charCodexListInner(c, canEdit, kind) {
     const list = Array.isArray(c.spells) ? c.spells : [];
     const codex = entriesIn('Magias');
@@ -4091,6 +4244,7 @@
           ${canEdit ? `<button type="button" class="spell-card__x" data-spell-remove="${i}" aria-label="Remover magia">×</button>` : ''}
         </div>
         ${it.summary ? `<p class="spell-card__d">${escapeHtml(it.summary)}</p>` : ''}
+        ${spellRuntimeMetaHTML(it, canEdit, i, v)}
       </article>`).join('')}</div>` : `<p class="char-empty">Nenhuma magia registrada.</p>`;
 
     const adder = canEdit ? `
@@ -4110,19 +4264,22 @@
 
   /* Slot de equipamento (grade Equipamentos). */
   function invSlotHTML(it, i, canEdit) {
-    const def = Number(it.defense) || 0;
+    const df = itemDf(it);
+    const dm = itemDm(it);
     return `
       <div class="eq-slot is-filled inv-row" data-idx="${i}" title="${escapeHtml(it.name || '')}">
         <span class="eq-slot__ico">${FICON.sword}</span>
         <span class="eq-slot__name">${escapeHtml(it.name || '')}</span>
-        ${def ? `<span class="eq-slot__def">${INV_SHIELD_ICON}${def}</span>` : ''}
+        ${df ? `<span class="eq-slot__def">${INV_SHIELD_ICON}DF ${df}</span>` : ''}
+        ${dm ? `<span class="eq-slot__def">${INV_SHIELD_ICON}DM ${dm}</span>` : ''}
         ${canEdit ? `<button type="button" class="eq-slot__x" data-inv-unequip aria-label="Desequipar ${escapeHtml(it.name || '')}">×</button>` : ''}
       </div>`;
   }
 
   /* Linha da mochila (visual tabular, mantém os hooks data-inv-*). */
   function invRowHTML(it, i, canEdit) {
-    const def = Number(it.defense) || 0;
+    const df = itemDf(it);
+    const dm = itemDm(it);
     const qty = it.qty || 1;
     const nameHTML = it.refId
       ? `<a href="#/Itens/${encodeURIComponent(it.refId)}" class="inv-row__name">${escapeHtml(it.name || '')}</a>`
@@ -4139,9 +4296,12 @@
           <span class="inv-row__q">×${qty}</span>
           ${canEdit ? `<button type="button" class="qty-btn" data-inv-qty="1" aria-label="Mais">+</button>` : ''}
         </span>
-        <span class="inv-row__def" title="Defesa">${INV_SHIELD_ICON}${canEdit
-          ? `<input type="number" class="inv-def-input" data-inv-def value="${def}" min="0" aria-label="Defesa do item">`
-          : `<strong>${def}</strong>`}</span>
+        <span class="inv-row__def" title="Defesa fisica">${INV_SHIELD_ICON}DF ${canEdit
+          ? `<input type="number" class="inv-def-input" data-inv-df value="${df}" min="0" max="${DEF_MAX_LEVEL}" aria-label="DF do item">`
+          : `<strong>${df}</strong>`}</span>
+        <span class="inv-row__def" title="Defesa magica">${INV_SHIELD_ICON}DM ${canEdit
+          ? `<input type="number" class="inv-def-input" data-inv-dm value="${dm}" min="0" max="${DEF_MAX_LEVEL}" aria-label="DM do item">`
+          : `<strong>${dm}</strong>`}</span>
         <span class="inv-row__type">${it.refId ? 'Codex' : 'Avulso'}</span>
         <span class="inv-row__acts">
           ${canEdit ? `<button type="button" class="inv-act inv-act--equip" data-inv-equip>Equipar</button>` : ''}
@@ -4162,7 +4322,8 @@
       <div class="inv-bar">
         <span class="inv-bar__m">Itens <b>${list.length}</b></span>
         <span class="inv-bar__m">Unidades <b>${totalQty}</b></span>
-        <span class="inv-bar__m">Defesa por itens <b>+${defenseFromItems(c)}</b></span>
+        <span class="inv-bar__m">DF por itens <b>+${dfFromItems(c)}</b></span>
+        <span class="inv-bar__m">DM por itens <b>+${dmFromItems(c)}</b></span>
         <span class="inv-bar__spacer"></span>
         ${canEdit ? `<button type="button" class="btn-primary inv-bar__add" data-inv-focus><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>Adicionar item</button>` : ''}
       </div>`;
@@ -4186,7 +4347,7 @@
         </div>
         ${bpRows.length ? `
           <div class="fcard inv-list-card">
-            <div class="inv-thead"><span>Item</span><span>Qtd.</span><span>Defesa</span><span>Tipo</span><span></span></div>
+            <div class="inv-thead"><span>Item</span><span>Qtd.</span><span>DF</span><span>DM</span><span>Tipo</span><span></span></div>
             <ul class="inv-list">${bpRows.join('')}</ul>
           </div>`
           : `<div class="fcard"><p class="char-empty">Mochila vazia. ${canEdit ? 'Adicione itens abaixo.' : ''}</p></div>`}
@@ -4229,8 +4390,11 @@
     const hpParts = RACE_HP_PARTS.filter((p) => v.hp && v.hp[p]);
     const hpCur = hpParts.reduce((s, p) => s + (Number(v.hp[p].cur) || 0), 0);
     const hpMax = hpParts.reduce((s, p) => s + (Number(v.hp[p].max) || 0), 0);
-    const initMod = A['Destreza'] ? A['Destreza'].m : 0;
-    const level = Number(c.level) || 1;
+    const initDice = A['Destreza'] ? A['Destreza'].dice : 1;
+    const level = Math.max(1, Number(idn.level || c.level) || 1);
+    const movement = String(idn.movement || idn.movimento || '9m').trim() || '9m';
+    const daAttr = daAttrOf(c);
+    const daState = daStateOf(c);
     const playerName = (idn.ownerLabel || (auth.user && c.userId === auth.user.id ? (auth.user.name || auth.user.email) : '')) || '—';
 
     const vitalBar = (cls, k, dotHue, slot) => `
@@ -4244,10 +4408,10 @@
 
     const circles = `
       <div class="hcircles">
-        <span class="hcircle"><b data-def-total>${totalDefense(c)}</b><span>Defesa</span></span>
-        <span class="hcircle"><b>${fmtMod(initMod)}</b><span>Iniciativa</span></span>
-        <span class="hcircle"><b>9m</b><span>Movimento</span></span>
-        <span class="hcircle hcircle--muted"><b>—</b><span>CA</span></span>
+        <span class="hcircle"><b data-da-total>${daState.value || '—'}</b><span>DA</span></span>
+        <span class="hcircle"><b data-df-total>${totalDf(c)}</b><span>DF <small data-df-pct>${defPct(totalDf(c))}%</small></span></span>
+        <span class="hcircle"><b data-dm-total>${totalDm(c)}</b><span>DM <small data-dm-pct>${defPct(totalDm(c))}%</small></span></span>
+        <span class="hcircle hcircle--muted"><b>${escapeHtml(movement)}</b><span>Movimento</span></span>
       </div>`;
 
     // ════ VISÃO GERAL ════
@@ -4260,7 +4424,7 @@
             const note = cell.bonus ? 'despertar' : (Number((mod && mod[a]) || 0) ? 'raça' : '');
             return `<div class="attr-row">
               <span class="attr-row__n">${escapeHtml(a)}${note ? `<em class="attr-row__note">${note}</em>` : ''}</span>
-              <span class="attr-row__r"><span class="attr-row__v">${cell.score}</span><span class="attr-row__m">${fmtMod(cell.m)}</span></span>
+              <span class="attr-row__r"><span class="attr-row__v">${cell.score}</span><span class="attr-row__m">${fmtDice(cell.dice)}</span></span>
             </div>`;
           }).join('')}
         </div>
@@ -4268,9 +4432,11 @@
 
     const featItems = [];
     if (isMage && sc) featItems.push([FICON.spark, sc.name, sc.lore]);
+    if (isMage) featItems.push([FICON.status, 'Fragilidade Arcana', '-1d6 em testes de Resistencia para exaustao prolongada, doenca, sangramento ou recuperacao fisica.']);
+    if (isMage) featItems.push([FICON.mana, 'Colapso Arcano', 'Ao chegar a 0 Mana, fica inconsciente e incapaz de agir, lutar, conjurar ou mover-se sozinho.']);
     if (idn.desejo) featItems.push([FICON.feat, 'Desejo', idn.desejo]);
     if (idn.ferida) featItems.push([FICON.status, 'Ferida', idn.ferida]);
-    if (awk.resolved && !isMage) featItems.push([FICON.feat, 'Caminho mundano', `+1 Nível de HP${bonusAttr ? ` · +1 ${bonusAttr}` : ''}${awk.renounced ? ' · Mana renunciada' : ''}`]);
+    if (awk.resolved && !isMage) featItems.push([FICON.feat, 'Caminho mundano', `Sem Mana natural · +1 Nivel de HP${bonusAttr ? ` · +1 ${bonusAttr}` : ''}${awk.renounced ? ' · Mana renunciada' : ''}`]);
     const featCard = `
       <div class="fcard">
         <h3 class="fcard__h"><span class="fcard__ico">${FICON.feat}</span>Características</h3>
@@ -4299,23 +4465,41 @@
       </div>`;
 
     // ════ COMBATE ════
+    const daDice = A[daAttr] ? A[daAttr].dice : 1;
+    const daRead = daState.destiny ? destinyReading(daState.destiny) : null;
+    const daCard = `
+      <div class="fcard">
+        <h3 class="fcard__h"><span class="fcard__ico">${FICON.shield}</span>Dificuldade de Acerto</h3>
+        <div class="res-row"><span>Atributo base</span><b>${escapeHtml(daAttr)} · ${fmtDice(daDice)}</b></div>
+        <div class="res-row"><span>DA atual</span><b data-da-total>${daState.value || '—'}</b></div>
+        ${daState.value ? `<p class="fcard__note">Destino ${daState.destiny || '—'}${daRead ? ` · ${escapeHtml(daRead.title)}` : ''}</p>` : '<p class="fcard__note">Role no inicio de cada combate. O valor permanece durante a luta.</p>'}
+        ${canEdit ? `<button type="button" class="btn btn-ghost" data-da-roll data-da-attr="${escapeHtml(daAttr)}" data-da-dice="${daDice}">${daState.value ? 'Rerrolar DA' : 'Rolar DA'}</button>` : ''}
+        <div class="saves-roll" data-da-result ${daState.value ? '' : 'hidden'}>${daState.value ? rollResultHTML(daState.attr, { dice: daState.dice || daDice, d6s: daState.d6s || [], destiny: daState.destiny || 0, total: daState.value }, 'DA') : ''}</div>
+      </div>`;
     const initCard = `
       <div class="fcard fcard--center">
         <h3 class="fcard__h"><span class="fcard__ico">${FICON.bolt}</span>Iniciativa</h3>
-        <div class="bignum">${fmtMod(initMod)}</div>
-        <p class="fcard__note">Bônus de Destreza</p>
+        <div class="bignum">${fmtDice(initDice)}</div>
+        <p class="fcard__note">Destreza + 1d12 quando houver disputa.</p>
       </div>`;
     const savesCard = `
       <div class="fcard">
-        <h3 class="fcard__h"><span class="fcard__ico">${FICON.shield}</span>Testes de Resistência</h3>
+        <h3 class="fcard__h"><span class="fcard__ico">${FICON.shield}</span>Testes de Atributo</h3>
         <div class="saves-list">
           ${CHAR_ATTRIBUTES.map((a) => {
-            const nd = Math.max(0, A[a].m);
-            return `<button type="button" class="res-row res-row--roll" data-save-roll="${escapeHtml(a)}" data-save-dice="${nd}" title="Rolar 1d12${nd ? ` + ${nd}d6` : ''}">
+            const nd = Math.max(1, A[a].dice || 1);
+            return `<button type="button" class="res-row res-row--roll" data-save-roll="${escapeHtml(a)}" data-save-dice="${nd}" title="Rolar ${fmtDice(nd)} + 1d12">
               <span class="res-row__l"><span class="res-row__die">${FICON.dice}</span>${escapeHtml(a)}</span>
-              <span class="res-row__f">1d12${nd ? `<em>+${nd}d6</em>` : ''}</span>
+              <span class="res-row__f">${fmtDice(nd)}<em>+1d12</em></span>
             </button>`;
           }).join('')}
+          ${isMage ? (() => {
+            const nd = Math.max(1, (A[CHAR_RES_ATTR] ? A[CHAR_RES_ATTR].dice : 1) - 1);
+            return `<button type="button" class="res-row res-row--roll" data-save-roll="Resistencia fisica prolongada" data-save-dice="${nd}" title="Fragilidade Arcana: -1d6">
+              <span class="res-row__l"><span class="res-row__die">${FICON.dice}</span>Resistencia fisica</span>
+              <span class="res-row__f">${fmtDice(nd)}<em>fragilidade</em></span>
+            </button>`;
+          })() : ''}
         </div>
         <div class="saves-roll" data-save-result hidden></div>
       </div>`;
@@ -4398,7 +4582,7 @@
 
           <section class="char-panel" data-panel="combate">
             <div class="fgrid fgrid--combate">
-              <div class="fcol">${initCard}${savesCard}</div>
+              <div class="fcol">${daCard}${initCard}${savesCard}</div>
               <div class="fcard fcard--vitals" id="charVitals">${charVitalsInner(c, canEdit)}</div>
               <div class="fcol"><div class="fcard fcard--status" id="charStatus">${charStatusInner(c, canEdit)}</div>${manaCard}</div>
             </div>
@@ -4443,7 +4627,9 @@
     const selectedRaceId = c.raceId || '';
     const { mod, hp: raceHp, mana: raceMana } = raceDataFor(selectedRaceId);
     const hpValues = (existing && c.hp && Object.keys(c.hp).length) ? c.hp : raceHp;
-    const manaValue = (existing && c.mana) ? c.mana : raceMana;
+    const formAwakening = normalizeAwakening(c.magic);
+    const formIsMage = awkIsAcceptedMage(formAwakening);
+    const manaValue = formIsMage ? ((existing && c.mana) ? c.mana : raceMana) : '';
 
     const heroEyebrow = editing ? `EDITAR · ${theme.label}` : `CRIAR · ${theme.label}`;
     const heroTitle = editing ? `Editar ${c.name || 'ficha'}` : 'Nova persona';
@@ -4486,6 +4672,17 @@
           <input type="text" id="charName" class="create-form__input" placeholder="Nome do personagem" maxlength="120" required value="${escapeHtml(c.name || '')}">
         </div>
 
+        <div class="create-form__row">
+          <div class="create-form__field">
+            <label class="create-form__label" for="charLevel">Nivel</label>
+            <input type="number" id="charLevel" class="create-form__input" min="1" max="99" value="${escapeHtml(String(idn.level || 1))}">
+          </div>
+          <div class="create-form__field">
+            <label class="create-form__label" for="charMovement">Movimento</label>
+            <input type="text" id="charMovement" class="create-form__input" maxlength="20" value="${escapeHtml(idn.movement || idn.movimento || '9m')}" placeholder="9m">
+          </div>
+        </div>
+
         <div class="create-form__field">
           <label class="create-form__label" for="charRace">Raça</label>
           <select id="charRace" class="create-form__input char-select">
@@ -4506,18 +4703,18 @@
           <div class="attr-buy" id="attrBuy"
                data-base="${CHAR_ATTR_BASE}" data-pool="${CHAR_POINT_POOL}" data-max="${CHAR_ATTR_MAX}">
             <div class="attr-buy__head">
-              <span>Todos começam em ${CHAR_ATTR_BASE}. Distribua ${CHAR_POINT_POOL} pontos — a cada 2, +1 de modificador. A raça soma no modificador.</span>
+              <span>Todos comecam em ${CHAR_ATTR_BASE}. Distribua ${CHAR_POINT_POOL} pontos; a cada 2 pontos acima da base, +1d6 nos testes. A raca soma nos dados.</span>
               <span class="attr-buy__pool">Pontos restantes: <strong id="attrPool">${CHAR_POINT_POOL}</strong></span>
             </div>
             <div class="attr-buy__grid">
               ${CHAR_ATTRIBUTES.map((a) => {
                 const val = allocated[a] != null ? Number(allocated[a]) : CHAR_ATTR_BASE;
-                const m = attrModifierFor(val, a, mod);
+                const m = attrDiceForScore(val, Number((mod && mod[a]) || 0));
                 return `
                   <div class="attr-row" data-attr="${escapeHtml(a)}" data-racemod="${Number((mod && mod[a]) || 0)}">
                     <div class="attr-row__head">
                       <span class="attr-row__name">${escapeHtml(a)}</span>
-                      <span class="attr-row__mod" data-attr-mod aria-label="Modificador">${fmtMod(m)}</span>
+                      <span class="attr-row__mod" data-attr-mod aria-label="Dados de teste">${fmtDice(m)}</span>
                     </div>
                     <div class="attr-row__stepper">
                       <button type="button" class="attr-step" data-step="-1" aria-label="Diminuir ${escapeHtml(a)}">−</button>
@@ -4530,6 +4727,12 @@
               }).join('')}
             </div>
           </div>
+          <label class="dossier-field char-da-field">
+            <span>Atributo base de DA</span>
+            <select id="charDaAttr" class="create-form__input char-select">
+              ${CHAR_ATTRIBUTES.map((a) => `<option value="${escapeHtml(a)}" ${a === (idn.daAttr || 'Destreza') ? 'selected' : ''}>${escapeHtml(a)}</option>`).join('')}
+            </select>
+          </label>
         </div>
 
         <div class="create-form__field">
@@ -5284,7 +5487,10 @@
     Object.keys(ITEM_SUBTYPES).forEach((k) => {
       cache[k] = {};
       ITEM_SUBTYPES[k].fields.forEach((f) => {
-        cache[k][f] = (fields && fields[f] != null) ? String(fields[f]) : '';
+        const direct = (fields && fields[f] != null) ? String(fields[f]) : '';
+        const legacyDf = f === 'DF' ? itemFieldValue(fields, 'Defesa Fisica') || itemFieldValue(fields, 'Defesa Física') || itemFieldValue(fields, 'Defesa') : '';
+        const legacyDm = f === 'DM' ? itemFieldValue(fields, 'Defesa Magica') || itemFieldValue(fields, 'Defesa Mágica') : '';
+        cache[k][f] = direct || legacyDf || legacyDm || '';
       });
     });
 
@@ -5293,7 +5499,9 @@
         case 'Valor': return 'Ex.: 30 moedas, Inestimável';
         case 'Efeito': return 'O que ele faz quando usado';
         case 'Slot': return 'Cabeça, Mão, Peito, Anel…';
-        case 'Defesa': return 'Ex.: +2, 14, armadura leve';
+        case 'DF': return '0 a 6; reduz dano fisico na ficha';
+        case 'DM': return '0 a 6; reduz dano magico na ficha';
+        case 'Defesa': return 'Campo antigo; prefira DF/DM';
         default: return field;
       }
     }
@@ -6858,7 +7066,6 @@
     const pool = Number(root.dataset.pool) || 6;
     const max = Number(root.dataset.max) || 16;
     const poolEl = document.getElementById('attrPool');
-    let resCapMage = false;
     let bonusAttr = '';
 
     const rows = () => [...root.querySelectorAll('.attr-row')];
@@ -6866,21 +7073,23 @@
     const allocated = () => { const o = {}; rows().forEach((r) => { o[r.dataset.attr] = valueOf(r); }); return o; };
     const spent = () => rows().reduce((s, r) => s + (valueOf(r) - base), 0);
     const remaining = () => pool - spent();
-    const isCapped = (row) => resCapMage && row.dataset.attr === CHAR_RES_ATTR;
-    const capOf = (row) => (isCapped(row) ? CHAR_MAGE_RES_CAP : max);
+    const capOf = (row) => {
+      let cap = max;
+      if (bonusAttr && row.dataset.attr === bonusAttr) cap = Math.max(base, cap - 1);
+      return cap;
+    };
 
     function syncRow(row) {
       const v = valueOf(row);
       const raceMod = Number(row.dataset.racemod) || 0;
       const bonus = (bonusAttr && bonusAttr === row.dataset.attr) ? 1 : 0;
       const finalScore = v + bonus;
-      const m = Math.floor((finalScore - 10) / 2) + raceMod;
-      row.querySelector('[data-attr-mod]').textContent = fmtMod(m);
+      const dice = attrDiceForScore(finalScore, raceMod);
+      row.querySelector('[data-attr-mod]').textContent = fmtDice(dice);
       const tag = row.querySelector('[data-attr-tag]');
       let tagClass = 'attr-row__tag';
-      if (isCapped(row)) { tag.textContent = 'trava 14'; tagClass += ' attr-row__tag--cap'; }
-      else if (bonus) { tag.textContent = '+1 despertar'; tagClass += ' attr-row__tag--bonus'; }
-      else if (raceMod) { tag.textContent = fmtMod(raceMod) + ' raça'; }
+      if (bonus) { tag.textContent = '+1 despertar'; tagClass += ' attr-row__tag--bonus'; }
+      else if (raceMod) { tag.textContent = `${raceMod > 0 ? '+' : ''}${raceMod}d6 raca`; }
       else { tag.textContent = ''; }
       tag.className = tagClass;
     }
@@ -6917,18 +7126,17 @@
         rows().forEach((r) => { r.dataset.racemod = Number((mod && mod[r.dataset.attr]) || 0); });
         syncAll();
       },
-      setResCap(on) {
-        resCapMage = !!on;
-        if (on) {
-          const r = rows().find((x) => x.dataset.attr === CHAR_RES_ATTR);
-          if (r) {
-            const el = r.querySelector('[data-attr-value]');
-            if (Number(el.textContent) > CHAR_MAGE_RES_CAP) el.textContent = CHAR_MAGE_RES_CAP;
-          }
-        }
+      setResCap() {
         syncAll();
       },
-      setBonusAttr(attr) { bonusAttr = attr || ''; syncAll(); }
+      setBonusAttr(attr) {
+        bonusAttr = attr || '';
+        rows().forEach((r) => {
+          const el = r.querySelector('[data-attr-value]');
+          if (el && Number(el.textContent) > capOf(r)) el.textContent = capOf(r);
+        });
+        syncAll();
+      }
     };
   }
 
@@ -7016,7 +7224,7 @@
             <span class="awk__verdict-eyebrow">ESCOLA DA MANA</span>
             <h3 class="awk__verdict-title">${escapeHtml(sc.name)}</h3>
             <p class="awk__verdict-lore">${escapeHtml(sc.lore)}</p>
-            <p class="awk__note">Resistência travada em ${CHAR_MAGE_RES_CAP} na criação (o Mestre pode exceder narrativamente).</p>
+            <p class="awk__note">Fragilidade Arcana: -1d6 em testes de Resistencia para exaustao prolongada, doenca, sangramento ou recuperacao fisica.</p>
           </div>
         </div>
       `;
@@ -7054,6 +7262,9 @@
     const existing = editing ? characterById(editId) : null;
 
     const nameInput = document.getElementById('charName');
+    const levelInput = document.getElementById('charLevel');
+    const movementInput = document.getElementById('charMovement');
+    const daAttrInput = document.getElementById('charDaAttr');
     const raceSelect = document.getElementById('charRace');
     const manaInput = document.getElementById('charMana');
     const hpForm = document.getElementById('charHpForm');
@@ -7081,6 +7292,17 @@
     function applyAwakeningToAttributes() {
       points.setResCap(awkIsAcceptedMage(awakening));
       points.setBonusAttr(awkIsNonMage(awakening) ? awakening.bonusAttr : '');
+      syncManaAvailability();
+    }
+
+    function syncManaAvailability() {
+      const isMageNow = awkIsAcceptedMage(awakening);
+      const manaLabel = manaInput && manaInput.closest('.dossier-field');
+      if (!manaInput) return;
+      manaInput.disabled = !isMageNow;
+      manaInput.placeholder = isMageNow ? '15/15' : 'Sem Mana natural';
+      if (!isMageNow) manaInput.value = '';
+      if (manaLabel) manaLabel.classList.toggle('is-disabled', !isMageNow);
     }
 
     function renderAwakening() {
@@ -7175,7 +7397,7 @@
       hpForm.querySelectorAll('[data-hp-part]').forEach((inp) => {
         inp.value = hp[inp.dataset.hpPart] != null ? hp[inp.dataset.hpPart] : '';
       });
-      manaInput.value = mana || '';
+      manaInput.value = awkIsAcceptedMage(awakening) ? (mana || '') : '';
     });
 
     function readHp() {
@@ -7206,19 +7428,24 @@
       }
 
       const race = raceSelect.value ? entryById(raceSelect.value) : null;
+      const isMageNow = awkIsAcceptedMage(awakening);
+      const manaValue = isMageNow ? manaInput.value.trim() : '';
 
       const data = {
         name,
         raceId: raceSelect.value || '',
         raceName: race ? race.title : '',
-        isMage: awkIsAcceptedMage(awakening),
+        isMage: isMageNow,
         attributes: points.getAllocated(),
         pointPool: points.getRemaining(),
         skills: skills.getItems(),
         magic: { ...awakening },
         hp: readHp(),
-        mana: manaInput.value.trim(),
+        mana: manaValue,
         identity: {
+          level: Math.max(1, parseInt(levelInput && levelInput.value, 10) || 1),
+          movement: (movementInput && movementInput.value.trim()) || '9m',
+          daAttr: CHAR_ATTRIBUTES.includes(daAttrInput && daAttrInput.value) ? daAttrInput.value : 'Destreza',
           papel: document.getElementById('charPapel').value.trim(),
           desejo: document.getElementById('charDesejo').value.trim(),
           ferida: document.getElementById('charFerida').value.trim(),
@@ -7227,7 +7454,7 @@
             (auth.user ? (auth.user.user_metadata?.display_name || auth.user.email || '') : '')
         },
         // Estado vivo: recalcula maxes do HP/Mana (preservando o atual) e mantém o resto.
-        vitals: mergeVitals(existing && existing.vitals, readHp(), manaInput.value.trim()),
+        vitals: mergeVitals(existing && existing.vitals, readHp(), manaValue),
         statuses: (existing && Array.isArray(existing.statuses)) ? existing.statuses : [],
         inventory: (existing && Array.isArray(existing.inventory)) ? existing.inventory : [],
         spells: (existing && Array.isArray(existing.spells)) ? existing.spells : []
@@ -7527,7 +7754,6 @@
     });
 
     // Rolagem de teste de resistência — 1d12 + Nd6 (N = dados do atributo). Read-only.
-    const rollDie = (faces) => 1 + Math.floor(Math.random() * faces);
     root.addEventListener('click', (e) => {
       const btn = e.target.closest('[data-save-roll]');
       if (!btn) return;
@@ -7535,17 +7761,11 @@
       const out = card && card.querySelector('[data-save-result]');
       if (!out) return;
       const attr = btn.dataset.saveRoll;
-      const nD6 = Math.max(0, parseInt(btn.dataset.saveDice, 10) || 0);
-      const d12 = rollDie(12);
-      const d6s = []; for (let i = 0; i < nD6; i++) d6s.push(rollDie(6));
-      const total = d12 + d6s.reduce((a, b) => a + b, 0);
+      const nD6 = Math.max(1, parseInt(btn.dataset.saveDice, 10) || 1);
+      const roll = rollDicePool(nD6);
       card.querySelectorAll('.res-row--roll').forEach((r) => r.classList.toggle('is-active', r === btn));
       out.hidden = false;
-      out.innerHTML = `
-        <span class="saves-roll__attr">${escapeHtml(attr)}</span>
-        <span class="saves-roll__parts">1d12 <b>${d12}</b>${nD6 ? ` + ${nD6}d6 <b>${d6s.join('·')}</b>` : ''}</span>
-        <span class="saves-roll__eq">=</span>
-        <span class="saves-roll__total">${total}</span>`;
+      out.innerHTML = rollResultHTML(attr, roll, 'Teste');
       out.classList.remove('is-rolling'); void out.offsetWidth; out.classList.add('is-rolling');
     });
 
@@ -7562,6 +7782,31 @@
         catch (err) { console.error(err); if (!saveErr) { saveErr = true; alert('Não foi possível salvar a ficha: ' + (err.message || err)); } }
       }, 400);
     };
+
+    root.addEventListener('click', (e) => {
+      const btn = e.target.closest('[data-da-roll]');
+      if (!btn) return;
+      const attr = btn.dataset.daAttr || daAttrOf(c);
+      const dice = Math.max(1, parseInt(btn.dataset.daDice, 10) || 1);
+      const roll = rollDicePool(dice);
+      ensureVitals(c).da = {
+        value: roll.total,
+        attr,
+        dice,
+        d6s: roll.d6s,
+        destiny: roll.destiny,
+        rolledAt: new Date().toISOString()
+      };
+      root.querySelectorAll('[data-da-total]').forEach((el) => { el.textContent = roll.total; });
+      const out = root.querySelector('[data-da-result]');
+      if (out) {
+        out.hidden = false;
+        out.innerHTML = rollResultHTML(attr, roll, 'DA');
+        out.classList.remove('is-rolling'); void out.offsetWidth; out.classList.add('is-rolling');
+      }
+      btn.textContent = 'Rerrolar DA';
+      save();
+    });
 
     const readAmt = (row) => {
       const el = row.querySelector('.vrow__amt');
@@ -7597,9 +7842,19 @@
       let item = null;
       if (sel.value) {
         const e = entryById(sel.value);
-        if (e) item = { refId: e.id, name: e.title, summary: e.summary || '', defense: isInv ? parseDefense(itemFieldValue(e.fields, 'Defesa')) : 0 };
+        if (e) {
+          const fields = e.fields || {};
+          item = {
+            refId: e.id,
+            name: e.title,
+            summary: e.summary || '',
+            df: isInv ? parseDefense(itemFieldValue(fields, 'DF') || itemFieldValue(fields, 'Defesa Fisica') || itemFieldValue(fields, 'Defesa Física') || itemFieldValue(fields, 'Defesa')) : 0,
+            dm: isInv ? parseDefense(itemFieldValue(fields, 'DM') || itemFieldValue(fields, 'Defesa Magica') || itemFieldValue(fields, 'Defesa Mágica')) : 0,
+            interference: isInv ? parseDefense(itemFieldValue(fields, 'Interferencia') || itemFieldValue(fields, 'Interferência')) : 0
+          };
+        }
       } else if ((custom.value || '').trim()) {
-        item = { refId: '', name: custom.value.trim(), summary: '', defense: 0 };
+        item = { refId: '', name: custom.value.trim(), summary: '', df: 0, dm: 0, interference: 0 };
       }
       if (!item) { custom.focus(); return; }
       if (isInv) {
@@ -7610,6 +7865,9 @@
         renderInv();
       } else {
         delete item.defense;
+        delete item.df;
+        delete item.dm;
+        delete item.interference;
         c.spells.push(item);
         box.innerHTML = charCodexListInner(c, true, 'spell');
       }
@@ -7641,7 +7899,9 @@
         const amt = readAmt(row); if (!amt) return;
         const m = c.vitals.mana; if (!m) return;
         m.cur = manaBtn.dataset.manaAct === 'spend' ? Math.max(0, m.cur - amt) : Math.min(m.max, m.cur + amt);
-        updateVrow(row, m, true); save(); return;
+        updateVrow(row, m, true);
+        if (syncArcaneCollapse(c) && $('charStatus')) $('charStatus').innerHTML = charStatusInner(c, true);
+        save(); return;
       }
       const sRemove = e.target.closest('[data-status-remove]');
       if (sRemove) { c.statuses.splice(Number(sRemove.dataset.statusRemove), 1); $('charStatus').innerHTML = charStatusInner(c, true); save(); return; }
@@ -7663,6 +7923,20 @@
       if (invRemove) { const i = invIdx(invRemove); if (i >= 0) { c.inventory.splice(i, 1); renderInv(); save(); } return; }
       if (e.target.closest('[data-inv-add]')) { addCodex('inv'); return; }
 
+      const spellCast = e.target.closest('[data-spell-cast]');
+      if (spellCast) {
+        const cost = Math.max(0, parseInt(spellCast.dataset.spellCost, 10) || 0);
+        const mana = ensureVitals(c).mana;
+        if (!mana || !cost) return;
+        if (mana.cur < cost && !confirm(`Mana insuficiente (${mana.cur}/${mana.max}). Gastar mesmo assim e cair a 0?`)) return;
+        mana.cur = Math.max(0, mana.cur - cost);
+        if ($('charVitals')) $('charVitals').innerHTML = charVitalsInner(c, true);
+        if (syncArcaneCollapse(c) && $('charStatus')) $('charStatus').innerHTML = charStatusInner(c, true);
+        $('charSpells').innerHTML = charCodexListInner(c, true, 'spell');
+        root.querySelectorAll('.hvital--mana .hvital__v').forEach((el) => { el.innerHTML = `${mana.cur}<small>/${mana.max}</small>`; });
+        root.querySelectorAll('.hvital--mana .hvbar span').forEach((el) => { el.style.width = vbarPct(mana.cur, mana.max) + '%'; });
+        save(); return;
+      }
       const spellRemove = e.target.closest('[data-spell-remove]');
       if (spellRemove) { c.spells.splice(Number(spellRemove.dataset.spellRemove), 1); $('charSpells').innerHTML = charCodexListInner(c, true, 'spell'); save(); return; }
       if (e.target.closest('[data-spell-add]')) { addCodex('spell'); return; }
@@ -7670,12 +7944,18 @@
 
     // Defesa base e defesa por item (inputs numéricos).
     root.addEventListener('input', (e) => {
-      if (e.target.matches('[data-def-base]')) {
-        ensureVitals(c).defense = Math.max(0, parseInt(e.target.value, 10) || 0);
+      if (e.target.matches('[data-df-base]')) {
+        ensureVitals(c).df = clampDefLevel(e.target.value);
         refreshDefense(c); save();
-      } else if (e.target.matches('[data-inv-def]')) {
+      } else if (e.target.matches('[data-dm-base]')) {
+        ensureVitals(c).dm = clampDefLevel(e.target.value);
+        refreshDefense(c); save();
+      } else if (e.target.matches('[data-inv-df]')) {
         const it = c.inventory[invIdx(e.target)];
-        if (it) { it.defense = Math.max(0, parseInt(e.target.value, 10) || 0); refreshDefense(c); save(); }
+        if (it) { it.df = clampDefLevel(e.target.value); delete it.defense; refreshDefense(c); save(); }
+      } else if (e.target.matches('[data-inv-dm]')) {
+        const it = c.inventory[invIdx(e.target)];
+        if (it) { it.dm = clampDefLevel(e.target.value); refreshDefense(c); save(); }
       }
     });
 
