@@ -222,6 +222,158 @@
     const unit = f['CustoUnidade'] || 'MP';
     return `${v} ${unit}`;
   }
+  const SPELL_EFFECT_SYMBOLS = ['✦', '✧', '✶', '✷', '☉', '☽', '☿', '⬡', '◆', '◇', '▲', '▼', '⚔', '✚', '!', '+'];
+  const SPELL_EFFECT_COLORS = ['#22d3ee', '#f5b84b', '#f05264', '#a78bfa', '#4ade80', '#fb923c'];
+  const SPELL_EFFECT_TYPES = ['Gatilho', 'Dano', 'Cura', 'Buff', 'Debuff', 'Controle', 'Condição', 'Complicação', 'Especial'];
+  const SPELL_EFFECT_DURATIONS = ['Instantâneo', '1 turno', '2 turnos', '3 turnos', 'Cena', 'Até dissipar', 'Permanente'];
+
+  function safeSpellEffectColor(value, fallback = SPELL_EFFECT_COLORS[0]) {
+    const color = String(value || '').trim();
+    return /^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i.test(color) ? color : fallback;
+  }
+
+  function spellEffectDraft(effect = {}, index = 0) {
+    const raw = (effect && typeof effect === 'object') ? effect : {};
+    const symbol = String(raw.symbol || raw.simbolo || '').trim();
+    const color = raw.color || raw.cor || SPELL_EFFECT_COLORS[index % SPELL_EFFECT_COLORS.length];
+    const type = String(raw.type || raw.tipo || '').trim();
+    const duration = String(raw.duration || raw.duracao || raw['Duração'] || '').trim();
+    return {
+      title: String(raw.title || raw.titulo || raw.name || '').trim(),
+      text: String(raw.text || raw.descricao || raw.description || raw.efeito || '').trim(),
+      symbol: SPELL_EFFECT_SYMBOLS.includes(symbol) ? symbol : SPELL_EFFECT_SYMBOLS[index % SPELL_EFFECT_SYMBOLS.length],
+      color: safeSpellEffectColor(color, SPELL_EFFECT_COLORS[index % SPELL_EFFECT_COLORS.length]),
+      type: SPELL_EFFECT_TYPES.includes(type) ? type : '',
+      duration: SPELL_EFFECT_DURATIONS.includes(duration) ? duration : ''
+    };
+  }
+
+  function normalizeSpellEffects(fields) {
+    const f = fields || {};
+    const raw = f['Efeitos Adicionais'];
+    let list = [];
+    let legacyText = '';
+
+    if (Array.isArray(raw)) {
+      list = raw;
+    } else if (raw && typeof raw === 'object') {
+      list = [raw];
+    } else if (typeof raw === 'string' && raw.trim()) {
+      const trimmed = raw.trim();
+      try {
+        const parsed = JSON.parse(trimmed);
+        list = Array.isArray(parsed) ? parsed : (parsed && typeof parsed === 'object' ? [parsed] : []);
+      } catch {
+        legacyText = trimmed;
+      }
+    }
+
+    const normalized = list
+      .map((effect, index) => {
+        const draft = spellEffectDraft(effect, index);
+        if (!draft.title && draft.text) draft.title = `Efeito ${index + 1}`;
+        return draft;
+      })
+      .filter((effect) => effect.title || effect.text);
+
+    if (!normalized.length) {
+      const legacy = legacyText || String(f['Efeito Adicional'] || '').trim();
+      legacy.split(/\n+/)
+        .map((text) => text.trim())
+        .filter(Boolean)
+        .forEach((text, index) => {
+          normalized.push({
+            title: index ? `Efeito ${index + 1}` : 'Efeito adicional',
+            text,
+            symbol: SPELL_EFFECT_SYMBOLS[index % SPELL_EFFECT_SYMBOLS.length],
+            color: SPELL_EFFECT_COLORS[(index + 3) % SPELL_EFFECT_COLORS.length],
+            type: 'Especial',
+            duration: ''
+          });
+        });
+    }
+
+    return normalized;
+  }
+
+  function spellEffectFormRowHTML(effect = {}, index = 0) {
+    const draft = spellEffectDraft(effect, index);
+    const symbolButtons = SPELL_EFFECT_SYMBOLS.map((symbol) => `
+      <button type="button" class="spell-effect-symbol ${symbol === draft.symbol ? 'is-active' : ''}" data-effect-symbol="${escapeHtml(symbol)}" aria-pressed="${symbol === draft.symbol}">
+        ${escapeHtml(symbol)}
+      </button>`).join('');
+    const colorButtons = SPELL_EFFECT_COLORS.map((color) => `
+      <button type="button" class="spell-effect-color ${color === draft.color ? 'is-active' : ''}" data-effect-color="${escapeHtml(color)}" style="--swatch:${escapeHtml(color)}" aria-pressed="${color === draft.color}"></button>`).join('');
+    const typeOptions = SPELL_EFFECT_TYPES.map((type) => `<option value="${escapeHtml(type)}" ${type === draft.type ? 'selected' : ''}>${escapeHtml(type)}</option>`).join('');
+    const durationOptions = SPELL_EFFECT_DURATIONS.map((duration) => `<option value="${escapeHtml(duration)}" ${duration === draft.duration ? 'selected' : ''}>${escapeHtml(duration)}</option>`).join('');
+    return `
+      <article class="spell-effect-form-row" data-effect-row style="--effect:${escapeHtml(draft.color)}">
+        <input type="hidden" data-effect-symbol-value value="${escapeHtml(draft.symbol)}">
+        <input type="hidden" data-effect-color-value value="${escapeHtml(draft.color)}">
+        <div class="spell-effect-form-row__top">
+          <div class="spell-effect-preview" aria-hidden="true">
+            <span class="spell-effect-preview__symbol">${escapeHtml(draft.symbol)}</span>
+            <span class="spell-effect-preview__label">Nota ${index + 1}</span>
+          </div>
+          <button type="button" class="spell-effect-remove" data-effect-remove aria-label="Remover efeito">
+            <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
+          </button>
+        </div>
+        <div class="spell-effect-form-row__grid">
+          <label class="spell-effect-field spell-effect-field--title">
+            <span>Título da nota</span>
+            <input type="text" class="create-form__input" data-effect-title maxlength="80" placeholder="Ex.: Chamas persistentes" value="${escapeHtml(draft.title)}">
+          </label>
+          <label class="spell-effect-field spell-effect-field--select">
+            <span>Tipo</span>
+            <select class="create-form__input" data-effect-type>
+              <option value="">Livre</option>
+              ${typeOptions}
+            </select>
+          </label>
+          <label class="spell-effect-field spell-effect-field--select">
+            <span>Duração</span>
+            <select class="create-form__input" data-effect-duration>
+              <option value="">Sem duração</option>
+              ${durationOptions}
+            </select>
+          </label>
+        </div>
+        <label class="spell-effect-field spell-effect-field--text">
+          <span>O que acontece</span>
+          <textarea class="create-form__input spell-textarea" data-effect-text rows="3" placeholder="Descreva a condição, benefício, penalidade, evolução ou variação desse efeito.">${escapeHtml(draft.text)}</textarea>
+        </label>
+        <div class="spell-effect-customize">
+          <div>
+            <span class="spell-effect-customize__label">Símbolo</span>
+            <div class="spell-effect-symbols">${symbolButtons}</div>
+          </div>
+          <div>
+            <span class="spell-effect-customize__label">Cor</span>
+            <div class="spell-effect-colors">${colorButtons}</div>
+          </div>
+        </div>
+      </article>`;
+  }
+
+  function spellEffectCardHTML(effect = {}, index = 0) {
+    const draft = spellEffectDraft(effect, index);
+    if (!draft.title && !draft.text) return '';
+    const title = draft.title || `Efeito ${index + 1}`;
+    const meta = [draft.type, draft.duration].filter(Boolean);
+    return `
+      <article class="spell-effect-card" style="--effect:${escapeHtml(draft.color)}">
+        <div class="spell-effect-card__sigil" aria-hidden="true">${escapeHtml(draft.symbol)}</div>
+        <div class="spell-effect-card__body">
+          <div class="spell-effect-card__head">
+            <h3>${escapeHtml(title)}</h3>
+            ${meta.length ? `<div class="spell-effect-card__meta">${meta.map((item) => `<span>${escapeHtml(item)}</span>`).join('')}</div>` : ''}
+          </div>
+          ${draft.text ? `<p>${escapeHtml(draft.text)}</p>` : ''}
+        </div>
+      </article>`;
+  }
+
   const isMagiasTab = (id) => canonicalTabId(id) === 'Magias';
 
   const EMPTY_SPELL_FILTERS = { type: '', affinity: '', tier: '' };
@@ -2772,6 +2924,7 @@
     const affinity = f['Afinidade'] || '';
     const aff = affinityMeta(affinity);
     const scopeEntries = spellScopeEntries(f);
+    const effectEntries = normalizeSpellEffects(f);
     const v = (x) => escapeHtml(x ?? '');
 
     const heroEyebrow = editing ? `EDITAR · ${theme.label}` : `CRIAR · ${theme.label}`;
@@ -2907,10 +3060,6 @@
             <label class="create-form__label" for="spDescricao">Descrição</label>
             <textarea id="spDescricao" class="create-form__input spell-textarea" rows="3" placeholder="Descreva a magia...">${v(f['Descrição'])}</textarea>
           </div>
-          <div class="create-form__field">
-            <label class="create-form__label" for="spEfeito">Efeito Adicional <span class="spell-opt">(opcional)</span></label>
-            <textarea id="spEfeito" class="create-form__input spell-textarea" rows="2" placeholder="Efeitos especiais, comportamentos condicionais...">${v(f['Efeito Adicional'])}</textarea>
-          </div>
         </div>
 
         <!-- PASSIVA -->
@@ -2926,6 +3075,25 @@
           <div class="create-form__field">
             <label class="create-form__label" for="spManutencao">Manutenção <span class="spell-opt">(opcional · por turno)</span></label>
             <input type="number" id="spManutencao" class="create-form__input" min="0" placeholder="Custo recorrente por turno" value="${v(f['Manutenção'])}">
+          </div>
+        </div>
+
+        <div class="create-form__field">
+          <div class="spell-effects-builder" id="spellEffectsBuilder">
+            <div class="spell-effects-builder__head">
+              <div>
+                <label class="create-form__label">Efeitos adicionais</label>
+                <p>Notas opcionais para variações, gatilhos, upgrades, penalidades e exceções da magia.</p>
+              </div>
+              <span class="spell-effects-builder__badge">modular</span>
+            </div>
+            <div class="spell-effect-form-list" data-effect-list>
+              ${(effectEntries.length ? effectEntries : [{}]).map((effect, index) => spellEffectFormRowHTML(effect, index)).join('')}
+            </div>
+            <button type="button" class="btn btn-ghost spell-effect-add" data-effect-add>
+              <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+              <span>Adicionar efeito</span>
+            </button>
           </div>
         </div>
 
@@ -3018,6 +3186,87 @@
         detalhe: item.querySelector('.scope-detail').value.trim()
       }));
 
+    const effectsBuilder = form.querySelector('#spellEffectsBuilder');
+    const effectList = effectsBuilder ? effectsBuilder.querySelector('[data-effect-list]') : null;
+    const refreshEffectRows = () => {
+      if (!effectList) return;
+      [...effectList.querySelectorAll('[data-effect-row]')].forEach((row, index) => {
+        const label = row.querySelector('.spell-effect-preview__label');
+        if (label) label.textContent = `Nota ${index + 1}`;
+      });
+    };
+    if (effectsBuilder && effectList) {
+      effectsBuilder.addEventListener('click', (evt) => {
+        const add = evt.target.closest('[data-effect-add]');
+        if (add) {
+          const index = effectList.querySelectorAll('[data-effect-row]').length;
+          effectList.insertAdjacentHTML('beforeend', spellEffectFormRowHTML({}, index));
+          refreshEffectRows();
+          const row = effectList.querySelector('[data-effect-row]:last-child');
+          row?.querySelector('[data-effect-title]')?.focus();
+          return;
+        }
+
+        const remove = evt.target.closest('[data-effect-remove]');
+        if (remove) {
+          remove.closest('[data-effect-row]')?.remove();
+          if (!effectList.querySelector('[data-effect-row]')) {
+            effectList.insertAdjacentHTML('beforeend', spellEffectFormRowHTML({}, 0));
+          }
+          refreshEffectRows();
+          return;
+        }
+
+        const symbol = evt.target.closest('[data-effect-symbol]');
+        if (symbol) {
+          const row = symbol.closest('[data-effect-row]');
+          row?.querySelectorAll('[data-effect-symbol]').forEach((btn) => {
+            const on = btn === symbol;
+            btn.classList.toggle('is-active', on);
+            btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+          });
+          const hidden = row?.querySelector('[data-effect-symbol-value]');
+          if (hidden) hidden.value = symbol.dataset.effectSymbol || '';
+          const preview = row?.querySelector('.spell-effect-preview__symbol');
+          if (preview) preview.textContent = symbol.dataset.effectSymbol || '';
+          return;
+        }
+
+        const color = evt.target.closest('[data-effect-color]');
+        if (color) {
+          const row = color.closest('[data-effect-row]');
+          const value = safeSpellEffectColor(color.dataset.effectColor);
+          row?.querySelectorAll('[data-effect-color]').forEach((btn) => {
+            const on = btn === color;
+            btn.classList.toggle('is-active', on);
+            btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+          });
+          row?.style.setProperty('--effect', value);
+          const hidden = row?.querySelector('[data-effect-color-value]');
+          if (hidden) hidden.value = value;
+        }
+      });
+    }
+
+    const readSpellEffects = () => {
+      if (!effectList) return [];
+      return [...effectList.querySelectorAll('[data-effect-row]')]
+        .map((row, index) => {
+          const title = row.querySelector('[data-effect-title]')?.value.trim() || '';
+          const text = row.querySelector('[data-effect-text]')?.value.trim() || '';
+          if (!title && !text) return null;
+          return {
+            title: title || `Efeito ${index + 1}`,
+            text,
+            symbol: row.querySelector('[data-effect-symbol-value]')?.value || SPELL_EFFECT_SYMBOLS[index % SPELL_EFFECT_SYMBOLS.length],
+            color: safeSpellEffectColor(row.querySelector('[data-effect-color-value]')?.value, SPELL_EFFECT_COLORS[index % SPELL_EFFECT_COLORS.length]),
+            type: row.querySelector('[data-effect-type]')?.value || '',
+            duration: row.querySelector('[data-effect-duration]')?.value || ''
+          };
+        })
+        .filter(Boolean);
+    };
+
     form.addEventListener('submit', async (e) => {
       e.preventDefault();
       if (!sb) {
@@ -3032,6 +3281,8 @@
       const custo = val('spCusto');
       const custoUnidade = $f('spCustoUnidade') ? $f('spCustoUnidade').value : 'MP';
       const scopeEntries = getScopeEntries();
+      const spellEffects = readSpellEffects();
+      const legacyEffectText = spellEffects.map((effect) => effect.text).filter(Boolean).join('\n');
 
       const missing = [];
       const clearInvalid = () => form.querySelectorAll('.is-invalid').forEach((el) => el.classList.remove('is-invalid'));
@@ -3072,7 +3323,8 @@
           AreaLargura: areaL, AreaAltura: areaA,
           'Duração': duracao, Afinidade: affinity,
           Escopos: scopeEntries, 'Descrição': descricao,
-          'Efeito Adicional': val('spEfeito')
+          'Efeitos Adicionais': spellEffects,
+          'Efeito Adicional': legacyEffectText
         };
         summary = descricao;
       } else {
@@ -3085,6 +3337,8 @@
           Escopos: scopeEntries, 'Efeito Contínuo': efeito,
           'Manutenção': val('spManutencao')
         };
+        fields['Efeitos Adicionais'] = spellEffects;
+        fields['Efeito Adicional'] = legacyEffectText;
         summary = efeito;
       }
 
@@ -3253,6 +3507,123 @@
     const runeSvg = aff.rune
       ? `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.1" stroke-linecap="round" stroke-linejoin="round"><path d="${aff.rune}"/></svg>`
       : aff.icon;
+
+    const readSpellField = (...keys) => {
+      const key = keys.find((candidate) => f[candidate] != null && String(f[candidate]).trim() !== '');
+      return key ? f[key] : '';
+    };
+    const effectEntries = normalizeSpellEffects(f);
+    const bookDescription = type === 'ativa'
+      ? readSpellField('Descrição')
+      : readSpellField('Efeito Contínuo');
+    const bookSummary = e.summary || bookDescription || '';
+    const bookActivation = readSpellField('Condição de Ativação') || 'Sempre ativa';
+    const bookMaintenance = readSpellField('Manutenção');
+    const bookStat = (label, value, cls = '') => `
+      <div class="spell-book-rule ${cls}">
+        <span>${escapeHtml(label)}</span>
+        <strong>${value}</strong>
+      </div>`;
+    const bookStats = type === 'ativa' ? [
+      bookStat('Custo', escapeHtml(formatCusto(f)), 'is-cost'),
+      bookStat('Tier', tierVal, 'is-tier'),
+      bookStat('Alcance', f['Alcance'] ? `${escapeHtml(f['Alcance'])} <i>q</i>` : '—'),
+      bookStat('Área', area),
+      bookStat('Duração', escapeHtml(readSpellField('Duração') || '—'), 'is-duration')
+    ].join('') : [
+      bookStat('Custo', escapeHtml(formatCusto(f)), 'is-cost'),
+      bookStat('Tier', tierVal, 'is-tier'),
+      bookStat('Ativação', escapeHtml(bookActivation)),
+      bookStat('Manutenção', bookMaintenance ? `${escapeHtml(bookMaintenance)} <i>${escapeHtml(unit)}/t</i>` : '—', 'is-duration')
+    ].join('');
+    const bookScopeNotes = scopeEntries.length ? `
+      <div class="spell-book-scope-list">
+        ${scopeEntries.map((s) => `
+          <article class="spell-book-scope" style="--pill:${scopeColor(s.tipo)}">
+            <span class="spell-book-scope__icon">${scopeIcon(s.tipo)}</span>
+            <div>
+              <strong>${escapeHtml(s.tipo)}</strong>
+              <p>${s.detalhe ? escapeHtml(s.detalhe) : '—'}</p>
+            </div>
+          </article>`).join('')}
+      </div>` : '<p class="spell-empty-text">Nenhum escopo definido.</p>';
+    const bookEffects = effectEntries.length
+      ? `<div class="spell-effect-list">${effectEntries.map((effect, index) => spellEffectCardHTML(effect, index)).join('')}</div>`
+      : '<p class="spell-empty-text">Nenhum efeito adicional cadastrado.</p>';
+    const bookHowWorks = type === 'passiva' ? `
+      <section class="spell-book-section spell-book-section--note">
+        <h2>Como ativa</h2>
+        <p>${escapeHtml(bookActivation === 'Sempre ativa'
+          ? 'Esta passiva permanece ativa assim que a magia é aprendida.'
+          : `Esta passiva entra em efeito: ${bookActivation}.`)}</p>
+        ${bookMaintenance ? `<p>Manutenção: <b>${escapeHtml(bookMaintenance)} ${escapeHtml(unit)}/turno</b>.</p>` : ''}
+      </section>` : '';
+
+    return `
+      <article class="entry grimoire spell-book-open grimoire--${type}" style="--hue:${aff.hue};--accent:${aff.accent};--glow:${aff.glow}">
+        <span class="grimoire__corner grimoire__corner--tl" aria-hidden="true"></span>
+        <span class="grimoire__corner grimoire__corner--tr" aria-hidden="true"></span>
+        <span class="grimoire__corner grimoire__corner--bl" aria-hidden="true"></span>
+        <span class="grimoire__corner grimoire__corner--br" aria-hidden="true"></span>
+
+        <nav class="breadcrumb">
+          <a href="#/">Codex</a><span>/</span>
+          <a href="#/${tabId}">${escapeHtml(tab.title)}</a><span>/</span>
+          <span class="breadcrumb__current">${escapeHtml(e.title)}</span>
+        </nav>
+
+        <div class="spell-book">
+          <section class="spell-book__page spell-book__page--identity">
+            <div class="spell-book__watermark" aria-hidden="true">${aff.icon}</div>
+            <div class="spell-book__media ${e.image ? 'has-img' : ''}" aria-hidden="true">
+              <span class="spell-book__media-ring"></span>
+              ${e.image ? `<img src="${e.image}" alt="" onerror="this.closest('.spell-book__media').classList.add('is-fallback')">` : ''}
+              <span class="spell-book__media-rune">${runeSvg}</span>
+            </div>
+            <div class="spell-book__badges">
+              <span class="spell-type-badge spell-type-badge--${type}">${escapeHtml(typeMeta.badge)}</span>
+              <span class="spell-affinity-badge"><span class="spell-affinity-badge__ic">${aff.icon}</span>${escapeHtml(aff.label)}</span>
+            </div>
+            <h1 class="spell-book__title" data-text-reveal>${escapeHtml(e.title)}</h1>
+            ${bookSummary ? `
+              <div class="spell-book__summary">
+                <span>Resumo</span>
+                <p>${escapeHtml(bookSummary)}</p>
+              </div>` : ''}
+            ${scopeEntries.length ? `<div class="spell-book__pills">${spellScopePills(scopeEntries.map((s) => s.tipo))}</div>` : ''}
+            <div class="spell-book-rules">${bookStats}</div>
+          </section>
+
+          <section class="spell-book__page spell-book__page--notes">
+            <section class="spell-book-section spell-book-section--lead">
+              <h2>${type === 'ativa' ? 'Descrição' : 'Efeito contínuo'}</h2>
+              ${bookDescription ? `<p>${escapeHtml(bookDescription)}</p>` : '<p class="spell-empty-text">Sem descrição.</p>'}
+            </section>
+            <section class="spell-book-section">
+              <h2>Efeito mecânico</h2>
+              ${bookScopeNotes}
+            </section>
+            ${bookHowWorks}
+            <section class="spell-book-section">
+              <div class="spell-book-section__head">
+                <h2>Notas de efeito</h2>
+                <span>${effectEntries.length}</span>
+              </div>
+              ${bookEffects}
+            </section>
+          </section>
+        </div>
+
+        <div class="entry__actions-row">
+          ${editButton}
+          ${deleteButton}
+          <a href="#/${tabId}" class="back-link">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+            Voltar a ${escapeHtml(tab.title)}
+          </a>
+        </div>
+      </article>
+    `;
 
     return `
       <article class="entry grimoire grimoire--${type}" style="--hue:${aff.hue};--accent:${aff.accent};--glow:${aff.glow}">
