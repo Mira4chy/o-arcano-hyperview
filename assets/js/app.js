@@ -3558,9 +3558,38 @@
           : `Esta passiva entra em efeito: ${bookActivation}.`)}</p>
         ${bookMaintenance ? `<p>Manutenção: <b>${escapeHtml(bookMaintenance)} ${escapeHtml(unit)}/turno</b>.</p>` : ''}
       </section>` : '';
+    const spellBookEntries = entriesIn(tabId)
+      .filter((entry) => isMagiasTab(entry.tab))
+      .slice()
+      .sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0) || String(a.title || '').localeCompare(String(b.title || ''), 'pt-BR'));
+    const bookIndex = spellBookEntries.findIndex((entry) => entry.id === e.id);
+    const hasPageTurns = spellBookEntries.length > 1 && bookIndex >= 0;
+    const prevSpell = hasPageTurns ? spellBookEntries[(bookIndex - 1 + spellBookEntries.length) % spellBookEntries.length] : null;
+    const nextSpell = hasPageTurns ? spellBookEntries[(bookIndex + 1) % spellBookEntries.length] : null;
+    let arrivingTurn = '';
+    try {
+      arrivingTurn = sessionStorage.getItem('arcanoSpellPageTurn') || '';
+      sessionStorage.removeItem('arcanoSpellPageTurn');
+    } catch {}
+    const arrivingClass = ['next', 'prev'].includes(arrivingTurn) ? ` is-page-arriving is-page-arriving--${arrivingTurn}` : '';
+    const pageTurnButton = (target, dir, label) => target ? `
+      <button type="button" class="spell-page-button spell-page-button--${dir}" data-spell-page-turn="${dir}" data-target-hash="#/${tabId}/${encodeURIComponent(target.id)}" aria-label="${escapeHtml(label)}: ${escapeHtml(target.title)}">
+        <span class="spell-page-button__k">${dir === 'prev' ? 'Anterior' : 'Proxima'}</span>
+        <strong>${escapeHtml(target.title)}</strong>
+      </button>` : '';
+    const pageTurnEdge = (target, dir) => target ? `
+      <button type="button" class="spell-page-edge spell-page-edge--${dir}" data-spell-page-turn="${dir}" data-target-hash="#/${tabId}/${encodeURIComponent(target.id)}" title="${escapeHtml(dir === 'prev' ? 'Magia anterior' : 'Proxima magia')}: ${escapeHtml(target.title)}" aria-label="${escapeHtml(dir === 'prev' ? 'Magia anterior' : 'Proxima magia')}: ${escapeHtml(target.title)}">
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="${dir === 'prev' ? 'M15 18l-6-6 6-6' : 'M9 6l6 6-6 6'}"/></svg>
+      </button>` : '';
+    const pageTurnControls = hasPageTurns ? `
+      <div class="spell-page-controls" aria-label="Virar paginas do grimorio">
+        ${pageTurnButton(prevSpell, 'prev', 'Magia anterior')}
+        <span class="spell-page-counter">${bookIndex + 1}<i>/</i>${spellBookEntries.length}</span>
+        ${pageTurnButton(nextSpell, 'next', 'Proxima magia')}
+      </div>` : '';
 
     return `
-      <article class="entry grimoire spell-book-open grimoire--${type}" style="--hue:${aff.hue};--accent:${aff.accent};--glow:${aff.glow}">
+      <article class="entry grimoire spell-book-open grimoire--${type}${arrivingClass}" style="--hue:${aff.hue};--accent:${aff.accent};--glow:${aff.glow}">
         <span class="grimoire__corner grimoire__corner--tl" aria-hidden="true"></span>
         <span class="grimoire__corner grimoire__corner--tr" aria-hidden="true"></span>
         <span class="grimoire__corner grimoire__corner--bl" aria-hidden="true"></span>
@@ -3572,7 +3601,10 @@
           <span class="breadcrumb__current">${escapeHtml(e.title)}</span>
         </nav>
 
+        ${pageTurnControls}
+
         <div class="spell-book">
+          ${hasPageTurns ? `${pageTurnEdge(prevSpell, 'prev')}${pageTurnEdge(nextSpell, 'next')}` : ''}
           <section class="spell-book__page spell-book__page--identity">
             <div class="spell-book__watermark" aria-hidden="true">${aff.icon}</div>
             <div class="spell-book__media ${e.image ? 'has-img' : ''}" aria-hidden="true">
@@ -3584,7 +3616,7 @@
               <span class="spell-type-badge spell-type-badge--${type}">${escapeHtml(typeMeta.badge)}</span>
               <span class="spell-affinity-badge"><span class="spell-affinity-badge__ic">${aff.icon}</span>${escapeHtml(aff.label)}</span>
             </div>
-            <h1 class="spell-book__title" data-text-reveal>${escapeHtml(e.title)}</h1>
+            <h1 class="spell-book__title">${escapeHtml(e.title)}</h1>
             ${bookSummary ? `
               <div class="spell-book__summary">
                 <span>Resumo</span>
@@ -5437,6 +5469,7 @@
         attachCharacterForm();
         attachEditIndexForm();
         attachIndexEditButton();
+        attachSpellPageTurns();
         attachDeleteHandlers();
         attachCharacterDeleteHandlers();
         attachCharacterSheet();
@@ -8410,6 +8443,40 @@
   }
 
   /* ── DELETE HANDLER (entradas do usuário) ────── */
+  function attachSpellPageTurns() {
+    document.querySelectorAll('[data-spell-page-turn]').forEach((btn) => {
+      if (btn.dataset.bound) return;
+      btn.dataset.bound = '1';
+      btn.addEventListener('click', () => {
+        const targetHash = btn.dataset.targetHash;
+        const dir = btn.dataset.spellPageTurn === 'prev' ? 'prev' : 'next';
+        const book = btn.closest('.spell-book-open');
+        if (!targetHash || !book) return;
+        if (book.classList.contains('is-page-turning')) return;
+        book.classList.add('is-page-turning', `is-page-turning--${dir}`);
+        try { sessionStorage.setItem('arcanoSpellPageTurn', dir); } catch {}
+        setTimeout(() => { location.hash = targetHash; }, 520);
+      });
+    });
+
+    if (document.body.dataset.spellPageKeysBound) return;
+    document.body.dataset.spellPageKeysBound = '1';
+    document.addEventListener('keydown', (event) => {
+      const tag = String(event.target?.tagName || '').toLowerCase();
+      if (tag === 'input' || tag === 'textarea' || tag === 'select' || event.target?.isContentEditable) return;
+      const book = document.querySelector('.spell-book-open');
+      if (!book || book.classList.contains('is-page-turning')) return;
+      const selector = event.key === 'ArrowRight'
+        ? '[data-spell-page-turn="next"]'
+        : (event.key === 'ArrowLeft' ? '[data-spell-page-turn="prev"]' : '');
+      if (!selector) return;
+      const btn = book.querySelector(selector);
+      if (!btn) return;
+      event.preventDefault();
+      btn.click();
+    });
+  }
+
   function attachDeleteHandlers() {
     document.querySelectorAll('[data-delete-entry]').forEach((btn) => {
       if (btn.dataset.bound) return;

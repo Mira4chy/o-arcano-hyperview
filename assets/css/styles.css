@@ -8043,6 +8043,79 @@ a.spell-card__name:hover { color: var(--primary-3); }
 .spell-book-open > .breadcrumb {
   margin-bottom: 18px;
 }
+.spell-page-controls {
+  position: relative;
+  z-index: 3;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  gap: 12px;
+  align-items: center;
+  margin: -2px 0 14px;
+}
+.spell-page-button {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+  padding: 10px 13px;
+  border: 1px solid color-mix(in srgb, var(--accent) 30%, var(--line));
+  border-radius: 8px;
+  color: var(--text-2);
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--accent) 9%, transparent), transparent 58%),
+    var(--surface-1);
+  box-shadow: var(--shadow-sm), inset 0 1px 0 rgba(255,255,255,0.04);
+  transition: border-color 160ms var(--ease), color 160ms var(--ease), transform 160ms var(--ease), background 160ms var(--ease);
+}
+.spell-page-button:hover {
+  transform: translateY(-1px);
+  color: #fff;
+  border-color: color-mix(in srgb, var(--accent) 55%, var(--line-strong));
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--accent) 18%, transparent), transparent 58%),
+    var(--surface-2);
+}
+.spell-page-button--prev { text-align: left; }
+.spell-page-button--next { text-align: right; }
+.spell-page-button__k {
+  color: color-mix(in srgb, var(--accent) 74%, var(--muted));
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-size: 0.58rem;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+.spell-page-button strong {
+  min-width: 0;
+  overflow: hidden;
+  color: inherit;
+  font-family: 'Cinzel', Georgia, serif;
+  font-size: 0.88rem;
+  font-weight: 700;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.spell-page-counter {
+  min-width: 62px;
+  min-height: 42px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  padding: 8px 11px;
+  border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--line));
+  border-radius: 999px;
+  color: var(--text);
+  background: color-mix(in srgb, var(--accent) 10%, var(--surface-1));
+  font-family: 'Cinzel', Georgia, serif;
+  font-weight: 700;
+  box-shadow: 0 0 20px color-mix(in srgb, var(--glow) 18%, transparent);
+}
+.spell-page-counter i {
+  color: var(--muted);
+  font-style: normal;
+  font-size: 0.78em;
+}
 .spell-book {
   position: relative;
   z-index: 1;
@@ -8056,6 +8129,7 @@ a.spell-card__name:hover { color: var(--primary-3); }
     linear-gradient(90deg, rgba(0,0,0,0.28), transparent 8%, transparent 92%, rgba(0,0,0,0.24)),
     color-mix(in srgb, var(--surface-1) 82%, #16100c);
   box-shadow: var(--shadow-lg), inset 0 1px 0 rgba(255, 255, 255, 0.045);
+  perspective: 1600px;
 }
 .spell-book::before {
   content: '';
@@ -8070,6 +8144,108 @@ a.spell-card__name:hover { color: var(--primary-3); }
   box-shadow: 0 0 22px rgba(0,0,0,0.36);
   z-index: 2;
   pointer-events: none;
+}
+.spell-book::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 50%;
+  z-index: 5;
+  pointer-events: none;
+  opacity: 0;
+  transform-origin: left center;
+  transform-style: preserve-3d;
+  background:
+    linear-gradient(90deg, rgba(255,255,255,0.08), rgba(255,255,255,0.02) 12%, rgba(0,0,0,0.26) 100%),
+    linear-gradient(135deg, color-mix(in srgb, var(--accent) 14%, transparent), transparent 56%),
+    var(--surface-2);
+  box-shadow: -18px 0 28px rgba(0,0,0,0.26);
+}
+.spell-book-open.is-page-turning {
+  pointer-events: none;
+}
+.spell-book-open.is-page-turning--next .spell-book::after {
+  animation: spellPageFlipNext 560ms cubic-bezier(0.55, 0.08, 0.22, 1) forwards;
+}
+.spell-book-open.is-page-turning--prev .spell-book::after {
+  left: 0;
+  right: 50%;
+  transform-origin: right center;
+  animation: spellPageFlipPrev 560ms cubic-bezier(0.55, 0.08, 0.22, 1) forwards;
+}
+.spell-book-open.is-page-turning--next .spell-book__page--notes,
+.spell-book-open.is-page-turning--prev .spell-book__page--identity {
+  animation: spellPageContentDim 560ms ease forwards;
+}
+.spell-book-open.is-page-arriving .spell-book {
+  animation: spellBookArrive 360ms ease-out both;
+}
+.spell-book-open.is-page-arriving--next .spell-book__page--identity,
+.spell-book-open.is-page-arriving--prev .spell-book__page--notes {
+  animation: spellPageInkIn 430ms ease-out both;
+}
+.spell-page-edge {
+  position: absolute;
+  top: 50%;
+  z-index: 4;
+  width: 42px;
+  height: 74px;
+  display: grid;
+  place-items: center;
+  transform: translateY(-50%);
+  border: 1px solid color-mix(in srgb, var(--accent) 38%, var(--line));
+  color: color-mix(in srgb, var(--accent) 82%, #fff);
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--accent) 13%, transparent), rgba(0,0,0,0.12)),
+    var(--surface-1);
+  box-shadow: var(--shadow-sm), 0 0 18px color-mix(in srgb, var(--glow) 16%, transparent);
+  opacity: 0.82;
+  transition: opacity 160ms var(--ease), transform 160ms var(--ease), border-color 160ms var(--ease), background 160ms var(--ease);
+}
+.spell-page-edge:hover {
+  opacity: 1;
+  border-color: color-mix(in srgb, var(--accent) 58%, var(--line-strong));
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--accent) 22%, transparent), rgba(0,0,0,0.12)),
+    var(--surface-2);
+}
+.spell-page-edge--prev {
+  left: 0;
+  border-left: 0;
+  border-radius: 0 8px 8px 0;
+}
+.spell-page-edge--next {
+  right: 0;
+  border-right: 0;
+  border-radius: 8px 0 0 8px;
+}
+.spell-page-edge--prev:hover { transform: translateY(-50%) translateX(2px); }
+.spell-page-edge--next:hover { transform: translateY(-50%) translateX(-2px); }
+@keyframes spellPageFlipNext {
+  0% { opacity: 0; transform: rotateY(0deg) translateX(0); }
+  12% { opacity: 1; }
+  55% { opacity: 1; box-shadow: -28px 0 36px rgba(0,0,0,0.34); }
+  100% { opacity: 0; transform: rotateY(-112deg) translateX(-10px); }
+}
+@keyframes spellPageFlipPrev {
+  0% { opacity: 0; transform: rotateY(0deg) translateX(0); }
+  12% { opacity: 1; }
+  55% { opacity: 1; box-shadow: 28px 0 36px rgba(0,0,0,0.34); }
+  100% { opacity: 0; transform: rotateY(112deg) translateX(10px); }
+}
+@keyframes spellPageContentDim {
+  0% { filter: brightness(1); transform: none; }
+  100% { filter: brightness(0.64); transform: scale(0.992); }
+}
+@keyframes spellBookArrive {
+  from { opacity: 0.72; transform: translateY(8px) scale(0.992); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes spellPageInkIn {
+  from { opacity: 0.55; filter: blur(2px); }
+  to { opacity: 1; filter: blur(0); }
 }
 .spell-book__page {
   min-width: 0;
@@ -8148,12 +8324,15 @@ a.spell-card__name:hover { color: var(--primary-3); }
   gap: 8px;
 }
 .spell-book__title {
+  max-width: 100%;
   margin: 0;
   color: var(--text);
   font-family: 'Cinzel', Georgia, serif;
   font-size: clamp(2rem, 5vw, 3.25rem);
   font-weight: 700;
   line-height: 1.04;
+  overflow-wrap: anywhere;
+  text-wrap: balance;
   text-shadow: 0 0 28px color-mix(in srgb, var(--glow) 35%, transparent);
 }
 .spell-book__summary {
@@ -8395,6 +8574,29 @@ a.spell-card__name:hover { color: var(--primary-3); }
 }
 
 @media (max-width: 720px) {
+  .spell-page-controls {
+    grid-template-columns: 1fr;
+  }
+  .spell-page-button,
+  .spell-page-button--next,
+  .spell-page-button--prev {
+    text-align: left;
+  }
+  .spell-page-counter {
+    justify-self: center;
+    order: -1;
+  }
+  .spell-page-edge {
+    top: auto;
+    bottom: 10px;
+    width: 38px;
+    height: 46px;
+    transform: none;
+  }
+  .spell-page-edge--prev:hover,
+  .spell-page-edge--next:hover {
+    transform: none;
+  }
   .spell-effect-form-row__grid,
   .spell-book-rules {
     grid-template-columns: 1fr;
