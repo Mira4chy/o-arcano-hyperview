@@ -506,7 +506,43 @@
       classifications: classifications.filter((row) => row.count > 0)
     };
   }
-  function spellCategoryFiltersHTML(entries, filters) {
+  function spellFilterLabel(key, value) {
+    if (!value) return '';
+    if (key === 'type') return SPELL_TYPES[value]?.label || value;
+    if (key === 'affinity') return SPELL_AFFINITIES[value]?.label || value;
+    if (key === 'classification') return value;
+    if (key === 'era') return value;
+    return value;
+  }
+
+  function spellActiveFilterLabels(filters) {
+    const active = normalizeSpellFilters(filters);
+    return Object.entries(active)
+      .filter(([, value]) => !!value)
+      .map(([key, value]) => spellFilterLabel(key, value))
+      .filter(Boolean);
+  }
+
+  function spellEraRailHTML(entries, filters) {
+    const active = normalizeSpellFilters(filters);
+    const stats = spellFilterStats(entries);
+    const byEra = Object.fromEntries(stats.eras.map((row) => [row.key, row.count]));
+    return `
+      <section class="spell-era-rail" aria-label="Filtrar magias por era">
+        <button type="button" class="spell-era-tab ${!active.era ? 'is-active' : ''}" data-spell-filter="era" data-spell-filter-value="">
+          <span>Todas</span>
+          <strong>${entries.length}</strong>
+        </button>
+        ${SPELL_ERAS.map((era) => `
+          <button type="button" class="spell-era-tab ${active.era === era ? 'is-active' : ''}" data-spell-filter="era" data-spell-filter-value="${escapeHtml(era)}">
+            <span>${escapeHtml(era)}</span>
+            <strong>${byEra[era] || 0}</strong>
+          </button>
+        `).join('')}
+      </section>`;
+  }
+
+  function spellCategoryFiltersHTML(entries, filters, open = false) {
     const active = normalizeSpellFilters(filters);
     const stats = spellFilterStats(entries);
     if (!stats.types.length && !stats.affinities.length && !stats.eras.length && !stats.classifications.length) return '';
@@ -530,9 +566,9 @@
       </div>` : '';
 
     return `
-      <section class="spell-filter-panel" aria-label="Filtros de magia">
+      <section class="spell-filter-panel ${open ? 'is-open' : ''}" aria-label="Filtros de magia" ${open ? '' : 'hidden'}>
         <div class="spell-filter-panel__head">
-          <span>Refinar grimório</span>
+          <span>Filtros do grim\u00f3rio</span>
           ${hasSpellFilters(active) ? '<button type="button" class="spell-filter-reset" data-spell-filter-reset>Limpar filtros</button>' : ''}
         </div>
         ${group('Tipo', 'type', stats.types, (row) => `<span>${escapeHtml(SPELL_TYPES[row.key].badge)}</span>`)}
@@ -2568,14 +2604,15 @@
     const theme = themeOf(tabId);
     const all = entriesIn(tabId);
     const q = normalize(query || '');
-    const tag = tagKey(selectedTag || '');
+    const spellTab = isMagiasTab(tabId);
+    const tag = spellTab ? '' : tagKey(selectedTag || '');
     const spellFilter = normalizeSpellFilters(spellFilters);
     const tagStats = categoryTagStats(all);
     const list = all.filter((e) => {
       const entryTags = sanitizeTags(e.tags);
       const matchesTag = !tag || entryTags.some((t) => tagKey(t.label) === tag);
       if (!matchesTag) return false;
-      if (isMagiasTab(tabId)) {
+      if (spellTab) {
         const fields = e.fields || {};
         const type = isSpellType(e.subtype) ? e.subtype : 'ativa';
         const history = normalizeSpellHistoricalFields(fields, e.title);
@@ -2591,34 +2628,58 @@
     });
 
     const showCreate = isCreatable(tabId) && auth.isAdmin;
-    const totalCards = list.length + (showCreate ? 1 : 0);
-    const activeTagLabel = tagStats.find((t) => t.key === tag)?.label || '';
+    const totalCards = list.length + (showCreate && !spellTab ? 1 : 0);
+    const activeTagLabel = !spellTab ? (tagStats.find((t) => t.key === tag)?.label || '') : '';
+    const spellFiltersOpen = spellTab && !!(categoryState[tabId]?.spellFiltersOpen);
+    const spellFilterLabels = spellActiveFilterLabels(spellFilter);
+    const spellLineageCount = spellTab ? new Set(all.map((entry) => spellLineageKey(entry))).size : 0;
+    const visibleCountLabel = spellTab
+      ? `${list.length} ${list.length === 1 ? 'magia vis\u00edvel' : 'magias vis\u00edveis'}`
+      : `${totalCards} ${totalCards === 1 ? 'item' : 'itens'}`;
 
     return `
-      <section class="cat-hero" style="--hue:${theme.hue}">
+      <section class="cat-hero ${spellTab ? 'cat-hero--magias' : ''}" style="--hue:${theme.hue}">
         <div class="cat-hero__icon">${iconOf(tabId)}</div>
         <div class="cat-hero__body">
           <span class="cat-hero__eyebrow">${escapeHtml(theme.label)}</span>
           <h1 class="cat-hero__title" data-text-reveal>${escapeHtml(tab.title)}</h1>
           <p class="cat-hero__tone">${escapeHtml(tab.tone || '')}</p>
           <div class="cat-hero__meta">
-            <span class="badge"><strong>${all.length}</strong> ${isMagiasTab(tabId) ? (all.length === 1 ? 'magia' : 'magias') : (all.length === 1 ? 'história' : 'histórias')}</span>
-            ${showCreate ? '<span class="badge badge-soft">Criação aberta</span>' : ''}
+            <span class="badge"><strong>${all.length}</strong> ${spellTab ? (all.length === 1 ? 'magia' : 'magias') : (all.length === 1 ? 'história' : 'histórias')}</span>
+            ${spellTab ? `<span class="badge badge-soft"><strong>${spellLineageCount}</strong> ${spellLineageCount === 1 ? 'linhagem' : 'linhagens'}</span>` : (showCreate ? '<span class="badge badge-soft">Cria\u00e7\u00e3o aberta</span>' : '')}
           </div>
         </div>
+        ${spellTab && showCreate ? `
+          <a href="#/${tabId}/criar" class="spell-primary-action" aria-label="Criar nova magia">
+            <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+            <span>Nova magia</span>
+          </a>` : ''}
       </section>
 
-      <section class="filter-bar">
+      <section class="filter-bar ${spellTab ? 'filter-bar--magias' : ''}">
         <label class="filter-search">
           <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
-          <input id="catSearch" type="search" placeholder="Filtrar em ${escapeHtml(tab.title)}..." value="${escapeHtml(query || '')}" autocomplete="off">
+          <input id="catSearch" type="search" placeholder="${spellTab ? 'Buscar magia, linhagem, efeito...' : `Filtrar em ${escapeHtml(tab.title)}...`}" value="${escapeHtml(query || '')}" autocomplete="off">
         </label>
-        <span class="filter-count">${totalCards} ${totalCards === 1 ? 'item' : 'itens'}</span>
+        <span class="filter-count">${escapeHtml(visibleCountLabel)}</span>
+        ${spellTab ? `
+          <button type="button" class="spell-filter-toggle ${spellFiltersOpen ? 'is-open' : ''}" data-spell-filter-toggle aria-expanded="${spellFiltersOpen ? 'true' : 'false'}">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h16M7 12h10M10 18h4"/></svg>
+            <span>Filtros</span>
+            ${spellFilterLabels.length ? `<b>${spellFilterLabels.length}</b>` : ''}
+          </button>` : ''}
       </section>
 
-      ${isMagiasTab(tabId) ? spellCategoryFiltersHTML(all, spellFilter) : ''}
+      ${spellTab && spellFilterLabels.length ? `
+        <div class="spell-active-filters">
+          ${spellFilterLabels.map((label) => `<span>${escapeHtml(label)}</span>`).join('')}
+        </div>` : ''}
 
-      ${tagStats.length ? `
+      ${spellTab ? spellEraRailHTML(all, spellFilter) : ''}
+
+      ${spellTab ? spellCategoryFiltersHTML(all, spellFilter, spellFiltersOpen) : ''}
+
+      ${(!spellTab && tagStats.length) ? `
         <section class="tag-filter" aria-label="Filtrar por tag">
           <button type="button" class="tag-filter__chip ${!tag ? 'is-active' : ''}" data-tag-filter="">
             Todas
@@ -2638,10 +2699,10 @@
         </div>
       ` : ''}
 
-      ${(list.length === 0 && !showCreate) ? emptyStateHTML(tab) : `
-        <section class="entry-grid">
-          ${showCreate ? createCardHTML(tabId) : ''}
-          ${list.map((e, i) => entryCardHTML(e, i + (showCreate ? 1 : 0))).join('')}
+      ${(list.length === 0 && (!showCreate || spellTab)) ? emptyStateHTML(tab) : `
+        <section class="entry-grid ${spellTab ? 'entry-grid--magias' : ''}">
+          ${showCreate && !spellTab ? createCardHTML(tabId) : ''}
+          ${list.map((e, i) => entryCardHTML(e, i + ((showCreate && !spellTab) ? 1 : 0))).join('')}
         </section>
       `}
     `;
@@ -4005,22 +4066,28 @@
     return `
       <a href="#/${e.tab}/${e.id}" class="tome-card grimoire--${type}" style="--accent:${aff.accent};--glow:${aff.glow};--hue:${aff.hue};--delay:${i * 45}ms">
         <span class="tome-card__bg-rune" aria-hidden="true">${aff.icon}</span>
-        <span class="spell-type-badge spell-type-badge--${type} tome-card__type">${escapeHtml(SPELL_TYPES[type].badge)}</span>
-        ${hasCusto ? `<span class="tome-card__orb"><b>${escapeHtml(String(f['Custo']))}</b><small>${escapeHtml(f['CustoUnidade'] || 'MP')}</small></span>` : ''}
+        <div class="tome-card__top">
+          <span class="spell-type-badge spell-type-badge--${type} tome-card__type">${escapeHtml(SPELL_TYPES[type].badge)}</span>
+          ${hasCusto ? `<span class="tome-card__orb"><b>${escapeHtml(String(f['Custo']))}</b><small>${escapeHtml(f['CustoUnidade'] || 'MP')}</small></span>` : ''}
+        </div>
         <div class="tome-card__medal ${e.image ? 'has-img' : ''}" aria-hidden="true">
           <span class="tome-card__medal-ring"></span>
           ${e.image ? `<img class="tome-card__img" loading="lazy" src="${e.image}" alt="" onerror="this.closest('.tome-card__medal').classList.add('is-fallback')">` : ''}
           <span class="tome-card__medal-rune">${runeSvg}</span>
         </div>
-        <h3 class="tome-card__name">${escapeHtml(e.title)}</h3>
-        <div class="tome-card__meta">
-          <span class="tome-card__aff"><span>${aff.icon}</span>${escapeHtml(aff.label)}</span>
-          <span class="tome-card__sep">·</span>
-          <span class="tome-card__era">${escapeHtml(history.eraVersao || 'Sem era')}</span>
-          <span class="tome-card__sep">·</span>
-          <span class="tome-card__tier">${escapeHtml(history.classificacao || 'Sem classifica\u00e7\u00e3o')}</span>
+        <div class="tome-card__body">
+          <h3 class="tome-card__name">${escapeHtml(e.title)}</h3>
+          <span class="tome-card__lineage">${escapeHtml(history.lineage || e.title)}</span>
         </div>
-        ${names.length ? `<div class="tome-card__runes">${names.slice(0, 5).map((s) => `<span class="rune-chip" style="--pill:${scopeColor(s)}" title="${escapeHtml(s)}">${scopeIcon(s)}</span>`).join('')}</div>` : ''}
+        <div class="tome-card__meta">
+          <span class="tome-card__era">${escapeHtml(history.eraVersao || 'Sem era')}</span>
+          <span class="tome-card__classification">${escapeHtml(history.classificacao || 'Sem classifica\u00e7\u00e3o')}</span>
+          <span class="tome-card__aff"><span>${aff.icon}</span>${escapeHtml(aff.label)}</span>
+        </div>
+        <div class="tome-card__footer">
+          ${names.length ? `<div class="tome-card__runes">${names.slice(0, 5).map((s) => `<span class="rune-chip" style="--pill:${scopeColor(s)}" title="${escapeHtml(s)}">${scopeIcon(s)}</span>`).join('')}</div>` : '<span></span>'}
+          <span class="tome-card__open">Abrir grim\u00f3rio</span>
+        </div>
       </a>
     `;
   }
@@ -5867,8 +5934,9 @@
     const input = document.getElementById('catSearch');
     const tagButtons = document.querySelectorAll('[data-tag-filter]');
     const spellFilterButtons = document.querySelectorAll('[data-spell-filter]');
-    const spellReset = document.querySelector('[data-spell-filter-reset]');
-    if (!input && !tagButtons.length && !spellFilterButtons.length && !spellReset) return;
+    const spellResetButtons = document.querySelectorAll('[data-spell-filter-reset]');
+    const spellFilterToggle = document.querySelector('[data-spell-filter-toggle]');
+    if (!input && !tagButtons.length && !spellFilterButtons.length && !spellResetButtons.length && !spellFilterToggle) return;
 
     const refreshCategory = ({ keepFocus = false, cursor = null } = {}) => {
       const { tab } = parseHash();
@@ -5925,6 +5993,7 @@
         if (!Object.prototype.hasOwnProperty.call(current, key)) return;
         categoryState[tab] = {
           ...state,
+          spellFiltersOpen: btn.closest('.spell-filter-panel') ? true : !!state.spellFiltersOpen,
           spell: {
             ...current,
             [key]: btn.dataset.spellFilterValue || ''
@@ -5934,13 +6003,28 @@
       });
     });
 
-    if (spellReset && !spellReset.dataset.bound) {
+    spellResetButtons.forEach((spellReset) => {
+      if (spellReset.dataset.bound) return;
       spellReset.dataset.bound = '1';
       spellReset.addEventListener('click', () => {
         const { tab } = parseHash();
         categoryState[tab] = {
           ...(categoryState[tab] || {}),
+          spellFiltersOpen: true,
           spell: { ...EMPTY_SPELL_FILTERS }
+        };
+        refreshCategory();
+      });
+    });
+
+    if (spellFilterToggle && !spellFilterToggle.dataset.bound) {
+      spellFilterToggle.dataset.bound = '1';
+      spellFilterToggle.addEventListener('click', () => {
+        const { tab } = parseHash();
+        const state = categoryState[tab] || {};
+        categoryState[tab] = {
+          ...state,
+          spellFiltersOpen: !state.spellFiltersOpen
         };
         refreshCategory();
       });
