@@ -6869,6 +6869,9 @@ a.spell-card__name:hover { color: var(--primary-3); }
   grid-template-columns: 1fr 1fr;
   gap: 16px;
 }
+.create-form__row--history {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
 .create-form__error {
   margin: 0 0 18px;
   padding: 11px 14px;
@@ -7020,6 +7023,41 @@ a.spell-card__name:hover { color: var(--primary-3); }
   color: #fff;
   background: color-mix(in srgb, var(--pill) 20%, transparent);
   border-color: color-mix(in srgb, var(--pill) 55%, transparent);
+}
+
+.spell-history-form {
+  display: grid;
+  gap: 15px;
+  padding: 16px;
+  border: 1px solid color-mix(in srgb, var(--accent, var(--primary)) 28%, var(--line));
+  border-radius: 8px;
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--accent, var(--primary)) 9%, transparent), transparent 54%),
+    rgba(255, 255, 255, 0.025);
+}
+.spell-history-form__head {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 16px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid color-mix(in srgb, var(--accent, var(--primary)) 22%, var(--line));
+}
+.spell-history-form__head span {
+  color: color-mix(in srgb, var(--accent, var(--primary)) 76%, #fff);
+  font-family: 'Cinzel', Georgia, serif;
+  font-size: 0.95rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+.spell-history-form__head p {
+  max-width: 46ch;
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.82rem;
+  line-height: 1.5;
+  text-align: right;
 }
 
 /* ── Scope pills / type badges (compartilhado) ── */
@@ -7245,14 +7283,8 @@ a.spell-card__name:hover { color: var(--primary-3); }
   text-align: right;
 }
 .spell-meta-row dd.is-cost     { color: var(--cyan); }
-.spell-meta-row dd.is-tier     { color: var(--gold); }
 .spell-meta-row dd.is-duration { color: var(--primary-3); }
 .spell-meta-row dd.is-neutral  { color: var(--text-2); }
-.tier-roman {
-  font-family: 'Cinzel', Georgia, serif;
-  letter-spacing: 0.08em;
-  font-size: 1.02rem;
-}
 
 .spell-entry__text { display: flex; flex-direction: column; gap: 20px; }
 .spell-block .section__eyebrow { display: block; margin-bottom: 8px; }
@@ -7274,6 +7306,14 @@ a.spell-card__name:hover { color: var(--primary-3); }
   .spell-entry__body { grid-template-columns: 1fr; }
   .create-form__row { grid-template-columns: 1fr; gap: 0; }
   .create-form__row .create-form__field { margin-bottom: 18px; }
+  .spell-history-form__head {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+  .spell-history-form__head p {
+    max-width: none;
+    text-align: left;
+  }
 }
 
 /* ════════════════════════════════════════════════════
@@ -7442,9 +7482,7 @@ a.spell-card__name:hover { color: var(--primary-3); }
 .spell-stat__label { font-size: 0.66rem; letter-spacing: 0.13em; text-transform: uppercase; color: var(--muted); }
 .spell-stat__value { font-size: 1.02rem; font-weight: 700; color: var(--text-2); }
 .spell-stat__value.is-cost     { color: var(--cyan); }
-.spell-stat__value.is-tier     { color: var(--gold); }
 .spell-stat__value.is-duration { color: var(--primary-3); }
-.spell-stat__value .tier-roman { font-family: 'Cinzel', Georgia, serif; letter-spacing: 0.06em; }
 
 /* ── Corpo / seções ── */
 .spell-sheet__body { margin-top: 26px; display: flex; flex-direction: column; gap: 26px; }
@@ -7620,10 +7658,11 @@ a.spell-card__name:hover { color: var(--primary-3); }
   color: var(--text); line-height: 1.2;
 }
 .tome-card__meta {
-  display: flex; align-items: center; gap: 8px;
+  display: flex; align-items: center; flex-wrap: wrap; gap: 6px 8px;
   font-size: 0.78rem; color: var(--muted);
 }
 .tome-card__aff { display: inline-flex; align-items: center; gap: 5px; color: var(--accent); font-weight: 600; }
+.tome-card__era { color: color-mix(in srgb, var(--accent) 74%, var(--text)); font-weight: 600; }
 .tome-card__tier { color: var(--gold); font-weight: 600; }
 .tome-card__sep { opacity: 0.5; }
 .tome-card__runes { display: flex; gap: 7px; margin-top: 3px; }
@@ -7777,10 +7816,9 @@ a.spell-card__name:hover { color: var(--primary-3); }
 }
 .runestone__v { font-family: 'Cinzel', Georgia, serif; font-weight: 700; font-size: 1.18rem; color: var(--text); line-height: 1.1; text-align: center; }
 .runestone__v i { font-style: normal; font-size: 0.66em; color: var(--muted); font-weight: 500; }
-.runestone__v .tier-roman { letter-spacing: 0.05em; }
 .runestone__l { font-size: 0.62rem; letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted); }
 .runestone.is-cost .runestone__v { color: var(--cyan); }
-.runestone.is-tier .runestone__v { color: var(--gold); }
+.runestone.is-classification .runestone__v { color: var(--gold); }
 .runestone.is-duration .runestone__v { color: var(--primary-3); }
 
 /* Corpo / seções iluminadas */
@@ -8323,6 +8361,26 @@ a.spell-card__name:hover { color: var(--primary-3); }
   justify-content: center;
   gap: 8px;
 }
+.spell-era-badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 25px;
+  padding: 4px 10px;
+  border: 1px solid color-mix(in srgb, var(--accent) 34%, var(--line));
+  border-radius: 999px;
+  color: color-mix(in srgb, var(--accent) 76%, #fff);
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-size: 0.62rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.spell-era-badge--soft {
+  color: var(--gold);
+  border-color: color-mix(in srgb, var(--gold) 30%, var(--line));
+  background: color-mix(in srgb, var(--gold) 8%, transparent);
+}
 .spell-book__title {
   max-width: 100%;
   margin: 0;
@@ -8394,7 +8452,7 @@ a.spell-card__name:hover { color: var(--primary-3); }
   font-size: 0.72em;
 }
 .spell-book-rule.is-cost strong { color: var(--cyan); }
-.spell-book-rule.is-tier strong { color: var(--gold); }
+.spell-book-rule.is-classification strong { color: var(--gold); }
 .spell-book-rule.is-duration strong { color: var(--primary-3); }
 .spell-book-section {
   display: grid;
@@ -8430,6 +8488,15 @@ a.spell-card__name:hover { color: var(--primary-3); }
   border: 1px solid color-mix(in srgb, var(--accent) 22%, var(--line));
   border-radius: 8px;
   background: color-mix(in srgb, var(--accent) 7%, transparent);
+}
+.spell-book-section--history {
+  width: 100%;
+  padding: 14px;
+  border: 1px solid color-mix(in srgb, var(--accent) 24%, var(--line));
+  border-radius: 8px;
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--accent) 8%, transparent), transparent 56%),
+    rgba(255,255,255,0.025);
 }
 .spell-book-section__head {
   display: flex;
@@ -8559,6 +8626,124 @@ a.spell-card__name:hover { color: var(--primary-3); }
   letter-spacing: 0.08em;
   text-transform: uppercase;
 }
+.spell-history-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+.spell-history-chip {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+  padding: 9px 10px;
+  border: 1px solid color-mix(in srgb, var(--accent) 18%, var(--line));
+  border-radius: 8px;
+  color: inherit;
+  background: rgba(255,255,255,0.025);
+  text-align: left;
+  text-decoration: none;
+}
+.spell-history-chip span {
+  color: var(--muted);
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-size: 0.56rem;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+.spell-history-chip strong {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text);
+  font-family: 'Cinzel', Georgia, serif;
+  font-size: 0.86rem;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.spell-history-chip--link {
+  border-color: color-mix(in srgb, var(--accent) 38%, var(--line));
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+}
+.spell-era-strip {
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+.spell-era-strip::before {
+  content: '';
+  position: absolute;
+  left: 8%;
+  right: 8%;
+  top: 19px;
+  height: 1px;
+  background: color-mix(in srgb, var(--accent) 34%, var(--line));
+}
+.spell-era-node {
+  position: relative;
+  z-index: 1;
+  min-width: 0;
+  display: grid;
+  gap: 6px;
+  justify-items: center;
+  padding: 0;
+  border: 0;
+  color: var(--text-2);
+  background: transparent;
+  text-align: center;
+  text-decoration: none;
+}
+.spell-era-node::before {
+  content: '';
+  width: 37px;
+  height: 37px;
+  border: 1px solid color-mix(in srgb, var(--accent) 38%, var(--line));
+  border-radius: 50%;
+  background:
+    radial-gradient(circle, color-mix(in srgb, var(--accent) 22%, transparent), transparent 58%),
+    var(--surface-1);
+  box-shadow: 0 0 16px color-mix(in srgb, var(--glow) 14%, transparent);
+}
+.spell-era-node span {
+  color: var(--muted);
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-size: 0.54rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  line-height: 1.25;
+  text-transform: uppercase;
+}
+.spell-era-node strong {
+  max-width: 100%;
+  overflow: hidden;
+  color: inherit;
+  font-family: 'Cinzel', Georgia, serif;
+  font-size: 0.72rem;
+  font-weight: 700;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.spell-era-node.is-linked::before {
+  border-color: color-mix(in srgb, var(--accent) 66%, #fff 6%);
+  background:
+    radial-gradient(circle, color-mix(in srgb, var(--accent) 44%, transparent), transparent 63%),
+    var(--surface-1);
+}
+.spell-era-node.is-linked strong { color: var(--text); }
+.spell-era-node.is-current::before {
+  border-color: var(--accent);
+  box-shadow: 0 0 24px color-mix(in srgb, var(--glow) 34%, transparent), inset 0 0 12px color-mix(in srgb, var(--glow) 18%, transparent);
+}
+.spell-era-node.is-empty {
+  cursor: pointer;
+  opacity: 0.78;
+}
+.spell-era-node.is-empty:hover {
+  opacity: 1;
+  color: #fff;
+}
 
 @media (max-width: 980px) {
   .spell-book {
@@ -8610,6 +8795,22 @@ a.spell-card__name:hover { color: var(--primary-3); }
   }
   .spell-effect-card__meta {
     justify-content: flex-start;
+  }
+  .spell-history-grid,
+  .spell-era-strip {
+    grid-template-columns: 1fr;
+  }
+  .spell-era-strip::before {
+    display: none;
+  }
+  .spell-era-node {
+    grid-template-columns: auto 1fr;
+    justify-items: start;
+    align-items: center;
+    text-align: left;
+  }
+  .spell-era-node strong {
+    white-space: normal;
   }
   .spell-book__page {
     padding: 22px 16px;
