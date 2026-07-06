@@ -157,7 +157,6 @@
   const SPELL_CLASSIFICATIONS = ['Ancestral', 'T\u00e9cnica', 'Codificada', 'Fragmentada'];
   const SPELL_CONTROL_LEVELS = ['Selvagem', 'Inst\u00e1vel', 'Moldada', 'Refinada', 'Codificada', 'Degradada'];
   const SPELL_USE_FORMS = ['Instinto', 'Tradi\u00e7\u00e3o', 'T\u00e9cnica', 'Tecnologia', 'Anomalia'];
-  const SPELL_EVOLUTION_STATES = ['Origem', 'Adapta\u00e7\u00e3o', 'Refinamento', 'Ruptura', 'Decad\u00eancia'];
 
   /* Afinidades: cada uma carrega seu tema visual arcano. */
   const SPELL_AFFINITIES = {
@@ -190,7 +189,8 @@
   };
 
   /* Unidades de custo — a magia não cobra necessariamente MP. */
-  const COST_UNITS = ['MP', 'HP', 'Vigor'];
+  const COST_UNITS = ['MP', 'HP'];
+  const safeCostUnit = (unit) => COST_UNITS.includes(unit) ? unit : 'MP';
 
   /* Escopos: novo formato fields.Escopos = [{tipo, detalhe}].
      Mantém compat com o legado fields.Escopo (array/string de nomes). */
@@ -223,7 +223,7 @@
     const f = fields || {};
     const v = String(f['Custo'] ?? '').trim();
     if (!v) return '—';
-    const unit = f['CustoUnidade'] || 'MP';
+    const unit = safeCostUnit(f['CustoUnidade'] || 'MP');
     return `${v} ${unit}`;
   }
   const SPELL_EFFECT_SYMBOLS = ['✦', '✧', '✶', '✷', '☉', '☽', '☿', '⬡', '◆', '◇', '▲', '▼', '⚔', '✚', '!', '+'];
@@ -398,7 +398,6 @@
     const previous = String(spellField(source, 'Vers\u00e3o Anterior', 'Versao Anterior', 'Deriva de') || '').trim();
     const controlRaw = String(spellField(source, 'Grau de Controle', 'Controle') || '').trim();
     const useRaw = String(spellField(source, 'Forma de Uso', 'Uso') || '').trim();
-    const evolutionRaw = String(spellField(source, 'Estado Evolutivo', 'Evolu\u00e7\u00e3o') || '').trim();
     return {
       eraOrigem: SPELL_ERAS.includes(originRaw) ? originRaw : '',
       eraVersao: SPELL_ERAS.includes(versionRaw) ? versionRaw : '',
@@ -406,8 +405,7 @@
       lineage,
       previous,
       control: SPELL_CONTROL_LEVELS.includes(controlRaw) ? controlRaw : '',
-      useForm: SPELL_USE_FORMS.includes(useRaw) ? useRaw : '',
-      evolution: SPELL_EVOLUTION_STATES.includes(evolutionRaw) ? evolutionRaw : ''
+      useForm: SPELL_USE_FORMS.includes(useRaw) ? useRaw : ''
     };
   }
 
@@ -3226,10 +3224,6 @@
               <label class="create-form__label" for="spUseForm">Forma de Uso</label>
               ${spellSelectHTML('spUseForm', SPELL_USE_FORMS, history.useForm, '\u2014')}
             </div>
-            <div class="create-form__field">
-              <label class="create-form__label" for="spEvolutionState">Estado Evolutivo</label>
-              ${spellSelectHTML('spEvolutionState', SPELL_EVOLUTION_STATES, history.evolution, '\u2014')}
-            </div>
           </div>
         </section>
 
@@ -3239,7 +3233,7 @@
             <input type="number" id="spCusto" class="create-form__input" min="0" placeholder="Valor" value="${v(f['Custo'])}">
             <div class="spell-select cost-input__unit">
               <select id="spCustoUnidade" class="create-form__input">
-                ${COST_UNITS.map((u) => `<option value="${u}" ${(f['CustoUnidade'] || 'MP') === u ? 'selected' : ''}>${u}</option>`).join('')}
+                ${COST_UNITS.map((u) => `<option value="${u}" ${safeCostUnit(f['CustoUnidade'] || 'MP') === u ? 'selected' : ''}>${u}</option>`).join('')}
               </select>
               <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 9l6 6 6-6"/></svg>
             </div>
@@ -3530,9 +3524,8 @@
       const classification = val('spClassification');
       const controlLevel = val('spControlLevel');
       const useForm = val('spUseForm');
-      const evolutionState = val('spEvolutionState');
       const custo = val('spCusto');
-      const custoUnidade = $f('spCustoUnidade') ? $f('spCustoUnidade').value : 'MP';
+      const custoUnidade = safeCostUnit($f('spCustoUnidade') ? $f('spCustoUnidade').value : 'MP');
       const scopeEntries = getScopeEntries();
       const spellEffects = readSpellEffects();
       const legacyEffectText = spellEffects.map((effect) => effect.text).filter(Boolean).join('\n');
@@ -3550,7 +3543,6 @@
       if (!classification) { missing.push('Classifica\u00e7\u00e3o Arcana'); mark('spClassification'); }
       if (!controlLevel) { missing.push('Grau de Controle'); mark('spControlLevel'); }
       if (!useForm) { missing.push('Forma de Uso'); mark('spUseForm'); }
-      if (!evolutionState) { missing.push('Estado Evolutivo'); mark('spEvolutionState'); }
       // Custo é obrigatório nas ativas; opcional nas passivas
       if (type === 'ativa' && !custo) { missing.push('Custo'); mark('spCusto'); }
       // Escopos: ao menos um, e cada um precisa do detalhe escrito
@@ -3574,8 +3566,7 @@
         'Vers\u00e3o Anterior': previousVersion,
         'Classifica\u00e7\u00e3o Arcana': classification,
         'Grau de Controle': controlLevel,
-        'Forma de Uso': useForm,
-        'Estado Evolutivo': evolutionState
+        'Forma de Uso': useForm
       };
 
       let fields, summary;
@@ -3699,7 +3690,7 @@
     const history = normalizeSpellHistoricalFields(f, e.title);
     const lineageEntries = spellLineageEntries(e);
     const previousLinked = history.previous ? entryById(history.previous) : null;
-    const unit = f['CustoUnidade'] || 'MP';
+    const unit = safeCostUnit(f['CustoUnidade'] || 'MP');
 
     const area = (f['AreaLargura'] && f['AreaAltura'])
       ? `${escapeHtml(f['AreaLargura'])} × ${escapeHtml(f['AreaAltura'])} <i>q</i>` : '—';
@@ -3859,7 +3850,6 @@
           ${historyItem('Origem', history.eraOrigem)}
           ${historyItem('Linhagem', history.lineage || e.title)}
           ${historyItem('Uso', history.useForm)}
-          ${historyItem('Estado', history.evolution)}
           ${historyItem('Controle', history.control)}
           ${previousLinked ? `<a class="spell-history-chip spell-history-chip--link" href="#/${tabId}/${encodeURIComponent(previousLinked.id)}"><span>Vers\u00e3o anterior</span><strong>${escapeHtml(previousLinked.title)}</strong></a>` : historyItem('Vers\u00e3o anterior', history.previous)}
         </div>
@@ -4068,7 +4058,7 @@
         <span class="tome-card__bg-rune" aria-hidden="true">${aff.icon}</span>
         <div class="tome-card__top">
           <span class="spell-type-badge spell-type-badge--${type} tome-card__type">${escapeHtml(SPELL_TYPES[type].badge)}</span>
-          ${hasCusto ? `<span class="tome-card__orb"><b>${escapeHtml(String(f['Custo']))}</b><small>${escapeHtml(f['CustoUnidade'] || 'MP')}</small></span>` : ''}
+          ${hasCusto ? `<span class="tome-card__orb"><b>${escapeHtml(String(f['Custo']))}</b><small>${escapeHtml(safeCostUnit(f['CustoUnidade'] || 'MP'))}</small></span>` : ''}
         </div>
         <div class="tome-card__medal ${e.image ? 'has-img' : ''}" aria-hidden="true">
           <span class="tome-card__medal-ring"></span>
@@ -4925,7 +4915,7 @@
     const f = (entry && entry.fields) || {};
     const history = entry ? normalizeSpellHistoricalFields(f, entry.title) : {};
     const costValue = parseInt((f['Custo'] ?? it.costValue ?? ''), 10);
-    const costUnit = String(f['CustoUnidade'] || it.costUnit || 'MP').trim() || 'MP';
+    const costUnit = safeCostUnit(String(f['CustoUnidade'] || it.costUnit || 'MP').trim() || 'MP');
     const costText = Number.isFinite(costValue) && costValue > 0 ? `${costValue} ${costUnit}` : '';
     return {
       costValue: Number.isFinite(costValue) && costValue > 0 ? costValue : 0,
