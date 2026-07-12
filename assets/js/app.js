@@ -651,6 +651,65 @@
     return found ? found.cssClass : 'rarity-chip--default';
   };
 
+  const EMPTY_BEAST_FILTERS = { threat: '', type: '', habitat: '' };
+  function normalizeBeastFilters(filters) {
+    const source = filters || {};
+    return {
+      threat: String(source.threat || '').trim(),
+      type: String(source.type || '').trim(),
+      habitat: String(source.habitat || '').trim()
+    };
+  }
+  function hasBeastFilters(filters) {
+    const normalized = normalizeBeastFilters(filters);
+    return !!(normalized.threat || normalized.type || normalized.habitat);
+  }
+  function beastFilterOptions(entries, key) {
+    const counts = new Map();
+    entries.forEach((entry) => {
+      const value = String((entry.fields || {})[key] || '').trim();
+      if (!value) return;
+      const normalized = normalize(value);
+      const current = counts.get(normalized) || { value, count: 0 };
+      current.count += 1;
+      counts.set(normalized, current);
+    });
+    return [...counts.values()].sort((a, b) => a.value.localeCompare(b.value, 'pt-BR'));
+  }
+  function beastCategoryFiltersHTML(entries, filters, open = false) {
+    const active = normalizeBeastFilters(filters);
+    const groups = [
+      { key: 'threat', label: 'Perigo', rows: BEAST_THREATS.map((item) => ({ value: item.value, count: entries.filter((entry) => normalize((entry.fields || {}).Perigo) === normalize(item.value)).length })).filter((item) => item.count) },
+      { key: 'type', label: 'Tipo', rows: beastFilterOptions(entries, 'Tipo') },
+      { key: 'habitat', label: 'Habitat', rows: beastFilterOptions(entries, 'Habitat') }
+    ];
+    if (!groups.some((group) => group.rows.length)) return '';
+    return `
+      <section class="beast-filter-panel ${open ? 'is-open' : ''}" aria-label="Filtros do Bestiário" ${open ? '' : 'hidden'}>
+        <div class="beast-filter-panel__head">
+          <div>
+            <strong>Refinar acervo</strong>
+            <span>Encontre criaturas pela ameaça, natureza ou território.</span>
+          </div>
+          ${hasBeastFilters(active) ? '<button type="button" class="beast-filter-reset" data-beast-filter-reset>Limpar filtros</button>' : ''}
+        </div>
+        <div class="beast-filter-groups">
+          ${groups.map((group) => group.rows.length ? `
+            <div class="beast-filter-group">
+              <span class="beast-filter-group__label">${escapeHtml(group.label)}</span>
+              <div class="beast-filter-group__chips">
+                <button type="button" class="beast-filter-chip ${!active[group.key] ? 'is-active' : ''}" data-beast-filter="${group.key}" data-beast-filter-value="">Todos</button>
+                ${group.rows.map((row) => `
+                  <button type="button" class="beast-filter-chip ${normalize(active[group.key]) === normalize(row.value) ? 'is-active' : ''}"
+                          data-beast-filter="${group.key}" data-beast-filter-value="${escapeHtml(row.value)}">
+                    <span>${escapeHtml(row.value)}</span><small>${row.count}</small>
+                  </button>`).join('')}
+              </div>
+            </div>` : '').join('')}
+        </div>
+      </section>`;
+  }
+
   const BEAST_VITALS = ['Defesa'];
   const BEAST_SECTIONS = [
     {
@@ -679,6 +738,16 @@
         { key: 'PartesHP', type: 'hpParts' },
         { key: 'Defesa', type: 'text', default: '12' },
         { key: 'Mana', type: 'mana', default: '', placeholder: 'Opcional — ex.: 30/30' }
+      ]
+    },
+    {
+      id: 'orientacao',
+      title: 'Guia do Mestre',
+      fields: [
+        { key: 'Sinais', type: 'textarea', placeholder: 'Pistas, rastros ou presságios que anunciam a criatura.' },
+        { key: 'Comportamento', type: 'textarea', placeholder: 'Como ela reage, caça, foge, protege território ou negocia.' },
+        { key: 'Fraquezas', type: 'textarea', placeholder: 'Vulnerabilidades conhecidas, limitações e formas de evitá-la.' },
+        { key: 'Condução', type: 'textarea', placeholder: 'Orientações para interpretar e apresentar a criatura na história.' }
       ]
     },
     {
@@ -749,7 +818,7 @@
   }
 
   function defaultBeastHpParts() {
-    return RACE_HP_PARTS.map((name) => ({ name, hp: defaultHpFor(name) }));
+    return [{ name: 'Corpo', hp: '' }];
   }
 
   function normalizeBeastHpParts(raw) {
@@ -792,6 +861,14 @@
   function beastHpPartsForView(fields) {
     const parts = normalizeBeastHpParts((fields || {}).PartesHP);
     return parts.length ? parts : legacyBeastHpParts(fields);
+  }
+
+  function beastHpTotal(fields) {
+    return beastHpPartsForView(fields).reduce((total, part) => {
+      const match = String(part.hp || '').replace(',', '.').match(/\d+(?:\.\d+)?/);
+      const value = Number(match ? match[0] : 0);
+      return total + (Number.isFinite(value) ? value : 0);
+    }, 0);
   }
 
   function normalizeBeastDrops(raw) {
@@ -2603,8 +2680,10 @@
     const all = entriesIn(tabId);
     const q = normalize(query || '');
     const spellTab = isMagiasTab(tabId);
+    const beastTab = tabId === 'Bestiario';
     const tag = spellTab ? '' : tagKey(selectedTag || '');
     const spellFilter = normalizeSpellFilters(spellFilters);
+    const beastFilter = normalizeBeastFilters(categoryState[tabId]?.beast || EMPTY_BEAST_FILTERS);
     const tagStats = categoryTagStats(all);
     const list = all.filter((e) => {
       const entryTags = sanitizeTags(e.tags);
@@ -2619,6 +2698,12 @@
         if (spellFilter.era && history.eraVersao !== spellFilter.era) return false;
         if (spellFilter.classification && history.classificacao !== spellFilter.classification) return false;
       }
+      if (beastTab) {
+        const fields = e.fields || {};
+        if (beastFilter.threat && normalize(fields.Perigo) !== normalize(beastFilter.threat)) return false;
+        if (beastFilter.type && normalize(fields.Tipo) !== normalize(beastFilter.type)) return false;
+        if (beastFilter.habitat && normalize(fields.Habitat) !== normalize(beastFilter.habitat)) return false;
+      }
       if (!q) return true;
       const tagText = entryTags.map((t) => t.label).join(' ');
       const hay = [e.title, e.summary, tagText, ...(e.body || []), e.bodyHtml || '', ...fieldSearchValues(e.fields || {})].join(' ');
@@ -2626,38 +2711,42 @@
     });
 
     const showCreate = isCreatable(tabId) && auth.isAdmin;
-    const totalCards = list.length + (showCreate && !spellTab ? 1 : 0);
+    const totalCards = list.length + (showCreate && !spellTab && !beastTab ? 1 : 0);
     const activeTagLabel = !spellTab ? (tagStats.find((t) => t.key === tag)?.label || '') : '';
     const spellFiltersOpen = spellTab && !!(categoryState[tabId]?.spellFiltersOpen);
+    const beastFiltersOpen = beastTab && !!(categoryState[tabId]?.beastFiltersOpen);
     const spellFilterLabels = spellActiveFilterLabels(spellFilter);
+    const beastFilterLabels = Object.values(beastFilter).filter(Boolean);
     const spellLineageCount = spellTab ? new Set(all.map((entry) => spellLineageKey(entry))).size : 0;
     const visibleCountLabel = spellTab
       ? `${list.length} ${list.length === 1 ? 'magia vis\u00edvel' : 'magias vis\u00edveis'}`
-      : `${totalCards} ${totalCards === 1 ? 'item' : 'itens'}`;
+      : beastTab
+        ? `${list.length} ${list.length === 1 ? 'criatura visível' : 'criaturas visíveis'}`
+        : `${totalCards} ${totalCards === 1 ? 'item' : 'itens'}`;
 
     return `
-      <section class="cat-hero ${spellTab ? 'cat-hero--magias' : ''}" style="--hue:${theme.hue}">
+      <section class="cat-hero ${spellTab ? 'cat-hero--magias' : ''} ${beastTab ? 'cat-hero--bestiario' : ''}" style="--hue:${theme.hue}">
         <div class="cat-hero__icon">${iconOf(tabId)}</div>
         <div class="cat-hero__body">
           <span class="cat-hero__eyebrow">${escapeHtml(theme.label)}</span>
           <h1 class="cat-hero__title" data-text-reveal>${escapeHtml(tab.title)}</h1>
           <p class="cat-hero__tone">${escapeHtml(tab.tone || '')}</p>
           <div class="cat-hero__meta">
-            <span class="badge"><strong>${all.length}</strong> ${spellTab ? (all.length === 1 ? 'magia' : 'magias') : (all.length === 1 ? 'história' : 'histórias')}</span>
+            <span class="badge"><strong>${all.length}</strong> ${spellTab ? (all.length === 1 ? 'magia' : 'magias') : beastTab ? (all.length === 1 ? 'criatura' : 'criaturas') : (all.length === 1 ? 'história' : 'histórias')}</span>
             ${spellTab ? `<span class="badge badge-soft"><strong>${spellLineageCount}</strong> ${spellLineageCount === 1 ? 'linhagem' : 'linhagens'}</span>` : (showCreate ? '<span class="badge badge-soft">Cria\u00e7\u00e3o aberta</span>' : '')}
           </div>
         </div>
-        ${spellTab && showCreate ? `
-          <a href="#/${tabId}/criar" class="spell-primary-action" aria-label="Criar nova magia">
+        ${(spellTab || beastTab) && showCreate ? `
+          <a href="#/${tabId}/criar" class="spell-primary-action ${beastTab ? 'beast-primary-action' : ''}" aria-label="Criar nova ${beastTab ? 'criatura' : 'magia'}">
             <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
-            <span>Nova magia</span>
+            <span>Nova ${beastTab ? 'criatura' : 'magia'}</span>
           </a>` : ''}
       </section>
 
-      <section class="filter-bar ${spellTab ? 'filter-bar--magias' : ''}">
+      <section class="filter-bar ${spellTab ? 'filter-bar--magias' : ''} ${beastTab ? 'filter-bar--bestiario' : ''}">
         <label class="filter-search">
           <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
-          <input id="catSearch" type="search" placeholder="${spellTab ? 'Buscar magia, linhagem, efeito...' : `Filtrar em ${escapeHtml(tab.title)}...`}" value="${escapeHtml(query || '')}" autocomplete="off">
+          <input id="catSearch" type="search" placeholder="${spellTab ? 'Buscar magia, linhagem, efeito...' : (beastTab ? 'Buscar criatura, habitat, habilidade...' : `Filtrar em ${escapeHtml(tab.title)}...`)}" value="${escapeHtml(query || '')}" autocomplete="off">
         </label>
         <span class="filter-count">${escapeHtml(visibleCountLabel)}</span>
         ${spellTab ? `
@@ -2665,6 +2754,11 @@
             <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h16M7 12h10M10 18h4"/></svg>
             <span>Filtros</span>
             ${spellFilterLabels.length ? `<b>${spellFilterLabels.length}</b>` : ''}
+          </button>` : beastTab && all.length ? `
+          <button type="button" class="beast-filter-toggle ${beastFiltersOpen ? 'is-open' : ''}" data-beast-filter-toggle aria-expanded="${beastFiltersOpen ? 'true' : 'false'}">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h16M7 12h10M10 18h4"/></svg>
+            <span>Filtros</span>
+            ${beastFilterLabels.length ? `<b>${beastFilterLabels.length}</b>` : ''}
           </button>` : ''}
       </section>
 
@@ -2676,6 +2770,8 @@
       ${spellTab ? spellEraRailHTML(all, spellFilter) : ''}
 
       ${spellTab ? spellCategoryFiltersHTML(all, spellFilter, spellFiltersOpen) : ''}
+
+      ${beastTab ? beastCategoryFiltersHTML(all, beastFilter, beastFiltersOpen) : ''}
 
       ${(!spellTab && tagStats.length) ? `
         <section class="tag-filter" aria-label="Filtrar por tag">
@@ -2697,10 +2793,10 @@
         </div>
       ` : ''}
 
-      ${(list.length === 0 && (!showCreate || spellTab)) ? emptyStateHTML(tab) : `
-        <section class="entry-grid ${spellTab ? 'entry-grid--magias' : ''}">
-          ${showCreate && !spellTab ? createCardHTML(tabId) : ''}
-          ${list.map((e, i) => entryCardHTML(e, i + ((showCreate && !spellTab) ? 1 : 0))).join('')}
+      ${(list.length === 0 && (!showCreate || spellTab || beastTab)) ? emptyStateHTML(tab) : `
+        <section class="entry-grid ${spellTab ? 'entry-grid--magias' : ''} ${beastTab ? 'entry-grid--bestiario' : ''}">
+          ${showCreate && !spellTab && !beastTab ? createCardHTML(tabId) : ''}
+          ${list.map((e, i) => entryCardHTML(e, i + ((showCreate && !spellTab && !beastTab) ? 1 : 0))).join('')}
         </section>
       `}
     `;
@@ -2723,8 +2819,43 @@
     `;
   }
 
+  function beastCardHTML(entry, index) {
+    const theme = themeOf(entry.tab);
+    const fields = entry.fields || {};
+    const tags = sanitizeTags(entry.tags);
+    const parts = beastHpPartsForView(fields);
+    const totalHp = beastHpTotal(fields);
+    const abilities = normalizeBeastAbilities(fields.Habilidades);
+    return `
+      <a href="#/${entry.tab}/${entry.id}" class="entry-card entry-card--beast" style="--hue:${theme.hue};--delay:${index * 40}ms">
+        <div class="beast-card__media ${entry.image ? '' : 'is-fallback'}">
+          ${entry.image ? `<img loading="lazy" src="${entry.image}" alt="" onerror="this.parentElement.classList.add('is-fallback')">` : ''}
+          <div class="beast-card__fallback">${iconOf(entry.tab)}</div>
+          <div class="beast-card__shade"></div>
+          <span class="rarity-chip ${threatCssClass(fields.Perigo)}">${escapeHtml(fields.Perigo || 'Perigo não definido')}</span>
+        </div>
+        <div class="beast-card__body">
+          <div class="beast-card__identity">
+            <div>
+              <span class="beast-card__type">${escapeHtml(fields.Tipo || 'Criatura')}</span>
+              <h3>${escapeHtml(entry.title)}</h3>
+            </div>
+            <span class="beast-card__arrow" aria-hidden="true">→</span>
+          </div>
+          ${entry.summary ? `<p>${escapeHtml(entry.summary)}</p>` : '<p>Sem resumo cadastrado.</p>'}
+          <div class="beast-card__facts">
+            <span><small>Habitat</small><strong>${escapeHtml(fields.Habitat || '—')}</strong></span>
+            <span><small>Vitalidade</small><strong>${totalHp ? `${totalHp} HP` : `${parts.length} ${parts.length === 1 ? 'parte' : 'partes'}`}</strong></span>
+            <span><small>Habilidades</small><strong>${abilities.length}</strong></span>
+          </div>
+          ${tags.length ? `<div class="beast-card__tags">${tags.slice(0, 3).map((tag) => tagChipHTML(tag, 'story-tag story-tag--card')).join('')}</div>` : ''}
+        </div>
+      </a>`;
+  }
+
   function entryCardHTML(e, i) {
     if (isMagiasTab(e.tab)) return spellCardHTML(e, i);
+    if (e.tab === 'Bestiario') return beastCardHTML(e, i);
     const theme = themeOf(e.tab);
     const fieldKeys = Object.keys(e.fields || {});
     const tags = sanitizeTags(e.tags);
@@ -2931,7 +3062,7 @@
           : isRacas
             ? 'Anexe uma imagem 2:3, preencha as três seções do dossiê e descreva a raça.'
             : isBestiario
-              ? 'Anexe uma imagem 3:4, preencha a ficha (natureza, habilidades e vitalidade) e descreva a criatura.'
+              ? 'Anexe uma imagem 3:4 e organize natureza, vitalidade, instruções, espólios e habilidades.'
               : 'Preencha o banner, o título e o relato. Use a barra de ferramentas para formatar e colorir o texto.');
     const heroH1 = editing
       ? `Editar ${isItens ? 'item' : (isRacas ? 'raça' : (isBestiario ? 'criatura' : 'história'))} · `
@@ -4455,6 +4586,125 @@
       `;
     }
 
+    function renderBestiaryEntry(actionsMarkup) {
+      const data = e.fields || {};
+      const hpParts = beastHpPartsForView(data);
+      const abilities = normalizeBeastAbilities(data.Habilidades);
+      const drops = normalizeBeastDrops(data.Drops);
+      const guideFields = ['Sinais', 'Comportamento', 'Fraquezas', 'Condução']
+        .map((key) => [key, String(data[key] || '').trim()])
+        .filter(([, value]) => value);
+      const natureFields = ['Tipo', 'Habitat', 'Instinto']
+        .map((key) => [key, String(data[key] || '').trim()])
+        .filter(([, value]) => value);
+      const attrs = normalizeBeastAttributes(data.Atributos, false);
+      const description = e.bodyHtml
+        ? `<div class="rt-content">${sanitizeHtml(e.bodyHtml)}</div>`
+        : (e.body || []).map((paragraph) => `<p>${escapeHtml(paragraph)}</p>`).join('');
+
+      const cardHead = (label, meta = '') => `
+        <header class="beast-entry-section__head">
+          <h2>${escapeHtml(label)}</h2>
+          ${meta ? `<span>${escapeHtml(meta)}</span>` : ''}
+        </header>`;
+
+      const anatomyMarkup = `
+        <section class="beast-entry-section beast-entry-section--anatomy">
+          ${cardHead('Vitalidade anatômica', `${hpParts.length} ${hpParts.length === 1 ? 'campo de HP' : 'campos de HP'}`)}
+          ${hpParts.length ? `<div class="beast-entry-hp-grid">
+            ${hpParts.map((part) => `<div class="beast-entry-hp"><span>${escapeHtml(part.name)}</span><strong>${escapeHtml(part.hp || '—')}<small>HP</small></strong></div>`).join('')}
+          </div>` : '<p class="beast-entry-empty">Nenhum campo de HP cadastrado.</p>'}
+          <div class="beast-entry-vitals">
+            <span><small>Defesa</small><strong>${escapeHtml(data.Defesa || '—')}</strong></span>
+            <span><small>Mana</small><strong>${escapeHtml(data.Mana || '—')}</strong></span>
+          </div>
+        </section>`;
+
+      const attributesMarkup = Object.keys(attrs).length ? `
+        <section class="beast-entry-section beast-entry-section--attributes">
+          ${cardHead('Atributos', 'Valor e modificador')}
+          <div class="beast-entry-attributes">
+            ${CHAR_ATTRIBUTES.map((attr) => {
+              const score = attrs[attr] != null ? attrs[attr] : CHAR_ATTR_BASE;
+              return `<div><span>${escapeHtml(attr)}</span><strong>${escapeHtml(String(score))}</strong><small>${fmtMod(beastAttrMod(score))}</small></div>`;
+            }).join('')}
+          </div>
+        </section>` : '';
+
+      const abilitiesMarkup = `
+        <section class="beast-entry-section beast-entry-section--abilities">
+          ${cardHead('Habilidades', `${abilities.length} ${abilities.length === 1 ? 'registro' : 'registros'}`)}
+          ${abilities.length ? `<div class="beast-entry-abilities">
+            ${abilities.map((ability, index) => {
+              const hasCodex = ability.source === 'magic' && ability.refId && entryById(ability.refId);
+              const detail = ability.effect || ability.summary || ability.trigger || 'Sem descrição.';
+              const meta = [ability.cost, ability.range, ability.duration].filter(Boolean);
+              return `<article class="beast-entry-ability">
+                <button type="button" data-beast-ability-index="${index}">
+                  <span class="beast-entry-ability__icon" aria-hidden="true">${ability.kind === 'Passiva' ? '◇' : '✦'}</span>
+                  <span class="beast-entry-ability__content"><span><strong>${escapeHtml(ability.name)}</strong><em>${escapeHtml(ability.kind)}</em></span><small>${escapeHtml(detail)}</small></span>
+                  ${meta.length ? `<span class="beast-entry-ability__meta">${meta.map((item) => `<b>${escapeHtml(item)}</b>`).join('')}</span>` : ''}
+                </button>
+                ${hasCodex ? `<a href="#/Magias/${encodeURIComponent(ability.refId)}" aria-label="Abrir ${escapeHtml(ability.name)} no Codex">Codex</a>` : ''}
+              </article>`;
+            }).join('')}
+          </div>` : '<p class="beast-entry-empty">Nenhuma habilidade cadastrada.</p>'}
+        </section>`;
+
+      const dropsMarkup = (drops.length || data.Espólio || data.Espolio) ? `
+        <section class="beast-entry-section beast-entry-section--drops">
+          ${cardHead('Espólios', `${drops.length} ${drops.length === 1 ? 'item' : 'itens'}`)}
+          ${drops.length ? `<div class="beast-entry-drops">${drops.map((drop) => {
+            const linked = drop.refId && entryById(drop.refId);
+            return `<div><span class="beast-entry-drop__icon">◇</span><span>${linked ? `<a href="#/Itens/${encodeURIComponent(drop.refId)}">${escapeHtml(drop.name)}</a>` : `<strong>${escapeHtml(drop.name)}</strong>`}<small>${escapeHtml([drop.quantity, drop.chance ? `${drop.chance}%` : '', drop.note].filter(Boolean).join(' · '))}</small></span></div>`;
+          }).join('')}</div>` : ''}
+          ${(data.Espólio || data.Espolio) ? `<p class="beast-entry-spoil">${escapeHtml(data.Espólio || data.Espolio)}</p>` : ''}
+        </section>` : '';
+
+      return `
+        <article class="entry beast-entry" style="--hue:${theme.hue}">
+          <section class="beast-entry__shell" data-beast-entry-id="${escapeHtml(e.id)}">
+            <header class="beast-entry__header">
+              <nav class="breadcrumb"><a href="#/">Codex</a><span>/</span><a href="#/Bestiario">Bestiário</a><span>/</span><span class="breadcrumb__current">${escapeHtml(e.title)}</span></nav>
+              <div class="beast-entry__title-row">
+                <span class="beast-entry__crest" aria-hidden="true">${iconOf('Bestiario')}</span>
+                <div class="beast-entry__identity">
+                  <span class="section__eyebrow">${escapeHtml(data.Tipo || 'CRIATURA')}</span>
+                  <h1 data-text-reveal>${escapeHtml(e.title)}</h1>
+                  <div class="beast-entry__tags">
+                    ${data.Perigo ? `<span class="rarity-chip ${threatCssClass(data.Perigo)}">${escapeHtml(data.Perigo)}</span>` : ''}
+                    ${tags.map((tag) => tagChipHTML(tag, 'story-tag story-tag--hero')).join('')}
+                  </div>
+                </div>
+                <div class="beast-entry__actions">${actionsMarkup}</div>
+              </div>
+            </header>
+            <div class="beast-entry__layout">
+              <aside class="beast-entry__portrait-column">
+                <div class="beast-entry__portrait ${e.image ? '' : 'is-fallback'}">
+                  ${e.image ? `<img src="${e.image}" alt="${escapeHtml(e.title)}" onerror="this.parentElement.classList.add('is-fallback')">` : ''}
+                  <div class="beast-entry__portrait-fallback">${iconOf('Bestiario')}</div>
+                </div>
+                ${e.summary ? `<p class="beast-entry__summary">${escapeHtml(e.summary)}</p>` : ''}
+                ${natureFields.length ? `<dl class="beast-entry__nature">${natureFields.map(([key, value]) => `<div><dt>${escapeHtml(key)}</dt><dd>${escapeHtml(value)}</dd></div>`).join('')}</dl>` : ''}
+              </aside>
+              <div class="beast-entry__technical">
+                ${anatomyMarkup}
+                ${attributesMarkup}
+                ${abilitiesMarkup}
+                ${dropsMarkup}
+              </div>
+              <aside class="beast-entry__guide">
+                <header><span class="section__eyebrow">INSTRUÇÕES</span><h2>Guia do Mestre</h2><p>Referências para apresentar a criatura com consistência.</p></header>
+                ${guideFields.length ? `<div class="beast-entry-guide-list">${guideFields.map(([key, value]) => `<section><h3>${escapeHtml(key)}</h3><p>${escapeHtml(value).replace(/\n/g, '<br>')}</p></section>`).join('')}</div>` : '<p class="beast-entry-empty">Nenhuma orientação específica cadastrada.</p>'}
+                ${description ? `<section class="beast-entry__description"><h3>Relato</h3>${description}</section>` : ''}
+              </aside>
+            </div>
+          </section>
+          ${relatedMarkup ? `<div class="entry__main entry__main--full">${relatedMarkup}</div>` : ''}
+        </article>`;
+    }
+
     const beastAttrMarkup = isBestiario
       ? renderBeastAttributesCard(null, e.fields || {}, `
           <header class="entry__dossier-head dossier-head--ornate">
@@ -4576,6 +4826,10 @@
         Voltar a ${escapeHtml(tab.title)}
       </a>
     `;
+
+    if (isBestiario) {
+      return renderBestiaryEntry(`${editButton}${deleteButton}${backLink}`);
+    }
 
     if (portrait) {
       return `
@@ -5926,7 +6180,10 @@
     const spellFilterButtons = document.querySelectorAll('[data-spell-filter]');
     const spellResetButtons = document.querySelectorAll('[data-spell-filter-reset]');
     const spellFilterToggle = document.querySelector('[data-spell-filter-toggle]');
-    if (!input && !tagButtons.length && !spellFilterButtons.length && !spellResetButtons.length && !spellFilterToggle) return;
+    const beastFilterButtons = document.querySelectorAll('[data-beast-filter]');
+    const beastFilterReset = document.querySelector('[data-beast-filter-reset]');
+    const beastFilterToggle = document.querySelector('[data-beast-filter-toggle]');
+    if (!input && !tagButtons.length && !spellFilterButtons.length && !spellResetButtons.length && !spellFilterToggle && !beastFilterButtons.length && !beastFilterReset && !beastFilterToggle) return;
 
     const refreshCategory = ({ keepFocus = false, cursor = null } = {}) => {
       const { tab } = parseHash();
@@ -5971,6 +6228,47 @@
         refreshCategory();
       });
     });
+
+    beastFilterButtons.forEach((btn) => {
+      if (btn.dataset.bound) return;
+      btn.dataset.bound = '1';
+      btn.addEventListener('click', () => {
+        const { tab } = parseHash();
+        const state = categoryState[tab] || {};
+        const current = normalizeBeastFilters(state.beast);
+        const key = btn.dataset.beastFilter;
+        if (!Object.prototype.hasOwnProperty.call(current, key)) return;
+        categoryState[tab] = {
+          ...state,
+          beastFiltersOpen: true,
+          beast: { ...current, [key]: btn.dataset.beastFilterValue || '' }
+        };
+        refreshCategory();
+      });
+    });
+
+    if (beastFilterReset && !beastFilterReset.dataset.bound) {
+      beastFilterReset.dataset.bound = '1';
+      beastFilterReset.addEventListener('click', () => {
+        const { tab } = parseHash();
+        categoryState[tab] = {
+          ...(categoryState[tab] || {}),
+          beastFiltersOpen: true,
+          beast: { ...EMPTY_BEAST_FILTERS }
+        };
+        refreshCategory();
+      });
+    }
+
+    if (beastFilterToggle && !beastFilterToggle.dataset.bound) {
+      beastFilterToggle.dataset.bound = '1';
+      beastFilterToggle.addEventListener('click', () => {
+        const { tab } = parseHash();
+        const state = categoryState[tab] || {};
+        categoryState[tab] = { ...state, beastFiltersOpen: !state.beastFiltersOpen };
+        refreshCategory();
+      });
+    }
 
     spellFilterButtons.forEach((btn) => {
       if (btn.dataset.bound) return;
@@ -6542,26 +6840,42 @@
   function raceDossierFormHTML(tabId, values) {
     const v = values || {};
     const cfg = dossierConfigFor(tabId);
-    return `
-      <div class="race-dossier" id="${cfg.rootId}">
-        ${cfg.sections.map((section) => `
-          <div class="dossier-section">
-            <header class="dossier-section__head">
-              <span class="section__eyebrow">${escapeHtml(section.title.toUpperCase())}</span>
-            </header>
-            ${tabId === 'Bestiario' && section.view === 'attributes'
-              ? beastAttributesFormHTML(v)
-              : tabId === 'Bestiario' && section.view === 'vitals'
-                ? beastVitalsFormHTML(v)
-                : tabId === 'Bestiario' && section.view === 'drops'
-                  ? beastDropsFormHTML(v)
-                  : tabId === 'Bestiario' && section.view === 'abilities'
-                    ? beastAbilitiesFormHTML(v)
-                  : section.id === 'hpmp'
+    const sectionContent = (section) => tabId === 'Bestiario' && section.view === 'attributes'
+      ? beastAttributesFormHTML(v)
+      : tabId === 'Bestiario' && section.view === 'vitals'
+        ? beastVitalsFormHTML(v)
+        : tabId === 'Bestiario' && section.view === 'drops'
+          ? beastDropsFormHTML(v)
+          : tabId === 'Bestiario' && section.view === 'abilities'
+            ? beastAbilitiesFormHTML(v)
+            : section.id === 'hpmp'
               ? raceHpFormHTML(v)
               : `<div class="dossier-section__fields">
                    ${section.fields.map((f) => raceFieldFormHTML(f, v[f.key])).join('')}
-                 </div>`}
+                 </div>`;
+    const beastSectionHints = {
+      natureza: 'Identidade, território e instinto da criatura.',
+      atributos: 'Valores usados pelo sistema para testes e resistências.',
+      vitalidade: 'Adicione quantos campos anatômicos de HP forem necessários.',
+      orientacao: 'Instruções para apresentar e conduzir a criatura na história.',
+      drops: 'Itens e espólios que podem ser obtidos.',
+      habilidades: 'Poderes próprios ou magias vinculadas ao Codex.'
+    };
+    return `
+      <div class="race-dossier" id="${cfg.rootId}">
+        ${cfg.sections.map((section, index) => tabId === 'Bestiario' ? `
+          <details class="dossier-section beast-form-section" ${index === 0 ? 'open' : ''}>
+            <summary class="beast-form-section__summary">
+              <span class="beast-form-section__number">${String(index + 1).padStart(2, '0')}</span>
+              <span><strong>${escapeHtml(section.title)}</strong><small>${escapeHtml(beastSectionHints[section.id] || '')}</small></span>
+              <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
+            </summary>
+            <div class="beast-form-section__body">${sectionContent(section)}</div>
+          </details>
+        ` : `
+          <div class="dossier-section">
+            <header class="dossier-section__head"><span class="section__eyebrow">${escapeHtml(section.title.toUpperCase())}</span></header>
+            ${sectionContent(section)}
           </div>
         `).join('')}
       </div>
@@ -6587,6 +6901,15 @@
             `).join('')}
           </div>
         </div>
+      `;
+    }
+    if (field.type === 'textarea') {
+      return `
+        <label class="dossier-field dossier-field--textarea">
+          <span>${escapeHtml(field.key)}</span>
+          <textarea class="create-form__input" data-dossier-field="${escapeHtml(field.key)}"
+                    placeholder="${escapeHtml(field.placeholder || '')}" maxlength="900" rows="4">${escapeHtml(v)}</textarea>
+        </label>
       `;
     }
     if (field.type === 'list') {
@@ -6656,6 +6979,10 @@
     const parts = beastHpPartsForForm(values);
     return `
       <div class="beast-part-builder" data-beast-parts>
+        <div class="beast-part-builder__head">
+          <div><strong>Campos de HP</strong><span>Crie uma anatomia simples ou detalhada.</span></div>
+          <small>Sem limite de campos</small>
+        </div>
         <div class="beast-part-list" data-beast-part-list>
           ${parts.map((part, i) => beastHpPartRowHTML(part, i)).join('')}
         </div>
@@ -6666,7 +6993,7 @@
           <input type="text" class="create-form__input" data-beast-part-custom placeholder="ou nome personalizado..." maxlength="80">
           <button type="button" class="btn btn-ghost" data-beast-part-add>
             <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
-            <span>Adicionar parte</span>
+            <span>Adicionar campo de HP</span>
           </button>
         </div>
       </div>
@@ -7118,7 +7445,7 @@
     return {
       getFields: () => {
         const out = {};
-        root.querySelectorAll('input[data-dossier-field]').forEach((inp) => {
+        root.querySelectorAll('input[data-dossier-field], textarea[data-dossier-field]').forEach((inp) => {
           const k = inp.dataset.dossierField;
           const v = (inp.value || '').trim();
           if (v) out[k] = v;
