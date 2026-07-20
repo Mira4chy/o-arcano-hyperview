@@ -826,7 +826,7 @@
   function beastDaAttribute(fields) {
     const data = fields || {};
     const candidate = data['DA Base'] || data['Atributo de DA'] || data.DA;
-    return CHAR_ATTRIBUTES.includes(candidate) ? candidate : 'Destreza';
+    return CHAR_ATTRIBUTES.includes(candidate) ? candidate : '';
   }
 
   function beastDefenseLevel(fields, key) {
@@ -4621,7 +4621,7 @@
         .filter(([, value]) => value);
       const attrs = normalizeBeastAttributes(data.Atributos, true);
       const daAttr = beastDaAttribute(data);
-      const daDice = beastDiceForScore(attrs[daAttr] != null ? attrs[daAttr] : CHAR_ATTR_BASE);
+      const daDice = daAttr ? beastDiceForScore(attrs[daAttr]) : 0;
       const dfLevel = beastDefenseLevel(data, 'DF');
       const dmLevel = beastDefenseLevel(data, 'DM');
       const description = e.bodyHtml
@@ -4651,8 +4651,8 @@
         <section class="beast-entry-section beast-entry-section--attributes">
           ${cardHead('Atributos', 'Pilhas de teste')}
           <div class="beast-entry-da">
-            <span><small>DA · atributo-base</small><strong>${escapeHtml(daAttr)}</strong></span>
-            <em>${daDice}d6 + 1d12 no início do combate</em>
+            <span><small>DA · atributo-base</small><strong>${escapeHtml(daAttr || 'Não definida')}</strong></span>
+            <em>${daAttr ? `${daDice}d6 + 1d12 no início do combate` : 'Escolha na edição da criatura'}</em>
           </div>
           <div class="beast-entry-attributes">
             ${CHAR_ATTRIBUTES.map((attr) => {
@@ -6983,10 +6983,11 @@
           <strong>Atributo-base da DA</strong>
           <small>Escolha como a criatura evita ser atingida.</small>
         </span>
-        <select class="create-form__input char-select" data-dossier-field="DA Base" aria-label="Atributo-base da DA">
+        <select class="create-form__input char-select" data-dossier-field="DA Base" aria-label="Atributo-base da DA" required>
+          <option value="" disabled ${daAttr ? '' : 'selected'}>— escolher atributo —</option>
           ${CHAR_ATTRIBUTES.map((attr) => `<option value="${escapeHtml(attr)}" ${attr === daAttr ? 'selected' : ''}>${escapeHtml(attr)}</option>`).join('')}
         </select>
-        <span class="beast-da-picker__result" data-beast-da-preview>${beastDiceForScore(attrs[daAttr])}d6 + 1d12</span>
+        <span class="beast-da-picker__result" data-beast-da-preview>${daAttr ? `${beastDiceForScore(attrs[daAttr])}d6 + 1d12` : 'Escolha obrigatória'}</span>
       </label>
       <div class="beast-attr-form">
         ${CHAR_ATTRIBUTES.map((attr) => `
@@ -7463,6 +7464,7 @@
         const daSelect = root.querySelector('[data-dossier-field="DA Base"]');
         const scoreSelect = daSelect && root.querySelector(`[data-beast-attr="${CSS.escape(daSelect.value)}"]`);
         const preview = root.querySelector('[data-beast-da-preview]');
+        if (daSelect && daSelect.value) daSelect.classList.remove('is-invalid');
         if (preview) preview.textContent = `${beastDiceForScore(scoreSelect && scoreSelect.value)}d6 + 1d12`;
       } else if (e.target.matches('[data-beast-ability-source]')) {
         toggleBeastAbilitySource(e.target.closest('[data-beast-ability-row]'));
@@ -8069,6 +8071,17 @@
       const bodyHtml = sanitizeHtml(editor.innerHTML).trim();
       const subtype = dossier.getSubtype();
       const fields = dossier.getFields();
+
+      if (tabId === 'Bestiario' && !fields['DA Base']) {
+        const daSelect = form.querySelector('[data-dossier-field="DA Base"]');
+        const section = daSelect && daSelect.closest('details');
+        if (section) section.open = true;
+        if (daSelect) {
+          daSelect.classList.add('is-invalid');
+          daSelect.focus();
+        }
+        return;
+      }
 
       submitBtn.disabled = true;
       const originalLabel = submitBtn.innerHTML;
