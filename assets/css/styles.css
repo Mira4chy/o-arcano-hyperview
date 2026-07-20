@@ -4165,6 +4165,28 @@ a.beast-drop-item__name:hover { color: var(--primary-3); }
   gap: 10px;
 }
 
+.beast-da-picker {
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) minmax(150px, 0.72fr) auto;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+  padding: 13px;
+  border: 1px solid rgba(232, 89, 111, 0.25);
+  border-radius: 6px;
+  background: rgba(232, 89, 111, 0.055);
+}
+
+.beast-da-picker__copy { display: grid; gap: 4px; }
+.beast-da-picker__copy strong { font-family: 'Cinzel', Georgia, serif; font-size: 0.8rem; }
+.beast-da-picker__copy small { color: var(--muted); font-size: 0.7rem; line-height: 1.35; }
+.beast-da-picker__result {
+  color: #fda4af;
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-size: 0.68rem;
+  white-space: nowrap;
+}
+
 .beast-attr-field {
   display: grid;
   gap: 7px;
@@ -4178,7 +4200,7 @@ a.beast-drop-item__name:hover { color: var(--primary-3); }
   color: var(--muted);
 }
 
-.beast-attr-field input { text-align: center; }
+.beast-attr-field select { text-align: center; }
 
 .beast-part-builder,
 .beast-drop-builder,
@@ -4271,12 +4293,22 @@ a.beast-drop-item__name:hover { color: var(--primary-3); }
   line-height: 1.5;
 }
 
+.beast-vitals-row { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .beast-vitals-row .dossier-field--mana { margin-top: 0; }
+.beast-defense-field em {
+  color: var(--dim);
+  font-size: 0.66rem;
+  font-style: normal;
+  line-height: 1.4;
+}
 .beast-spoil-field { margin-top: 12px; }
 
 @media (max-width: 720px) {
+  .beast-da-picker { grid-template-columns: 1fr; }
+  .beast-da-picker__result { white-space: normal; }
   .beast-attr-grid,
   .beast-attr-form { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .beast-vitals-row,
   .beast-part-row,
   .beast-part-add,
   .beast-drop-row,
@@ -9685,6 +9717,24 @@ a.spell-card__name:hover { color: var(--primary-3); }
 .beast-entry-vitals > span + span { border-left: 1px solid var(--line); }
 .beast-entry-vitals small { display: block; color: var(--dim); font-size: 0.57rem; text-transform: uppercase; }
 .beast-entry-vitals strong { font-family: 'Cinzel', Georgia, serif; }
+.beast-entry-vitals em { display: block; margin-top: 3px; color: var(--muted); font-size: 0.58rem; font-style: normal; }
+.beast-entry-vitals--system { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+
+.beast-entry-da {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  margin-bottom: 9px;
+  padding: 10px 12px;
+  border: 1px solid rgba(232, 89, 111, 0.22);
+  border-radius: 5px;
+  background: rgba(232, 89, 111, 0.055);
+}
+.beast-entry-da > span { display: grid; gap: 2px; }
+.beast-entry-da small { color: var(--dim); font-size: 0.55rem; text-transform: uppercase; }
+.beast-entry-da strong { font-family: 'Cinzel', Georgia, serif; font-size: 0.82rem; }
+.beast-entry-da > em { color: #fda4af; font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 0.62rem; font-style: normal; text-align: right; }
 
 .beast-entry-attributes { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); border: 1px solid var(--line); border-radius: 5px; overflow: hidden; }
 .beast-entry-attributes > div { min-width: 0; padding: 8px 4px; text-align: center; }
@@ -9734,6 +9784,11 @@ a.spell-card__name:hover { color: var(--primary-3); }
   .beast-entry-guide-list { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 20px; }
 }
 
+@media (max-width: 980px) {
+  .beast-entry__title-row { grid-template-columns: 54px minmax(0, 1fr); }
+  .beast-entry__actions { grid-column: 2 / -1; justify-content: flex-start; }
+}
+
 @media (max-width: 760px) {
   .beast-filter-groups { grid-template-columns: 1fr; }
   .beast-filter-panel__head { align-items: stretch; flex-direction: column; }
@@ -9749,6 +9804,10 @@ a.spell-card__name:hover { color: var(--primary-3); }
   .beast-entry__portrait-column { border-right: 0; }
   .beast-entry__portrait { max-height: 620px; }
   .beast-entry__technical { padding: 11px; }
+  .beast-entry-vitals--system { grid-template-columns: 1fr; }
+  .beast-entry-vitals--system > span + span { border-top: 1px solid var(--line); border-left: 0; }
+  .beast-entry-da { align-items: flex-start; flex-direction: column; }
+  .beast-entry-da > em { text-align: left; }
   .beast-entry-attributes { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .beast-entry-attributes > div:nth-child(4) { border-left: 0; }
   .beast-entry-attributes > div:nth-child(n+4) { border-top: 1px solid var(--line); }

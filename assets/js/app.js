@@ -710,7 +710,8 @@
       </section>`;
   }
 
-  const BEAST_VITALS = ['Defesa'];
+  const BEAST_DEFENSE_REDUCTION = [0, 10, 20, 35, 50, 65, 75];
+  const BEAST_VITALS = ['DF', 'DM'];
   const BEAST_SECTIONS = [
     {
       id: 'natureza',
@@ -732,11 +733,12 @@
     },
     {
       id: 'vitalidade',
-      title: 'Vitalidade',
+      title: 'Vitalidade e Defesas',
       view: 'vitals',
       fields: [
         { key: 'PartesHP', type: 'hpParts' },
-        { key: 'Defesa', type: 'text', default: '12' },
+        { key: 'DF', type: 'defense', default: '0' },
+        { key: 'DM', type: 'defense', default: '0' },
         { key: 'Mana', type: 'mana', default: '', placeholder: 'Opcional — ex.: 30/30' }
       ]
     },
@@ -813,8 +815,29 @@
     return out;
   }
 
-  function beastAttrMod(score) {
-    return Math.floor((Number(score || CHAR_ATTR_BASE) - CHAR_ATTR_BASE) / 2);
+  function beastDiceForScore(score) {
+    return Math.max(1, Math.floor((Number(score || CHAR_ATTR_BASE) - CHAR_ATTR_BASE) / 2) + 1);
+  }
+
+  function beastScoreForDice(dice) {
+    return CHAR_ATTR_BASE + (Math.max(1, Number(dice) || 1) - 1) * 2;
+  }
+
+  function beastDaAttribute(fields) {
+    const data = fields || {};
+    const candidate = data['DA Base'] || data['Atributo de DA'] || data.DA;
+    return CHAR_ATTRIBUTES.includes(candidate) ? candidate : 'Destreza';
+  }
+
+  function beastDefenseLevel(fields, key) {
+    const raw = parseInt((fields || {})[key], 10);
+    return Math.max(0, Math.min(BEAST_DEFENSE_REDUCTION.length - 1, Number.isFinite(raw) ? raw : 0));
+  }
+
+  function beastDefensePercent(level) {
+    const parsed = parseInt(level, 10);
+    const safeLevel = Math.max(0, Math.min(BEAST_DEFENSE_REDUCTION.length - 1, Number.isFinite(parsed) ? parsed : 0));
+    return BEAST_DEFENSE_REDUCTION[safeLevel] || 0;
   }
 
   function defaultBeastHpParts() {
@@ -4361,7 +4384,7 @@
     }
 
     function renderVitalsCard(section, data, sectionHead) {
-      // Bestiário: HP anatômico + Defesa como mini-stats, Mana como callout.
+      // Bestiário: HP anatômico + defesas do sistema, Mana como callout.
       const hpParts = beastHpPartsForView(data);
       const stats = BEAST_VITALS.filter((k) => data[k] != null && data[k] !== '');
       const hasMana = data['Mana'] != null && data['Mana'] !== '';
@@ -4380,7 +4403,7 @@
               ${stats.map((k) => `
                 <div class="hp-part">
                   <span class="hp-part__name">${escapeHtml(k)}</span>
-                  <span class="hp-part__value">${escapeHtml(String(data[k]))}</span>
+                  <span class="hp-part__value">Nível ${beastDefenseLevel(data, k)}<em>${beastDefensePercent(beastDefenseLevel(data, k))}%</em></span>
                 </div>
               `).join('')}
             </div>
@@ -4411,8 +4434,7 @@
               return `
                 <div class="beast-attr">
                   <span class="beast-attr__name">${escapeHtml(attr)}</span>
-                  <strong class="beast-attr__score">${escapeHtml(String(score))}</strong>
-                  <em class="beast-attr__mod">${fmtMod(beastAttrMod(score))}</em>
+                  <strong class="beast-attr__score">${beastDiceForScore(score)}d6</strong>
                 </div>
               `;
             }).join('')}
@@ -4597,7 +4619,11 @@
       const natureFields = ['Tipo', 'Habitat', 'Instinto']
         .map((key) => [key, String(data[key] || '').trim()])
         .filter(([, value]) => value);
-      const attrs = normalizeBeastAttributes(data.Atributos, false);
+      const attrs = normalizeBeastAttributes(data.Atributos, true);
+      const daAttr = beastDaAttribute(data);
+      const daDice = beastDiceForScore(attrs[daAttr] != null ? attrs[daAttr] : CHAR_ATTR_BASE);
+      const dfLevel = beastDefenseLevel(data, 'DF');
+      const dmLevel = beastDefenseLevel(data, 'DM');
       const description = e.bodyHtml
         ? `<div class="rt-content">${sanitizeHtml(e.bodyHtml)}</div>`
         : (e.body || []).map((paragraph) => `<p>${escapeHtml(paragraph)}</p>`).join('');
@@ -4610,23 +4636,28 @@
 
       const anatomyMarkup = `
         <section class="beast-entry-section beast-entry-section--anatomy">
-          ${cardHead('Vitalidade anatômica', `${hpParts.length} ${hpParts.length === 1 ? 'campo de HP' : 'campos de HP'}`)}
+          ${cardHead('Vitalidade e defesas', `${hpParts.length} ${hpParts.length === 1 ? 'campo de HP' : 'campos de HP'}`)}
           ${hpParts.length ? `<div class="beast-entry-hp-grid">
             ${hpParts.map((part) => `<div class="beast-entry-hp"><span>${escapeHtml(part.name)}</span><strong>${escapeHtml(part.hp || '—')}<small>HP</small></strong></div>`).join('')}
           </div>` : '<p class="beast-entry-empty">Nenhum campo de HP cadastrado.</p>'}
-          <div class="beast-entry-vitals">
-            <span><small>Defesa</small><strong>${escapeHtml(data.Defesa || '—')}</strong></span>
-            <span><small>Mana</small><strong>${escapeHtml(data.Mana || '—')}</strong></span>
+          <div class="beast-entry-vitals beast-entry-vitals--system">
+            <span><small>DF · dano físico</small><strong>Nível ${dfLevel}</strong><em>${beastDefensePercent(dfLevel)}% de redução</em></span>
+            <span><small>DM · dano mágico</small><strong>Nível ${dmLevel}</strong><em>${beastDefensePercent(dmLevel)}% de redução</em></span>
+            <span><small>Reserva de Mana</small><strong>${escapeHtml(data.Mana || '—')}</strong><em>${data.Mana ? 'recurso arcano' : 'não definida'}</em></span>
           </div>
         </section>`;
 
       const attributesMarkup = Object.keys(attrs).length ? `
         <section class="beast-entry-section beast-entry-section--attributes">
-          ${cardHead('Atributos', 'Valor e modificador')}
+          ${cardHead('Atributos', 'Pilhas de teste')}
+          <div class="beast-entry-da">
+            <span><small>DA · atributo-base</small><strong>${escapeHtml(daAttr)}</strong></span>
+            <em>${daDice}d6 + 1d12 no início do combate</em>
+          </div>
           <div class="beast-entry-attributes">
             ${CHAR_ATTRIBUTES.map((attr) => {
               const score = attrs[attr] != null ? attrs[attr] : CHAR_ATTR_BASE;
-              return `<div><span>${escapeHtml(attr)}</span><strong>${escapeHtml(String(score))}</strong><small>${fmtMod(beastAttrMod(score))}</small></div>`;
+              return `<div><span>${escapeHtml(attr)}</span><strong>${beastDiceForScore(score)}d6</strong></div>`;
             }).join('')}
           </div>
         </section>` : '';
@@ -4670,7 +4701,7 @@
                 <span class="beast-entry__crest" aria-hidden="true">${iconOf('Bestiario')}</span>
                 <div class="beast-entry__identity">
                   <span class="section__eyebrow">${escapeHtml(data.Tipo || 'CRIATURA')}</span>
-                  <h1 data-text-reveal>${escapeHtml(e.title)}</h1>
+                  <h1>${escapeHtml(e.title)}</h1>
                   <div class="beast-entry__tags">
                     ${data.Perigo ? `<span class="rarity-chip ${threatCssClass(data.Perigo)}">${escapeHtml(data.Perigo)}</span>` : ''}
                     ${tags.map((tag) => tagChipHTML(tag, 'story-tag story-tag--hero')).join('')}
@@ -6856,7 +6887,7 @@
     const beastSectionHints = {
       natureza: 'Identidade, território e instinto da criatura.',
       atributos: 'Valores usados pelo sistema para testes e resistências.',
-      vitalidade: 'Adicione quantos campos anatômicos de HP forem necessários.',
+      vitalidade: 'Defina HP anatômico, DF, DM e a reserva de Mana.',
       orientacao: 'Instruções para apresentar e conduzir a criatura na história.',
       drops: 'Itens e espólios que podem ser obtidos.',
       habilidades: 'Poderes próprios ou magias vinculadas ao Codex.'
@@ -6944,13 +6975,29 @@
 
   function beastAttributesFormHTML(values) {
     const attrs = normalizeBeastAttributes(values['Atributos'], true);
+    const daAttr = beastDaAttribute(values);
+    const diceOptions = Array.from({ length: 11 }, (_, index) => index + 1);
     return `
+      <label class="beast-da-picker">
+        <span class="beast-da-picker__copy">
+          <strong>Atributo-base da DA</strong>
+          <small>Escolha como a criatura evita ser atingida.</small>
+        </span>
+        <select class="create-form__input char-select" data-dossier-field="DA Base" aria-label="Atributo-base da DA">
+          ${CHAR_ATTRIBUTES.map((attr) => `<option value="${escapeHtml(attr)}" ${attr === daAttr ? 'selected' : ''}>${escapeHtml(attr)}</option>`).join('')}
+        </select>
+        <span class="beast-da-picker__result" data-beast-da-preview>${beastDiceForScore(attrs[daAttr])}d6 + 1d12</span>
+      </label>
       <div class="beast-attr-form">
         ${CHAR_ATTRIBUTES.map((attr) => `
           <label class="beast-attr-field">
             <span>${escapeHtml(attr)}</span>
-            <input type="number" class="create-form__input" data-beast-attr="${escapeHtml(attr)}"
-                   min="0" max="30" value="${escapeHtml(String(attrs[attr] ?? CHAR_ATTR_BASE))}">
+            <select class="create-form__input char-select" data-beast-attr="${escapeHtml(attr)}" aria-label="Dados de ${escapeHtml(attr)}">
+              ${diceOptions.map((dice) => {
+                const score = beastScoreForDice(dice);
+                return `<option value="${score}" ${dice === beastDiceForScore(attrs[attr]) ? 'selected' : ''}>${dice}d6</option>`;
+              }).join('')}
+            </select>
           </label>
         `).join('')}
       </div>
@@ -6977,6 +7024,17 @@
 
   function beastVitalsFormHTML(values) {
     const parts = beastHpPartsForForm(values);
+    const defenseSelect = (key, label) => {
+      const selected = beastDefenseLevel(values, key);
+      return `
+        <label class="dossier-field beast-defense-field">
+          <span>${escapeHtml(label)}</span>
+          <select class="create-form__input char-select" data-dossier-field="${escapeHtml(key)}">
+            ${BEAST_DEFENSE_REDUCTION.map((pct, level) => `<option value="${level}" ${level === selected ? 'selected' : ''}>Nível ${level} · ${pct}%</option>`).join('')}
+          </select>
+          <em>${key === 'DF' ? 'Reduz dano físico após o acerto.' : 'Reduz dano mágico após o acerto.'}</em>
+        </label>`;
+    };
     return `
       <div class="beast-part-builder" data-beast-parts>
         <div class="beast-part-builder__head">
@@ -6998,14 +7056,10 @@
         </div>
       </div>
       <div class="create-form__row beast-vitals-row">
-        <label class="dossier-field">
-          <span>Defesa</span>
-          <input type="text" class="create-form__input" data-dossier-field="Defesa"
-                 value="${escapeHtml(values['Defesa'] != null ? values['Defesa'] : '12')}"
-                 placeholder="12" maxlength="20">
-        </label>
+        ${defenseSelect('DF', 'Defesa Física · DF')}
+        ${defenseSelect('DM', 'Defesa Mágica · DM')}
         <label class="dossier-field dossier-field--mana">
-          <span>Mana</span>
+          <span>Reserva de Mana</span>
           <input type="text" class="create-form__input" data-dossier-field="Mana"
                  value="${escapeHtml(values['Mana'] != null ? values['Mana'] : '')}"
                  placeholder="Opcional — ex.: 30/30" maxlength="20">
@@ -7405,7 +7459,12 @@
     });
 
     root.addEventListener('change', (e) => {
-      if (e.target.matches('[data-beast-ability-source]')) {
+      if (e.target.matches('[data-beast-attr], [data-dossier-field="DA Base"]')) {
+        const daSelect = root.querySelector('[data-dossier-field="DA Base"]');
+        const scoreSelect = daSelect && root.querySelector(`[data-beast-attr="${CSS.escape(daSelect.value)}"]`);
+        const preview = root.querySelector('[data-beast-da-preview]');
+        if (preview) preview.textContent = `${beastDiceForScore(scoreSelect && scoreSelect.value)}d6 + 1d12`;
+      } else if (e.target.matches('[data-beast-ability-source]')) {
         toggleBeastAbilitySource(e.target.closest('[data-beast-ability-row]'));
       } else if (e.target.matches('[data-beast-ability-ref]')) {
         const row = e.target.closest('[data-beast-ability-row]');
@@ -7445,7 +7504,7 @@
     return {
       getFields: () => {
         const out = {};
-        root.querySelectorAll('input[data-dossier-field], textarea[data-dossier-field]').forEach((inp) => {
+        root.querySelectorAll('input[data-dossier-field], textarea[data-dossier-field], select[data-dossier-field]').forEach((inp) => {
           const k = inp.dataset.dossierField;
           const v = (inp.value || '').trim();
           if (v) out[k] = v;
