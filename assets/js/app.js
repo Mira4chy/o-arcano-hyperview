@@ -5069,10 +5069,6 @@
   function totalDm(c) {
     return clampDefLevel(dmBaseOf(c) + dmFromItems(c));
   }
-  function equippedCount(c) {
-    return (Array.isArray(c.inventory) ? c.inventory : []).filter((it) => it.equipped).length;
-  }
-  const MAX_EQUIPPED = 6;
   /* Atualiza o escudo no DOM sem re-renderizar o bloco inteiro. */
   function refreshDefense(c) {
     document.querySelectorAll('[data-df-total], [data-def-total]').forEach((el) => { el.textContent = totalDf(c); });
@@ -5081,6 +5077,20 @@
     document.querySelectorAll('[data-dm-total]').forEach((el) => { el.textContent = totalDm(c); });
     document.querySelectorAll('[data-dm-items]').forEach((el) => { el.textContent = dmFromItems(c); });
     document.querySelectorAll('[data-dm-pct]').forEach((el) => { el.textContent = defPct(totalDm(c)) + '%'; });
+  }
+  function refreshCharacterVitals(c) {
+    const v = ensureVitals(c);
+    const parts = RACE_HP_PARTS.filter((p) => v.hp && v.hp[p]);
+    const hpCur = parts.reduce((sum, part) => sum + (Number(v.hp[part].cur) || 0), 0);
+    const hpMax = parts.reduce((sum, part) => sum + (Number(v.hp[part].max) || 0), 0);
+    document.querySelectorAll('[data-vital-hp-cur]').forEach((el) => { el.textContent = hpCur; });
+    document.querySelectorAll('[data-vital-hp-max]').forEach((el) => { el.textContent = hpMax; });
+    document.querySelectorAll('[data-vital-hp-fill]').forEach((el) => { el.style.width = vbarPct(hpCur, hpMax) + '%'; });
+    if (v.mana) {
+      document.querySelectorAll('[data-vital-mana-cur]').forEach((el) => { el.textContent = v.mana.cur; });
+      document.querySelectorAll('[data-vital-mana-max]').forEach((el) => { el.textContent = v.mana.max; });
+      document.querySelectorAll('[data-vital-mana-fill]').forEach((el) => { el.style.width = vbarPct(v.mana.cur, v.mana.max) + '%'; });
+    }
   }
   function daAttrOf(c) {
     const idn = (c && c.identity) || {};
@@ -5168,27 +5178,62 @@
     const v = ensureVitals(c);
     syncArcaneCollapse(c);
     const parts = RACE_HP_PARTS.filter((p) => v.hp && v.hp[p]);
-    const head = `<h3 class="fcard__h"><span class="fcard__ico">${FICON.heart}</span>Vitais</h3>`;
-    const shield = defenseShieldHTML(c, canEdit);
-    if (!parts.length && !v.mana) {
-      return head + shield + '<p class="char-empty">Sem HP/Mana definidos. Edite a ficha para preencher.</p>';
-    }
-    const hpRows = parts.map((p) => vitalRowHTML(p, p, v.hp[p], canEdit)).join('');
-    const manaRow = v.mana ? vitalRowHTML('mana', 'Mana', v.mana, canEdit, { mana: true }) : '';
-    return head + shield + `<div class="vrows">${hpRows}${manaRow}</div>`;
+    if (!parts.length) return '<p class="char-empty">Nenhum campo de HP definido.</p>';
+    const positions = {
+      'Cabeça': 'head',
+      'Peito': 'chest',
+      'Abdômen': 'abdomen',
+      'Braço Direito': 'arm-r',
+      'Braço Esquerdo': 'arm-l',
+      'Perna Direita': 'leg-r',
+      'Perna Esquerda': 'leg-l'
+    };
+    const hpRows = parts.map((part) => {
+      const slot = v.hp[part];
+      return `
+        <div class="vrow arc-body-part arc-body-part--${positions[part] || 'other'} ${hpRatioClass(slot.cur, slot.max)}" data-part="${escapeHtml(part)}">
+          <div class="vrow__top">
+            <span class="vrow__name">${escapeHtml(part)}</span>
+            <span class="vrow__num"><strong data-cur>${slot.cur}</strong> / <span data-max>${slot.max}</span></span>
+          </div>
+          <div class="vbar"><span class="vbar__fill" data-fill style="width:${vbarPct(slot.cur, slot.max)}%"></span></div>
+          ${canEdit ? `
+            <div class="vrow__ctl">
+              <input type="number" class="vrow__amt" min="1" value="1" aria-label="Valor para ${escapeHtml(part)}">
+              <button type="button" class="vbtn vbtn--dmg" data-hp="dmg" aria-label="Causar dano em ${escapeHtml(part)}">−</button>
+              <button type="button" class="vbtn vbtn--heal" data-hp="heal" aria-label="Curar ${escapeHtml(part)}">+</button>
+            </div>` : ''}
+        </div>`;
+    }).join('');
+    return `
+      <div class="arc-anatomy-map">
+        <svg class="arc-anatomy-figure" viewBox="0 0 160 360" role="img" aria-label="Silhueta anatômica do personagem">
+          <circle cx="80" cy="35" r="24" fill="none" stroke="currentColor" stroke-width="2"/>
+          <path d="M58 68 Q80 58 102 68 L111 157 Q101 188 96 211 L107 332 M62 332 L66 211 Q58 184 49 157 Z" fill="currentColor" fill-opacity=".05" stroke="currentColor" stroke-width="2"/>
+          <path d="M51 78 L20 170 M109 78 L140 170" fill="none" stroke="currentColor" stroke-width="9" stroke-linecap="round"/>
+          <path d="M80 64 L80 210 M52 127 L108 127 M60 170 L100 170" fill="none" stroke="currentColor" stroke-width="1" opacity=".7"/>
+        </svg>
+        ${hpRows}
+      </div>`;
+  }
+
+  function charManaInner(c, canEdit) {
+    const v = ensureVitals(c);
+    if (!v.mana) return '<p class="char-empty">Este personagem não possui Mana.</p>';
+    return vitalRowHTML('mana', 'Mana', v.mana, canEdit, { mana: true });
   }
 
   function charStatusInner(c, canEdit) {
     const list = Array.isArray(c.statuses) ? c.statuses : [];
-    const head = `<h3 class="fcard__h"><span class="fcard__ico">${FICON.status}</span>Condições</h3>`;
+    const head = `<h3 class="arc-sheet-section__title"><span>${FICON.status}</span>Condições</h3>`;
     const body = list.length
       ? `<div class="status-chips">${list.map((s, i) => `
           <span class="status-chip">${escapeHtml(s.name || '')}${canEdit ? `<button type="button" class="status-chip__x" data-status-remove="${i}" aria-label="Remover ${escapeHtml(s.name || '')}">×</button>` : ''}</span>
         `).join('')}</div>`
-      : '<p class="char-empty">Nenhum status ativo.</p>';
+      : '<p class="char-empty">Nenhuma condição ativa.</p>';
     const adder = canEdit ? `
       <div class="char-add">
-        <input type="text" class="create-form__input" data-status-input placeholder="Adicionar status (ex.: Sangramento)…" maxlength="60">
+        <input type="text" class="create-form__input" data-status-input placeholder="Adicionar condição" maxlength="60">
         <button type="button" class="btn btn-ghost" data-status-add>Adicionar</button>
       </div>` : '';
     return head + body + adder;
@@ -5237,11 +5282,9 @@
     const list = Array.isArray(c.spells) ? c.spells : [];
     const codex = entriesIn('Magias');
     const v = ensureVitals(c);
-    const manaTxt = v.mana ? `${v.mana.cur} / ${v.mana.max}` : '—';
-
     const bar = `
       <div class="spell-bar">
-        <span class="spell-bar__mana">${FICON.mana}<span>Mana ${manaTxt}</span></span>
+        <span class="spell-bar__mana">${FICON.mana}<span>Mana <b data-vital-mana-cur>${v.mana ? v.mana.cur : '—'}</b>${v.mana ? ` / <span data-vital-mana-max>${v.mana.max}</span>` : ''}</span></span>
         <span class="spell-bar__m">Magias conhecidas <b>${list.length}</b></span>
         <span class="spell-bar__spacer"></span>
         ${canEdit ? `<button type="button" class="btn-primary spell-bar__add" data-spell-focus><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>Adicionar magia</button>` : ''}
@@ -5351,16 +5394,11 @@
         ${canEdit ? `<button type="button" class="btn-primary inv-bar__add" data-inv-focus><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>Adicionar item</button>` : ''}
       </div>`;
 
-    const slots = [];
-    for (let s = 0; s < MAX_EQUIPPED; s++) {
-      slots.push(eq[s]
-        ? invSlotHTML(eq[s][0], eq[s][1], canEdit)
-        : `<div class="eq-slot is-empty"><span class="eq-slot__ico"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M12 7v10M7 12h10"/></svg></span></div>`);
-    }
+    const slots = eq.map(([item, index]) => invSlotHTML(item, index, canEdit));
     const equipCol = `
       <div class="fcard inv-equip">
-        <h3 class="fcard__h"><span class="fcard__ico">${FICON.shield}</span>Equipamentos<span class="fcard__count ${eqCount >= MAX_EQUIPPED ? 'is-full' : ''}">${eqCount}/${MAX_EQUIPPED}</span></h3>
-        <div class="eq-grid">${slots.join('')}</div>
+        <h3 class="fcard__h"><span class="fcard__ico">${FICON.shield}</span>Equipamentos<span class="fcard__count">${eqCount}</span></h3>
+        <div class="eq-grid">${slots.length ? slots.join('') : '<p class="char-empty">Nenhum item equipado.</p>'}</div>
       </div>`;
 
     const backpackCol = `
@@ -5391,7 +5429,7 @@
   }
 
   /* ── FICHA (#/Persona/<id>) ───────────────────── */
-  function viewCharacterSheet(id) {
+  function viewCharacterSheetLegacy(id) {
     const c = characterById(id);
     if (!c) return viewNotFound(id);
     const canEdit = auth.isAdmin || (auth.user && c.userId === auth.user.id);
@@ -5632,6 +5670,187 @@
         </div>
       </article>
     `;
+  }
+
+  function viewCharacterSheetFolio(id) {
+    const c = characterById(id);
+    if (!c) return viewNotFound(id);
+    const canEdit = auth.isAdmin || (auth.user && c.userId === auth.user.id);
+    const theme = themeOf('Persona');
+    const tab = tabById('Persona');
+    const { mod } = raceDataFor(c.raceId);
+    const bodyHtml = (c.identity && c.identity.bodyHtml) || '';
+    const awk = normalizeAwakening(c.magic);
+    const isMage = awkIsAcceptedMage(awk);
+    const bonusAttr = awkIsNonMage(awk) ? awk.bonusAttr : '';
+    const A = attrModsView(c, mod, bonusAttr);
+    const idn = c.identity || {};
+    const sc = isMage ? (schoolById(awk.school) || MAGIC_SCHOOLS[0]) : null;
+    const className = isMage ? `Mago${sc && sc.name ? ` · ${sc.name}` : ''}` : 'Não-mago';
+    const v = ensureVitals(c);
+    const hpParts = RACE_HP_PARTS.filter((part) => v.hp && v.hp[part]);
+    const hpCur = hpParts.reduce((sum, part) => sum + (Number(v.hp[part].cur) || 0), 0);
+    const hpMax = hpParts.reduce((sum, part) => sum + (Number(v.hp[part].max) || 0), 0);
+    const level = Math.max(1, Number(idn.level || c.level) || 1);
+    const movement = String(idn.movement || idn.movimento || '9m').trim() || '9m';
+    const daAttr = daAttrOf(c);
+    const daState = daStateOf(c);
+    const daDice = A[daAttr] ? A[daAttr].dice : 1;
+    const daRead = daState.destiny ? destinyReading(daState.destiny) : null;
+    const playerName = (idn.ownerLabel || (auth.user && c.userId === auth.user.id ? (auth.user.name || auth.user.email) : '')) || '—';
+    const skills = Array.isArray(c.skills) ? c.skills : [];
+    const showGrimoire = isMage || (Array.isArray(c.spells) && c.spells.length > 0);
+    const awakeningLabel = awk.schoolRoll ? `1d100 · ${awk.schoolRoll}` : (awk.resolved ? 'Mundano' : '—');
+
+    const headerLine = (label, value) => `
+      <span class="arc-character-line"><small>${label}</small><strong>${escapeHtml(value || 'Não registrado')}</strong></span>`;
+    const summaryVital = (cls, icon, label, value, detail = '', fill = '') => `
+      <div class="arc-summary-vital arc-summary-vital--${cls}">
+        <span class="arc-summary-vital__label"><span>${icon}</span>${label}</span>
+        <span class="arc-summary-vital__value">${value}${detail ? `<small>${detail}</small>` : ''}</span>
+        ${fill ? `<span class="arc-summary-vital__bar"><i ${cls === 'hp' ? 'data-vital-hp-fill' : 'data-vital-mana-fill'} style="width:${fill}"></i></span>` : ''}
+      </div>`;
+
+    const attrSection = `
+      <section class="arc-sheet-section" data-roll-scope>
+        <h3 class="arc-sheet-section__title"><span>${FICON.attr}</span>Atributos</h3>
+        <div class="arc-attribute-grid">
+          ${CHAR_ATTRIBUTES.map((attr) => {
+            const cell = A[attr];
+            const note = cell.bonus ? 'despertar' : (Number((mod && mod[attr]) || 0) ? 'raça' : '');
+            const dice = Math.max(1, cell.dice || 1);
+            return `<button type="button" class="arc-attribute" data-save-roll="${escapeHtml(attr)}" data-save-dice="${dice}" aria-label="Rolar ${escapeHtml(attr)}: ${fmtDice(dice)} mais 1d12">
+              <span class="arc-attribute__die">d6</span>
+              <span class="arc-attribute__name">${escapeHtml(attr)}${note ? `<small>${note}</small>` : ''}</span>
+              <span class="arc-attribute__dice">${fmtDice(dice)} <small>+1d12</small></span>
+              <strong>${cell.score}</strong>
+            </button>`;
+          }).join('')}
+        </div>
+        <div class="saves-roll arc-inline-roll" data-save-result hidden></div>
+      </section>`;
+
+    const narrativeSection = `
+      <section class="arc-sheet-section">
+        <h3 class="arc-sheet-section__title"><span>${FICON.feat}</span>Identidade narrativa</h3>
+        <dl class="arc-ledger">
+          <div><dt>Papel</dt><dd>${escapeHtml(idn.papel || 'Não registrado')}</dd></div>
+          <div><dt>Desejo</dt><dd>${escapeHtml(idn.desejo || 'Não registrado')}</dd></div>
+          <div><dt>Ferida</dt><dd>${escapeHtml(idn.ferida || 'Não registrada')}</dd></div>
+          <div><dt>Perícias e talentos</dt><dd>${skills.length ? escapeHtml(skills.join(', ')) : 'Nenhum registrado'}</dd></div>
+        </dl>
+      </section>`;
+
+    const featItems = [];
+    if (isMage && sc) featItems.push([FICON.spark, sc.name, sc.lore]);
+    if (isMage) featItems.push([FICON.status, 'Fragilidade Arcana', '−1d6 nos testes de Resistência contra exaustão prolongada, doença, sangramento ou recuperação física.']);
+    if (isMage) featItems.push([FICON.mana, 'Colapso Arcano', 'Ao chegar a 0 de Mana, o Mago fica inconsciente e incapaz de agir.']);
+    if (awk.resolved && !isMage) featItems.push([FICON.feat, 'Caminho mundano', `Sem Mana natural · +1 nível de HP${bonusAttr ? ` · +1 ${bonusAttr}` : ''}${awk.renounced ? ' · Mana renunciada' : ''}`]);
+    const arcaneSection = `
+      <section class="arc-sheet-section arc-sheet-section--arcane">
+        <h3 class="arc-sheet-section__title"><span>${FICON.spark}</span>Natureza arcana</h3>
+        <dl class="arc-ledger arc-ledger--compact">
+          <div><dt>Condição</dt><dd>${isMage ? 'Mago' : 'Não-mago'}</dd></div>
+          ${isMage && sc ? `<div><dt>Afinidade</dt><dd>${escapeHtml(sc.name)}</dd></div>` : ''}
+          <div><dt>Despertar</dt><dd>${escapeHtml(awakeningLabel)}</dd></div>
+        </dl>
+        <div class="arc-feature-list">
+          ${featItems.map(([icon, title, description]) => `<div class="arc-feature"><span>${icon}</span><div><strong>${escapeHtml(title)}</strong><p>${escapeHtml(description)}</p></div></div>`).join('')}
+        </div>
+      </section>`;
+
+    const daBlock = `
+      <div class="arc-da-block">
+        <span class="arc-da-block__mark">${FICON.shield}</span>
+        <div><small>Dificuldade de Acerto</small><strong data-da-total>${daState.value || '—'}</strong></div>
+        <div class="arc-da-block__base"><small>Atributo base</small><b>${escapeHtml(daAttr)} · ${fmtDice(daDice)}</b></div>
+      </div>
+      ${daState.value ? `<p class="arc-rule-note">Destino ${daState.destiny || '—'}${daRead ? ` · ${escapeHtml(daRead.title)}` : ''}. Este valor permanece durante o confronto.</p>` : '<p class="arc-rule-note">Role no início de cada confronto. O resultado permanece durante toda a luta.</p>'}
+      ${canEdit ? `<button type="button" class="btn btn-ghost arc-da-roll" data-da-roll data-da-attr="${escapeHtml(daAttr)}" data-da-dice="${daDice}">${FICON.dice}<span data-da-roll-label>${daState.value ? 'Rerrolar DA' : 'Rolar DA'}</span></button>` : ''}
+      <div class="saves-roll" data-da-result ${daState.value ? '' : 'hidden'}>${daState.value ? rollResultHTML(daState.attr, { dice: daState.dice || daDice, d6s: daState.d6s || [], destiny: daState.destiny || 0, total: daState.value }, 'DA') : ''}</div>`;
+
+    const testsSection = `
+      <section class="arc-sheet-section" data-roll-scope>
+        <h3 class="arc-sheet-section__title"><span>${FICON.dice}</span>Testes de atributo</h3>
+        <div class="arc-test-grid">
+          ${CHAR_ATTRIBUTES.map((attr) => {
+            const dice = Math.max(1, A[attr].dice || 1);
+            return `<button type="button" class="res-row res-row--roll" data-save-roll="${escapeHtml(attr)}" data-save-dice="${dice}"><span class="res-row__l">${escapeHtml(attr)}</span><span class="res-row__f">${fmtDice(dice)}<em>+1d12</em></span></button>`;
+          }).join('')}
+          ${isMage ? (() => {
+            const dice = Math.max(1, (A[CHAR_RES_ATTR] ? A[CHAR_RES_ATTR].dice : 1) - 1);
+            return `<button type="button" class="res-row res-row--roll arc-test--fragility" data-save-roll="Resistência física prolongada" data-save-dice="${dice}" title="Fragilidade Arcana: −1d6"><span class="res-row__l">Resistência física</span><span class="res-row__f">${fmtDice(dice)}<em>fragilidade</em></span></button>`;
+          })() : ''}
+        </div>
+        <div class="saves-roll" data-save-result hidden></div>
+      </section>`;
+
+    const bodyMarkup = bodyHtml ? `<div class="arc-history-copy rt-content">${sanitizeHtml(bodyHtml)}</div>` : '<p class="char-empty">Nenhuma história escrita ainda.</p>';
+    const tabs = [
+      { id: 'geral', label: 'Identidade' },
+      { id: 'combate', label: 'Confronto' },
+      { id: 'inventario', label: 'Equipamento' },
+      ...(showGrimoire ? [{ id: 'magias', label: 'Grimório' }] : []),
+      { id: 'historia', label: 'História' }
+    ];
+
+    return `
+      <article class="entry char-sheet char-sheet--folio" id="charSheet" style="--hue:${theme.hue}" data-char-id="${escapeHtml(c.id)}" data-can-edit="${canEdit ? '1' : '0'}">
+        <nav class="breadcrumb"><a href="#/">Codex</a><span>/</span><a href="#/Persona">${escapeHtml(tab.title)}</a><span>/</span><span class="breadcrumb__current">${escapeHtml(c.name || 'Ficha')}</span></nav>
+
+        <div class="arc-folio">
+          <header class="arc-folio-head">
+            <div class="arc-folio-portrait">
+              ${c.image ? `<img src="${c.image}" alt="Retrato de ${escapeHtml(c.name || 'personagem')}" onerror="this.parentElement.classList.add('is-fallback')">` : ''}
+              <div class="char-hero__fallback">${iconOf('Persona')}</div>
+            </div>
+            <div class="arc-folio-identity">
+              <p class="arc-folio-kicker">Ficha de personagem</p>
+              <h1 data-text-reveal>${escapeHtml(c.name || 'Sem nome')}</h1>
+              <p class="arc-folio-class">${escapeHtml(c.raceName || 'Raça não definida')} · ${escapeHtml(className)}</p>
+              <div class="arc-character-lines">${headerLine('Papel', idn.papel)}${headerLine('Jogador', playerName)}${headerLine('Desejo', idn.desejo)}${headerLine('Ferida', idn.ferida)}</div>
+            </div>
+            <div class="arc-folio-actions">
+              <span class="arc-level-seal"><strong>${level}</strong><small>Nível</small></span>
+              ${canEdit ? `<div class="arc-folio-actions__buttons">
+                <a class="btn-line" href="#/Persona/${encodeURIComponent(c.id)}/editar"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg><span>Editar</span></a>
+                <button type="button" class="btn-line btn-line--danger" data-delete-character="${escapeHtml(c.id)}" aria-label="Apagar ficha">×</button>
+              </div>` : ''}
+            </div>
+          </header>
+
+          <section class="arc-summary" aria-label="Resumo da ficha">
+            ${summaryVital('hp', FICON.heart, 'Vida total', `<span data-vital-hp-cur>${hpCur}</span>`, `/ <span data-vital-hp-max>${hpMax}</span>`, vbarPct(hpCur, hpMax) + '%')}
+            ${v.mana ? summaryVital('mana', FICON.mana, 'Mana', `<span data-vital-mana-cur>${v.mana.cur}</span>`, `/ <span data-vital-mana-max>${v.mana.max}</span>`, vbarPct(v.mana.cur, v.mana.max) + '%') : ''}
+            ${summaryVital('da', FICON.shield, 'DA atual', `<span data-da-total>${daState.value || '—'}</span>`)}
+            ${summaryVital('df', FICON.shield, 'DF', `<span data-df-total>${totalDf(c)}</span>`, `/ <span data-df-pct>${defPct(totalDf(c))}%</span>`)}
+            ${summaryVital('dm', FICON.spark, 'DM', `<span data-dm-total>${totalDm(c)}</span>`, `/ <span data-dm-pct>${defPct(totalDm(c))}%</span>`)}
+            ${summaryVital('move', FICON.bolt, 'Movimento', escapeHtml(movement))}
+          </section>
+
+          <nav class="char-tabs arc-chapters" role="tablist">
+            ${tabs.map((item, index) => `<button type="button" class="char-tab ${index === 0 ? 'is-active' : ''}" role="tab" aria-selected="${index === 0 ? 'true' : 'false'}" data-tab="${item.id}">${item.label}</button>`).join('')}
+          </nav>
+
+          <div class="char-panels arc-folio-pages">
+            <section class="char-panel is-active" data-panel="geral"><div class="arc-identity-layout"><div>${attrSection}${narrativeSection}</div><aside>${arcaneSection}</aside></div></section>
+
+            <section class="char-panel" data-panel="combate">
+              <div class="arc-combat-layout">
+                <div><section class="arc-sheet-section arc-defense-zone"><h3 class="arc-sheet-section__title"><span>${FICON.shield}</span>Defesas</h3>${daBlock}${defenseShieldHTML(c, canEdit)}</section>${testsSection}</div>
+                <section class="arc-sheet-section arc-anatomy-section"><h3 class="arc-sheet-section__title"><span>${FICON.heart}</span>Integridade anatômica</h3><div id="charVitals">${charVitalsInner(c, canEdit)}</div></section>
+                <aside class="arc-combat-side"><section class="arc-sheet-section arc-status-section" id="charStatus">${charStatusInner(c, canEdit)}</section>${v.mana ? `<section class="arc-sheet-section"><h3 class="arc-sheet-section__title"><span>${FICON.mana}</span>Mana</h3><div id="charMana">${charManaInner(c, canEdit)}</div></section>` : ''}</aside>
+              </div>
+            </section>
+
+            <section class="char-panel" data-panel="inventario"><div class="arc-page-heading"><span>${FICON.bag}</span><div><h2>Equipamento</h2><p>Itens equipados e pertences carregados pelo personagem.</p></div></div><div id="charInventory">${charInventoryInner(c, canEdit)}</div></section>
+            ${showGrimoire ? `<section class="char-panel" data-panel="magias"><div class="arc-page-heading"><span>${FICON.book}</span><div><h2>Grimório</h2><p>Magias conhecidas por ${escapeHtml(c.name || 'este personagem')}.</p></div></div><div id="charSpells">${charCodexListInner(c, canEdit, 'spell')}</div></section>` : ''}
+            <section class="char-panel" data-panel="historia"><div class="arc-history-opening">${headerLine('Papel', idn.papel)}${headerLine('Desejo', idn.desejo)}${headerLine('Ferida', idn.ferida)}</div><section class="arc-sheet-section arc-history-section"><h3 class="arc-sheet-section__title"><span>${FICON.feat}</span>História</h3>${bodyMarkup}</section></section>
+          </div>
+        </div>
+
+        <div class="char-sheet__foot"><a href="#/Persona" class="back-link"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>Voltar às Personas</a></div>
+      </article>`;
   }
 
   /* ── FORMULÁRIO DA FICHA (#/Persona/criar|editar) ─ */
@@ -6063,7 +6282,7 @@
       // Persona = fichas de personagem dos jogadores (não usa o fluxo de stories).
       if (action === 'criar' && !entry) html = viewCharacterForm(null);
       else if (action === 'editar' && entry) html = viewCharacterForm(entry);
-      else if (entry) html = viewCharacterSheet(entry);
+      else if (entry) html = viewCharacterSheetFolio(entry);
       else html = viewPersonaRoster();
     }
     else if (tab === 'Mesa') html = viewMesa();
@@ -8892,7 +9111,11 @@
         const btn = e.target.closest('[data-tab]');
         if (!btn) return;
         const id = btn.dataset.tab;
-        tabBar.querySelectorAll('[data-tab]').forEach((b) => b.classList.toggle('is-active', b === btn));
+        tabBar.querySelectorAll('[data-tab]').forEach((b) => {
+          const active = b === btn;
+          b.classList.toggle('is-active', active);
+          b.setAttribute('aria-selected', active ? 'true' : 'false');
+        });
         root.querySelectorAll('.char-panel').forEach((p) => p.classList.toggle('is-active', p.dataset.panel === id));
       });
     }
@@ -8913,13 +9136,13 @@
     root.addEventListener('click', (e) => {
       const btn = e.target.closest('[data-save-roll]');
       if (!btn) return;
-      const card = btn.closest('.fcard');
+      const card = btn.closest('[data-roll-scope]');
       const out = card && card.querySelector('[data-save-result]');
       if (!out) return;
       const attr = btn.dataset.saveRoll;
       const nD6 = Math.max(1, parseInt(btn.dataset.saveDice, 10) || 1);
       const roll = rollDicePool(nD6);
-      card.querySelectorAll('.res-row--roll').forEach((r) => r.classList.toggle('is-active', r === btn));
+      card.querySelectorAll('[data-save-roll]').forEach((r) => r.classList.toggle('is-active', r === btn));
       out.hidden = false;
       out.innerHTML = rollResultHTML(attr, roll, 'Teste');
       out.classList.remove('is-rolling'); void out.offsetWidth; out.classList.add('is-rolling');
@@ -8960,7 +9183,9 @@
         out.innerHTML = rollResultHTML(attr, roll, 'DA');
         out.classList.remove('is-rolling'); void out.offsetWidth; out.classList.add('is-rolling');
       }
-      btn.textContent = 'Rerrolar DA';
+      const label = btn.querySelector('[data-da-roll-label]');
+      if (label) label.textContent = 'Rerrolar DA';
+      else btn.textContent = 'Rerrolar DA';
       save();
     });
 
@@ -9047,7 +9272,7 @@
         const amt = readAmt(row); if (!amt) return;
         const slot = c.vitals.hp[row.dataset.part]; if (!slot) return;
         slot.cur = hpBtn.dataset.hp === 'dmg' ? Math.max(0, slot.cur - amt) : Math.min(slot.max, slot.cur + amt);
-        updateVrow(row, slot, false); save(); return;
+        updateVrow(row, slot, false); refreshCharacterVitals(c); save(); return;
       }
       const manaBtn = e.target.closest('[data-mana-act]');
       if (manaBtn) {
@@ -9056,6 +9281,7 @@
         const m = c.vitals.mana; if (!m) return;
         m.cur = manaBtn.dataset.manaAct === 'spend' ? Math.max(0, m.cur - amt) : Math.min(m.max, m.cur + amt);
         updateVrow(row, m, true);
+        refreshCharacterVitals(c);
         if (syncArcaneCollapse(c) && $('charStatus')) $('charStatus').innerHTML = charStatusInner(c, true);
         save(); return;
       }
@@ -9069,7 +9295,6 @@
       if (e.target.closest('[data-inv-equip]')) {
         const it = c.inventory[invIdx(e.target)];
         if (it) {
-          if (equippedCount(c) >= MAX_EQUIPPED) { alert(`Máximo de ${MAX_EQUIPPED} itens equipados.`); return; }
           it.equipped = true; renderInv(); save();
         }
         return;
@@ -9086,11 +9311,10 @@
         if (!mana || !cost) return;
         if (mana.cur < cost && !confirm(`Mana insuficiente (${mana.cur}/${mana.max}). Gastar mesmo assim e cair a 0?`)) return;
         mana.cur = Math.max(0, mana.cur - cost);
-        if ($('charVitals')) $('charVitals').innerHTML = charVitalsInner(c, true);
+        if ($('charMana')) $('charMana').innerHTML = charManaInner(c, true);
         if (syncArcaneCollapse(c) && $('charStatus')) $('charStatus').innerHTML = charStatusInner(c, true);
         $('charSpells').innerHTML = charCodexListInner(c, true, 'spell');
-        root.querySelectorAll('.hvital--mana .hvital__v').forEach((el) => { el.innerHTML = `${mana.cur}<small>/${mana.max}</small>`; });
-        root.querySelectorAll('.hvital--mana .hvbar span').forEach((el) => { el.style.width = vbarPct(mana.cur, mana.max) + '%'; });
+        refreshCharacterVitals(c);
         save(); return;
       }
       const spellRemove = e.target.closest('[data-spell-remove]');
