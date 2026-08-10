@@ -2271,7 +2271,11 @@
   }
   /* Recalcula maxes do HP a partir do formulário, preservando o atual (clampado). */
   function mergeVitals(prev, hpFields, manaStr) {
-    const out = { hp: {}, mana: null };
+    const out = {
+      ...((prev && typeof prev === 'object' && !Array.isArray(prev)) ? prev : {}),
+      hp: {},
+      mana: null
+    };
     const prevHp = (prev && prev.hp) || {};
     RACE_HP_PARTS.forEach((p) => {
       if (hpFields[p] != null && hpFields[p] !== '') {
@@ -5912,75 +5916,69 @@
     const heroTitle = editing ? `Editar ${c.name || 'ficha'}` : 'Nova persona';
     const saveLabel = editing ? 'Salvar alterações' : 'Salvar ficha';
     const cancelHref = editing ? `#/Persona/${encodeURIComponent(id)}` : '#/Persona';
+    const defenseOptions = (selected) => Array.from({ length: DEF_MAX_LEVEL + 1 }, (_, level) =>
+      `<option value="${level}" ${level === selected ? 'selected' : ''}>Nível ${level} · ${defPct(level)}%</option>`
+    ).join('');
 
     return `
-      <section class="cat-hero" style="--hue:${theme.hue}">
-        <div class="cat-hero__icon">${iconOf('Persona')}</div>
-        <div class="cat-hero__body">
-          <span class="cat-hero__eyebrow">${escapeHtml(heroEyebrow)}</span>
-          <h1 class="cat-hero__title">${escapeHtml(heroTitle)}</h1>
-          <p class="cat-hero__tone">Escolha a raça, distribua atributos, defina se é mago e descreva sua persona.</p>
-        </div>
-      </section>
-
-      <form class="create-form create-form--portrait" id="characterForm"
-            data-char-id="${editing ? escapeHtml(id) : ''}"
-            style="--hue:${theme.hue}" novalidate>
-
-        <div class="create-form__field">
-          <label class="create-form__label">Retrato (2:3)</label>
-          <div class="banner-drop banner-drop--portrait" id="bannerDrop" style="aspect-ratio: 2 / 3; max-width: 360px;"
-               tabindex="0" role="button" aria-label="Selecionar retrato">
-            <input type="file" accept="image/*" id="bannerInput" hidden>
-            <div class="banner-drop__preview" id="bannerPreview" ${c.image ? '' : 'hidden'} style="${c.image ? `background-image:url('${c.image}')` : ''}"></div>
-            <div class="banner-drop__placeholder" id="bannerPlaceholder" ${c.image ? 'hidden' : ''}>
-              <svg viewBox="0 0 24 24" width="42" height="42" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="8.5" cy="10.5" r="1.5"/><path d="M21 17l-5-5-9 9"/></svg>
-              <strong>Clique ou arraste uma imagem</strong>
-              <span>Proporção 2:3 (retrato) — JPG, PNG ou WebP</span>
-            </div>
-            <button type="button" class="banner-drop__clear" id="bannerClear" ${c.image ? '' : 'hidden'} aria-label="Remover imagem">
-              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
-            </button>
+      <section class="char-create" style="--hue:${theme.hue}">
+        <header class="char-create__masthead">
+          <div>
+            <span class="char-create__eyebrow">${escapeHtml(heroEyebrow)}</span>
+            <h1>${escapeHtml(heroTitle)}</h1>
+            <p>Registro de identidade, natureza arcana e recursos da persona.</p>
           </div>
-        </div>
+          <span class="char-create__sigil" aria-hidden="true">${iconOf('Persona')}</span>
+        </header>
 
-        <div class="create-form__field">
-          <label class="create-form__label" for="charName">Nome</label>
-          <input type="text" id="charName" class="create-form__input" placeholder="Nome do personagem" maxlength="120" required value="${escapeHtml(c.name || '')}">
-        </div>
+        <form class="create-form create-form--portrait char-create__form" id="characterForm"
+              data-char-id="${editing ? escapeHtml(id) : ''}" novalidate>
+          <nav class="char-create__index" aria-label="Seções da ficha">
+            <button type="button" data-char-form-section="char-form-identidade"><b>I</b><span>Identidade</span></button>
+            <button type="button" data-char-form-section="char-form-atributos"><b>II</b><span>Atributos</span></button>
+            <button type="button" data-char-form-section="char-form-arcano"><b>III</b><span>Natureza Arcana</span></button>
+            <button type="button" data-char-form-section="char-form-confronto"><b>IV</b><span>Confronto</span></button>
+            <button type="button" data-char-form-section="char-form-historia"><b>V</b><span>História</span></button>
+          </nav>
 
-        <div class="create-form__row">
-          <div class="create-form__field">
-            <label class="create-form__label" for="charLevel">Nivel</label>
-            <input type="number" id="charLevel" class="create-form__input" min="1" max="99" value="${escapeHtml(String(idn.level || 1))}">
-          </div>
-          <div class="create-form__field">
-            <label class="create-form__label" for="charMovement">Movimento</label>
-            <input type="text" id="charMovement" class="create-form__input" maxlength="20" value="${escapeHtml(idn.movement || idn.movimento || '9m')}" placeholder="9m">
-          </div>
-        </div>
+          <div class="char-create__pages">
+            <section class="char-create__section" id="char-form-identidade">
+              <header class="char-create__section-head"><span>I</span><div><h2>Identidade</h2><p>Quem é a persona dentro e fora da narrativa.</p></div></header>
+              <div class="char-create__identity">
+                <div class="char-create__portrait">
+                  <label class="create-form__label">Retrato (2:3)</label>
+                  <div class="banner-drop banner-drop--portrait" id="bannerDrop" tabindex="0" role="button" aria-label="Selecionar retrato">
+                    <input type="file" accept="image/*" id="bannerInput" hidden>
+                    <div class="banner-drop__preview" id="bannerPreview" ${c.image ? '' : 'hidden'} style="${c.image ? `background-image:url('${c.image}')` : ''}"></div>
+                    <div class="banner-drop__placeholder" id="bannerPlaceholder" ${c.image ? 'hidden' : ''}>
+                      <svg viewBox="0 0 24 24" width="42" height="42" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="8.5" cy="10.5" r="1.5"/><path d="M21 17l-5-5-9 9"/></svg>
+                      <strong>Escolher retrato</strong><span>JPG, PNG ou WebP</span>
+                    </div>
+                    <button type="button" class="banner-drop__clear" id="bannerClear" ${c.image ? '' : 'hidden'} aria-label="Remover imagem">
+                      <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
+                    </button>
+                  </div>
+                </div>
+                <div class="char-create__identity-fields">
+                  <label class="dossier-field char-create__name"><span>Nome</span><input type="text" id="charName" class="create-form__input" placeholder="Nome da persona" maxlength="120" required value="${escapeHtml(c.name || '')}"></label>
+                  <label class="dossier-field"><span>Raça</span><select id="charRace" class="create-form__input char-select"><option value="">— Sem raça —</option>${races.map((r) => `<option value="${escapeHtml(r.id)}" ${r.id === selectedRaceId ? 'selected' : ''}>${escapeHtml(r.title)}</option>`).join('')}</select></label>
+                  <label class="dossier-field"><span>Nível</span><input type="number" id="charLevel" class="create-form__input" min="1" max="99" value="${escapeHtml(String(idn.level || 1))}"></label>
+                  <label class="dossier-field"><span>Movimento</span><input type="text" id="charMovement" class="create-form__input" maxlength="20" value="${escapeHtml(idn.movement || idn.movimento || '9m')}" placeholder="9m"></label>
+                  <label class="dossier-field char-create__wide"><span>Papel</span><input type="text" id="charPapel" class="create-form__input" maxlength="160" value="${escapeHtml(idn.papel || '')}" placeholder="Ex.: Mercenária errante"></label>
+                  <label class="dossier-field"><span>Desejo</span><input type="text" id="charDesejo" class="create-form__input" maxlength="160" value="${escapeHtml(idn.desejo || '')}" placeholder="O que persegue"></label>
+                  <label class="dossier-field"><span>Ferida</span><input type="text" id="charFerida" class="create-form__input" maxlength="160" value="${escapeHtml(idn.ferida || '')}" placeholder="O que carrega"></label>
+                  ${races.length ? '' : '<p class="char-hint char-create__wide">Nenhuma raça cadastrada ainda. O Mestre pode criá-las na aba Raças.</p>'}
+                </div>
+              </div>
+            </section>
 
-        <div class="create-form__field">
-          <label class="create-form__label" for="charRace">Raça</label>
-          <select id="charRace" class="create-form__input char-select">
-            <option value="">— Sem raça —</option>
-            ${races.map((r) => `<option value="${escapeHtml(r.id)}" ${r.id === selectedRaceId ? 'selected' : ''}>${escapeHtml(r.title)}</option>`).join('')}
-          </select>
-          ${races.length ? '' : '<p class="char-hint">Nenhuma raça cadastrada ainda — o Mestre pode criar raças na aba Raças.</p>'}
-        </div>
-
-        <div class="create-form__field">
-          <label class="create-form__label">O Despertar</label>
-          <p class="char-hint">A Mana decide quem você é. Role o destino antes de fechar a ficha.</p>
-          <div class="awakening" id="awakening"></div>
-        </div>
-
-        <div class="create-form__field">
-          <label class="create-form__label">Atributos</label>
+            <section class="char-create__section" id="char-form-atributos">
+              <header class="char-create__section-head"><span>II</span><div><h2>Atributos e talentos</h2><p>Capacidades naturais e conhecimentos adquiridos.</p></div></header>
+              <div class="create-form__field">
           <div class="attr-buy" id="attrBuy"
                data-base="${CHAR_ATTR_BASE}" data-pool="${CHAR_POINT_POOL}" data-max="${CHAR_ATTR_MAX}">
             <div class="attr-buy__head">
-              <span>Todos comecam em ${CHAR_ATTR_BASE}. Distribua ${CHAR_POINT_POOL} pontos; a cada 2 pontos acima da base, +1d6 nos testes. A raca soma nos dados.</span>
+                    <span>Todos começam em ${CHAR_ATTR_BASE}. Distribua ${CHAR_POINT_POOL} pontos; a cada 2 pontos acima da base, +1d6 nos testes. A raça soma nos dados.</span>
               <span class="attr-buy__pool">Pontos restantes: <strong id="attrPool">${CHAR_POINT_POOL}</strong></span>
             </div>
             <div class="attr-buy__grid">
@@ -6004,35 +6002,9 @@
               }).join('')}
             </div>
           </div>
-          <label class="dossier-field char-da-field">
-            <span>Atributo base de DA</span>
-            <select id="charDaAttr" class="create-form__input char-select">
-              ${CHAR_ATTRIBUTES.map((a) => `<option value="${escapeHtml(a)}" ${a === (idn.daAttr || 'Destreza') ? 'selected' : ''}>${escapeHtml(a)}</option>`).join('')}
-            </select>
-          </label>
-        </div>
-
-        <div class="create-form__field">
-          <label class="create-form__label">HP por parte do corpo / Mana</label>
-          <p class="char-hint">Preenchidos a partir da raça escolhida — ajuste se precisar.</p>
-          <div class="hp-form" id="charHpForm">
-            ${RACE_HP_PARTS.map((p) => `
-              <label class="hp-form__row">
-                <span class="hp-form__name">${escapeHtml(p)}</span>
-                <input type="text" inputmode="numeric" class="create-form__input hp-form__input" data-hp-part="${escapeHtml(p)}"
-                       value="${escapeHtml(hpValues[p] != null ? hpValues[p] : '')}" maxlength="9">
-              </label>
-            `).join('')}
-          </div>
-          <label class="dossier-field dossier-field--mana">
-            <span>Mana</span>
-            <input type="text" id="charMana" class="create-form__input" value="${escapeHtml(manaValue || '')}" placeholder="15/15" maxlength="20">
-          </label>
-        </div>
-
-        <div class="create-form__field">
-          <label class="create-form__label">Perícias / Talentos</label>
-          <div class="list-builder" id="charSkills" data-items='${escapeHtml(JSON.stringify(Array.isArray(c.skills) ? c.skills : []))}'>
+                <div class="char-create__skills">
+                  <label class="create-form__label">Perícias / Talentos</label>
+                  <div class="list-builder" id="charSkills" data-items='${escapeHtml(JSON.stringify(Array.isArray(c.skills) ? c.skills : []))}'>
             <div class="list-builder__row">
               <input type="text" class="create-form__input list-builder__input" placeholder="Digite uma perícia e Enter…" maxlength="120">
               <button type="button" class="btn btn-ghost list-builder__add">
@@ -6043,34 +6015,45 @@
             <div class="list-builder__items" aria-live="polite">
               ${(Array.isArray(c.skills) ? c.skills : []).map((item, i) => listBuilderItemHTML(item, i)).join('')}
             </div>
+                  </div>
+                </div>
           </div>
-        </div>
+            </section>
 
-        <div class="create-form__field">
-          <label class="create-form__label">Identidade narrativa</label>
-          <div class="char-identity-grid">
-            <label class="dossier-field"><span>Papel</span>
-              <input type="text" id="charPapel" class="create-form__input" maxlength="160" value="${escapeHtml(idn.papel || '')}" placeholder="Ex.: Mercenária errante"></label>
-            <label class="dossier-field"><span>Desejo</span>
-              <input type="text" id="charDesejo" class="create-form__input" maxlength="160" value="${escapeHtml(idn.desejo || '')}" placeholder="O que persegue"></label>
-            <label class="dossier-field"><span>Ferida</span>
-              <input type="text" id="charFerida" class="create-form__input" maxlength="160" value="${escapeHtml(idn.ferida || '')}" placeholder="O que carrega"></label>
+            <section class="char-create__section" id="char-form-arcano">
+              <header class="char-create__section-head"><span>III</span><div><h2>Natureza Arcana</h2><p>O Despertar define a relação da persona com a Mana.</p></div></header>
+              <div class="awakening" id="awakening"></div>
+            </section>
+
+            <section class="char-create__section" id="char-form-confronto">
+              <header class="char-create__section-head"><span>IV</span><div><h2>Confronto</h2><p>Bases defensivas, integridade anatômica e reserva de Mana.</p></div></header>
+              <div class="char-create__defenses">
+                <label class="dossier-field"><span>Atributo base de DA</span><select id="charDaAttr" class="create-form__input char-select">${CHAR_ATTRIBUTES.map((a) => `<option value="${escapeHtml(a)}" ${a === (idn.daAttr || 'Destreza') ? 'selected' : ''}>${escapeHtml(a)}</option>`).join('')}</select><small>A DA atual é rolada na ficha.</small></label>
+                <label class="dossier-field"><span>Defesa Física base</span><select id="charDfBase" class="create-form__input char-select">${defenseOptions(dfBaseOf(c))}</select><small>Equipamentos são somados na ficha.</small></label>
+                <label class="dossier-field"><span>Defesa Mágica base</span><select id="charDmBase" class="create-form__input char-select">${defenseOptions(dmBaseOf(c))}</select><small>Equipamentos são somados na ficha.</small></label>
+              </div>
+              <div class="char-create__resources">
+                <div>
+                  <label class="create-form__label">Integridade anatômica</label>
+                  <p class="char-hint">Valores máximos definidos pela raça, com ajuste manual quando necessário.</p>
+                  <div class="hp-form" id="charHpForm">${RACE_HP_PARTS.map((p) => `<label class="hp-form__row"><span class="hp-form__name">${escapeHtml(p)}</span><input type="text" inputmode="numeric" class="create-form__input hp-form__input" data-hp-part="${escapeHtml(p)}" value="${escapeHtml(hpValues[p] != null ? hpValues[p] : '')}" maxlength="9"></label>`).join('')}</div>
+                </div>
+                <label class="dossier-field dossier-field--mana char-create__mana"><span>Mana</span><input type="text" id="charMana" class="create-form__input" value="${escapeHtml(manaValue || '')}" placeholder="15/15" maxlength="20"><small>Disponível apenas para quem aceita o Despertar.</small></label>
+              </div>
+            </section>
+
+            <section class="char-create__section" id="char-form-historia">
+              <header class="char-create__section-head"><span>V</span><div><h2>História</h2><p>Origem, vínculos e acontecimentos que formaram a persona.</p></div></header>
+              ${editorToolbarHTML(idn.bodyHtml || '')}
+            </section>
           </div>
-        </div>
 
-        <div class="create-form__field">
-          <label class="create-form__label">História</label>
-          ${editorToolbarHTML(idn.bodyHtml || '')}
-        </div>
-
-        <div class="create-form__actions">
-          <a href="${cancelHref}" class="btn btn-ghost">Cancelar</a>
-          <button type="submit" class="btn btn-primary" id="charSave">
-            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>
-            <span>${escapeHtml(saveLabel)}</span>
-          </button>
-        </div>
-      </form>
+          <div class="create-form__actions char-create__actions">
+            <a href="${cancelHref}" class="btn btn-ghost">Cancelar</a>
+            <button type="submit" class="btn btn-primary" id="charSave"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg><span>${escapeHtml(saveLabel)}</span></button>
+          </div>
+        </form>
+      </section>
     `;
   }
 
@@ -8675,6 +8658,8 @@
     const levelInput = document.getElementById('charLevel');
     const movementInput = document.getElementById('charMovement');
     const daAttrInput = document.getElementById('charDaAttr');
+    const dfBaseInput = document.getElementById('charDfBase');
+    const dmBaseInput = document.getElementById('charDmBase');
     const raceSelect = document.getElementById('charRace');
     const manaInput = document.getElementById('charMana');
     const hpForm = document.getElementById('charHpForm');
@@ -8685,6 +8670,13 @@
     const editor = bindEditor();
     const skills = bindSimpleListBuilder('charSkills');
     const points = bindAttributePointBuy();
+
+    form.querySelectorAll('[data-char-form-section]').forEach((button) => {
+      button.addEventListener('click', () => {
+        const section = document.getElementById(button.dataset.charFormSection || '');
+        if (section) section.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      });
+    });
 
     // Estado do Despertar (carrega de uma ficha existente ou começa do zero).
     const awakening = normalizeAwakening(existing ? existing.magic : null);
@@ -8840,6 +8832,10 @@
       const race = raceSelect.value ? entryById(raceSelect.value) : null;
       const isMageNow = awkIsAcceptedMage(awakening);
       const manaValue = isMageNow ? manaInput.value.trim() : '';
+      const hpValue = readHp();
+      const mergedVitals = mergeVitals(existing && existing.vitals, hpValue, manaValue);
+      mergedVitals.df = clampDefLevel(dfBaseInput && dfBaseInput.value);
+      mergedVitals.dm = clampDefLevel(dmBaseInput && dmBaseInput.value);
 
       const data = {
         name,
@@ -8850,7 +8846,7 @@
         pointPool: points.getRemaining(),
         skills: skills.getItems(),
         magic: { ...awakening },
-        hp: readHp(),
+        hp: hpValue,
         mana: manaValue,
         identity: {
           level: Math.max(1, parseInt(levelInput && levelInput.value, 10) || 1),
@@ -8864,7 +8860,7 @@
             (auth.user ? (auth.user.user_metadata?.display_name || auth.user.email || '') : '')
         },
         // Estado vivo: recalcula maxes do HP/Mana (preservando o atual) e mantém o resto.
-        vitals: mergeVitals(existing && existing.vitals, readHp(), manaValue),
+        vitals: mergedVitals,
         statuses: (existing && Array.isArray(existing.statuses)) ? existing.statuses : [],
         inventory: (existing && Array.isArray(existing.inventory)) ? existing.inventory : [],
         spells: (existing && Array.isArray(existing.spells)) ? existing.spells : []
