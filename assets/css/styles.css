@@ -10192,6 +10192,98 @@ a.spell-card__name:hover { color: var(--primary-3); }
 .arc-feature strong { color: var(--text); font-family: 'Cinzel', Georgia, serif; font-size: 0.76rem; font-weight: 600; }
 .arc-feature p { margin: 4px 0 0; color: var(--muted); font-size: 0.74rem; line-height: 1.55; }
 
+.arc-effects { margin-top: 18px; }
+.arc-effects__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding-bottom: 9px;
+  border-bottom: 1px solid var(--folio-line);
+  color: var(--folio-gold);
+  font-family: 'Cinzel', Georgia, serif;
+  font-size: .75rem;
+  font-weight: 600;
+}
+.arc-effects__add { min-height: 28px; padding: 5px 8px; border-radius: 3px; font-size: .62rem; }
+.arc-effects__add > span { font-size: .9rem; line-height: .7; }
+.arc-effects__empty { margin: 13px 0 0; }
+.arc-effect {
+  display: grid;
+  grid-template-columns: 30px minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: start;
+  padding: 13px 0;
+  border-bottom: 1px solid var(--folio-line);
+}
+.arc-effect__sigil {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border: 1px solid rgba(192, 132, 252, .38);
+  border-radius: 50%;
+  color: var(--folio-violet);
+  font-size: .9rem;
+  line-height: 1;
+}
+.arc-effect__body { min-width: 0; }
+.arc-effect__body strong { color: var(--text); font-family: 'Cinzel', Georgia, serif; font-size: .76rem; font-weight: 600; }
+.arc-effect__body p { margin: 4px 0 0; color: var(--muted); font-size: .74rem; line-height: 1.55; }
+.arc-effect__actions { display: flex; gap: 3px; }
+.arc-effect__actions button,
+.arc-effect-editor__cancel {
+  display: grid;
+  place-items: center;
+  width: 25px;
+  height: 25px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  color: var(--dim);
+  background: transparent;
+  cursor: pointer;
+}
+.arc-effect__actions button:hover,
+.arc-effect__actions button:focus-visible,
+.arc-effect-editor__cancel:hover,
+.arc-effect-editor__cancel:focus-visible { border-color: var(--folio-line-strong); color: var(--text); background: #100e13; }
+.arc-effect__actions button:last-child:hover,
+.arc-effect__actions button:last-child:focus-visible { color: #fb7185; }
+.arc-effect-editor {
+  margin-top: 11px;
+  padding: 12px;
+  border: 1px solid var(--folio-line-strong);
+  border-radius: 3px;
+  background: #100e13;
+}
+.arc-effect-editor__head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 10px; }
+.arc-effect-editor__head strong { color: var(--folio-gold); font-family: 'Cinzel', Georgia, serif; font-size: .73rem; font-weight: 600; }
+.arc-effect-editor__field { display: grid; gap: 5px; margin-top: 10px; }
+.arc-effect-editor__field > span,
+.arc-effect-editor__icons > span { color: var(--dim); font-family: 'JetBrains Mono', monospace; font-size: .56rem; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
+.arc-effect-editor .create-form__input { padding: 8px 9px; border-radius: 3px; font-size: .76rem; }
+.arc-effect-editor textarea.create-form__input { min-height: 76px; resize: vertical; line-height: 1.45; }
+.arc-effect-editor__icons { margin-top: 12px; }
+.arc-effect-editor__icons > div { display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); gap: 4px; margin-top: 6px; }
+.arc-effect-editor__icon {
+  display: grid;
+  place-items: center;
+  min-width: 0;
+  height: 27px;
+  padding: 0;
+  border: 1px solid var(--folio-line);
+  border-radius: 3px;
+  color: var(--muted);
+  background: #0c0a0e;
+  cursor: pointer;
+}
+.arc-effect-editor__icon:hover,
+.arc-effect-editor__icon:focus-visible { color: var(--text); border-color: var(--folio-gold-dim); }
+.arc-effect-editor__icon.is-active { color: var(--folio-gold); border-color: var(--folio-gold); background: rgba(214, 173, 98, .09); }
+.arc-effect-editor__save { display: inline-flex; align-items: center; gap: 6px; margin-top: 12px; padding: 7px 10px; border-radius: 3px; font-size: .68rem; }
+.arc-effect-editor__save svg { width: 14px; height: 14px; }
+
 .arc-combat-layout {
   display: grid;
   grid-template-columns: minmax(250px, .78fr) minmax(440px, 1.35fr) minmax(240px, .72fr);

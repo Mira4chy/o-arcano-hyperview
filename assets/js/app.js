@@ -1029,6 +1029,60 @@
     return Math.max(1, baseDice + Number(raceMod || 0));
   }
   const fmtDice = (n) => `${Math.max(1, Number(n) || 1)}d6`;
+
+  /* Efeitos livres da ficha. Por enquanto pertencem à Persona; mais adiante
+     poderão apontar para a biblioteca interna sem alterar a apresentação. */
+  const CHARACTER_EFFECT_MAX = 30;
+  function characterEffectDraft(effect = {}, index = 0) {
+    const raw = (effect && typeof effect === 'object' && !Array.isArray(effect)) ? effect : {};
+    const symbol = String(raw.symbol || raw.simbolo || '').trim();
+    return {
+      symbol: SPELL_EFFECT_SYMBOLS.includes(symbol) ? symbol : SPELL_EFFECT_SYMBOLS[index % SPELL_EFFECT_SYMBOLS.length],
+      title: String(raw.title || raw.titulo || raw.name || '').trim().slice(0, 80),
+      description: String(raw.description || raw.descricao || raw.text || raw.efeito || '').trim().slice(0, 700)
+    };
+  }
+  function characterEffects(c) {
+    const raw = c && c.identity && Array.isArray(c.identity.effects) ? c.identity.effects : [];
+    return raw.map((effect, index) => characterEffectDraft(effect, index))
+      .filter((effect) => effect.title || effect.description)
+      .slice(0, CHARACTER_EFFECT_MAX);
+  }
+  function setCharacterEffects(c, effects) {
+    c.identity = (c.identity && typeof c.identity === 'object' && !Array.isArray(c.identity)) ? c.identity : {};
+    c.identity.effects = (Array.isArray(effects) ? effects : [])
+      .map((effect, index) => characterEffectDraft(effect, index))
+      .filter((effect) => effect.title || effect.description)
+      .slice(0, CHARACTER_EFFECT_MAX);
+  }
+  function characterEffectEditorHTML(effect = {}, index = -1) {
+    const draft = characterEffectDraft(effect, Math.max(0, index));
+    return `
+      <article class="arc-effect-editor" data-char-effect-editor data-char-effect-index="${index}">
+        <input type="hidden" data-char-effect-symbol-value value="${escapeHtml(draft.symbol)}">
+        <div class="arc-effect-editor__head"><strong>${index < 0 ? 'Novo efeito' : 'Editar efeito'}</strong><button type="button" class="arc-effect-editor__cancel" data-char-effect-cancel aria-label="Cancelar edição">×</button></div>
+        <label class="arc-effect-editor__field"><span>Título</span><input type="text" class="create-form__input" data-char-effect-title maxlength="80" value="${escapeHtml(draft.title)}" placeholder="Nome do efeito"></label>
+        <label class="arc-effect-editor__field"><span>Descrição</span><textarea class="create-form__input" data-char-effect-description rows="3" maxlength="700" placeholder="O que este efeito faz">${escapeHtml(draft.description)}</textarea></label>
+        <div class="arc-effect-editor__icons"><span>Ícone</span><div>${SPELL_EFFECT_SYMBOLS.map((symbol) => `<button type="button" class="arc-effect-editor__icon ${symbol === draft.symbol ? 'is-active' : ''}" data-char-effect-symbol="${escapeHtml(symbol)}" aria-pressed="${symbol === draft.symbol}" title="${escapeHtml(symbol)}">${escapeHtml(symbol)}</button>`).join('')}</div></div>
+        <button type="button" class="btn btn-primary arc-effect-editor__save" data-char-effect-save>${FICON.check}<span>Salvar efeito</span></button>
+      </article>`;
+  }
+  function characterEffectsInner(c, canEdit) {
+    const effects = characterEffects(c);
+    return `
+      <div class="arc-effects">
+        <div class="arc-effects__head"><span>Efeitos</span>${canEdit ? `<button type="button" class="btn btn-ghost arc-effects__add" data-char-effect-add><span>+</span>Adicionar efeito</button>` : ''}</div>
+        <div class="arc-effects__list" data-char-effect-list>
+          ${effects.length ? effects.map((effect, index) => `
+            <article class="arc-effect" data-char-effect="${index}">
+              <span class="arc-effect__sigil" aria-hidden="true">${escapeHtml(effect.symbol)}</span>
+              <div class="arc-effect__body"><strong>${escapeHtml(effect.title || `Efeito ${index + 1}`)}</strong>${effect.description ? `<p>${escapeHtml(effect.description)}</p>` : ''}</div>
+              ${canEdit ? `<div class="arc-effect__actions"><button type="button" data-char-effect-edit="${index}" aria-label="Editar ${escapeHtml(effect.title || `efeito ${index + 1}`)}" title="Editar efeito"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg></button><button type="button" data-char-effect-remove="${index}" aria-label="Remover ${escapeHtml(effect.title || `efeito ${index + 1}`)}" title="Remover efeito">×</button></div>` : ''}
+            </article>`).join('') : '<p class="char-empty arc-effects__empty">Nenhum efeito registrado.</p>'}
+        </div>
+      </div>`;
+  }
+
   function rollDicePool(dice) {
     const d6s = [];
     const n = Math.max(1, Number(dice) || 1);
@@ -5780,11 +5834,6 @@
         </dl>
       </section>`;
 
-    const featItems = [];
-    if (isMage && sc) featItems.push([FICON.spark, sc.name, sc.lore]);
-    if (isMage) featItems.push([FICON.status, 'Fragilidade Arcana', '−1d6 nos testes de Resistência contra exaustão prolongada, doença, sangramento ou recuperação física.']);
-    if (isMage) featItems.push([FICON.mana, 'Colapso Arcano', 'Ao chegar a 0 de Mana, o Mago fica inconsciente e incapaz de agir.']);
-    if (awk.resolved && !isMage) featItems.push([FICON.feat, 'Caminho mundano', `Sem Mana natural · +1 nível de HP${bonusAttr ? ` · +1 ${bonusAttr}` : ''}${awk.renounced ? ' · Mana renunciada' : ''}`]);
     const arcaneSection = `
       <section class="arc-sheet-section arc-sheet-section--arcane">
         <h3 class="arc-sheet-section__title"><span>${FICON.spark}</span>Natureza arcana</h3>
@@ -5793,9 +5842,7 @@
           ${isMage && sc ? `<div><dt>Afinidade</dt><dd>${escapeHtml(sc.name)}</dd></div>` : ''}
           <div><dt>Despertar</dt><dd>${escapeHtml(awakeningLabel)}</dd></div>
         </dl>
-        <div class="arc-feature-list">
-          ${featItems.map(([icon, title, description]) => `<div class="arc-feature"><span>${icon}</span><div><strong>${escapeHtml(title)}</strong><p>${escapeHtml(description)}</p></div></div>`).join('')}
-        </div>
+        <div id="charEffects">${characterEffectsInner(c, canEdit)}</div>
       </section>`;
 
     const daBlock = `
@@ -9193,6 +9240,45 @@
       }, 400);
     };
 
+    const renderEffects = () => {
+      const box = $('charEffects');
+      if (box) box.innerHTML = characterEffectsInner(c, true);
+    };
+    const openEffectEditor = (index) => {
+      const box = $('charEffects');
+      const list = box && box.querySelector('[data-char-effect-list]');
+      if (!list || list.querySelector('[data-char-effect-editor]')) return;
+      const effects = characterEffects(c);
+      if (index < 0) {
+        list.querySelector('.arc-effects__empty')?.remove();
+        list.insertAdjacentHTML('beforeend', characterEffectEditorHTML({}, -1));
+      } else {
+        const card = list.querySelector(`[data-char-effect="${index}"]`);
+        if (card) card.outerHTML = characterEffectEditorHTML(effects[index], index);
+      }
+      list.querySelector('[data-char-effect-editor] [data-char-effect-title]')?.focus();
+    };
+    const saveEffectEditor = (editor) => {
+      const index = Number(editor.dataset.charEffectIndex);
+      const title = editor.querySelector('[data-char-effect-title]')?.value.trim() || '';
+      const description = editor.querySelector('[data-char-effect-description]')?.value.trim() || '';
+      if (!title) {
+        editor.querySelector('[data-char-effect-title]')?.focus();
+        return;
+      }
+      const effects = characterEffects(c);
+      const effect = {
+        symbol: editor.querySelector('[data-char-effect-symbol-value]')?.value || SPELL_EFFECT_SYMBOLS[effects.length % SPELL_EFFECT_SYMBOLS.length],
+        title,
+        description
+      };
+      if (index >= 0 && effects[index]) effects[index] = effect;
+      else effects.push(effect);
+      setCharacterEffects(c, effects);
+      renderEffects();
+      save();
+    };
+
     root.addEventListener('click', (e) => {
       const btn = e.target.closest('[data-da-roll]');
       if (!btn) return;
@@ -9295,6 +9381,37 @@
     };
 
     root.addEventListener('click', (e) => {
+      if (e.target.closest('[data-char-effect-add]')) { openEffectEditor(-1); return; }
+      const effectEdit = e.target.closest('[data-char-effect-edit]');
+      if (effectEdit) { openEffectEditor(Number(effectEdit.dataset.charEffectEdit)); return; }
+      const effectRemove = e.target.closest('[data-char-effect-remove]');
+      if (effectRemove) {
+        const effects = characterEffects(c);
+        effects.splice(Number(effectRemove.dataset.charEffectRemove), 1);
+        setCharacterEffects(c, effects);
+        renderEffects();
+        save();
+        return;
+      }
+      const effectSymbol = e.target.closest('[data-char-effect-symbol]');
+      if (effectSymbol) {
+        const editor = effectSymbol.closest('[data-char-effect-editor]');
+        const symbol = effectSymbol.dataset.charEffectSymbol || '';
+        if (!editor || !SPELL_EFFECT_SYMBOLS.includes(symbol)) return;
+        editor.querySelectorAll('[data-char-effect-symbol]').forEach((button) => {
+          const active = button === effectSymbol;
+          button.classList.toggle('is-active', active);
+          button.setAttribute('aria-pressed', active ? 'true' : 'false');
+        });
+        const input = editor.querySelector('[data-char-effect-symbol-value]');
+        if (input) input.value = symbol;
+        return;
+      }
+      const effectSave = e.target.closest('[data-char-effect-save]');
+      if (effectSave) { saveEffectEditor(effectSave.closest('[data-char-effect-editor]')); return; }
+      const effectCancel = e.target.closest('[data-char-effect-cancel]');
+      if (effectCancel) { renderEffects(); return; }
+
       if (e.target.closest('[data-inv-focus]')) { focusAdder('charInventory', 'inv'); return; }
       if (e.target.closest('[data-spell-focus]')) { focusAdder('charSpells', 'spell'); return; }
       const hpBtn = e.target.closest('[data-hp]');
