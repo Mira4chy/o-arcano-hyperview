@@ -2070,6 +2070,19 @@
     const safeObj = (v) => (v && typeof v === 'object' && !Array.isArray(v)) ? v : {};
     const safeArr = (v) => Array.isArray(v) ? v : [];
     const magic = normalizeAwakening(row.magic);
+    const identity = safeObj(row.identity);
+    const sheetBackup = safeObj(identity.__sheetState);
+    const directVitals = safeObj(row.vitals);
+    const directStatuses = safeArr(row.statuses);
+    const directInventory = safeArr(row.inventory);
+    const directSpells = safeArr(row.spells);
+    const preferBackup = sheetBackup.storage === 'fallback';
+    const backedObj = (direct, key) => (preferBackup || !Object.keys(direct).length) && Object.keys(safeObj(sheetBackup[key])).length
+      ? safeObj(sheetBackup[key])
+      : direct;
+    const backedArr = (direct, key) => (preferBackup || !direct.length) && Array.isArray(sheetBackup[key])
+      ? sheetBackup[key]
+      : direct;
     // Fichas antigas (sistema com toggle): sintetiza um despertar resolvido.
     if (!magic.resolved && (row.is_mage || (row.magic && Object.keys(safeObj(row.magic)).length))) {
       magic.resolved = true;
@@ -2088,15 +2101,29 @@
       magic,
       hp: safeObj(row.hp),
       mana: row.mana || '',
-      identity: safeObj(row.identity),
+      identity,
       // Estado vivo da ficha (supabase-characters-sheet.sql)
-      vitals: safeObj(row.vitals),
-      statuses: safeArr(row.statuses),
-      inventory: safeArr(row.inventory),
-      spells: safeArr(row.spells),
+      vitals: backedObj(directVitals, 'vitals'),
+      statuses: backedArr(directStatuses, 'statuses'),
+      inventory: backedArr(directInventory, 'inventory'),
+      spells: backedArr(directSpells, 'spells'),
       image: row.image || '',
       imagePath: row.image_path || '',
       createdAt: row.created_at ? new Date(row.created_at).getTime() : Date.now()
+    };
+  }
+
+  function identityWithSheetState(c, storage = 'columns') {
+    return {
+      ...(c.identity || {}),
+      __sheetState: {
+        version: 1,
+        storage,
+        vitals: c.vitals || {},
+        statuses: Array.isArray(c.statuses) ? c.statuses : [],
+        inventory: Array.isArray(c.inventory) ? c.inventory : [],
+        spells: Array.isArray(c.spells) ? c.spells : []
+      }
     };
   }
 
@@ -2114,7 +2141,7 @@
       magic: c.magic || {},
       hp: c.hp || {},
       mana: c.mana || '',
-      identity: c.identity || {},
+      identity: identityWithSheetState(c),
       vitals: c.vitals || {},
       statuses: Array.isArray(c.statuses) ? c.statuses : [],
       inventory: Array.isArray(c.inventory) ? c.inventory : [],
@@ -2126,7 +2153,6 @@
 
   /* Colunas da ficha interativa — podem nao existir se o SQL nao foi rodado. */
   const SHEET_COLS = ['vitals', 'statuses', 'inventory', 'spells'];
-  const SHEET_HINT = 'As colunas da ficha interativa ainda não existem. Rode o arquivo supabase-characters-sheet.sql no SQL Editor do Supabase.';
   function isMissingSheetCol(error) {
     const msg = (error && error.message) || '';
     return new RegExp(SHEET_COLS.join('|'), 'i').test(msg) && /column|schema cache/i.test(msg);
@@ -2161,6 +2187,7 @@
     if (error && isMissingSheetCol(error)) {
       // Migração da ficha interativa ainda não rodou: salva sem essas colunas.
       SHEET_COLS.forEach((k) => delete row[k]);
+      row.identity = identityWithSheetState(c, 'fallback');
       ({ data, error } = await sb.from('characters').insert(row).select().single());
     }
     if (error) {
@@ -2176,6 +2203,7 @@
     let { data, error } = await sb.from('characters').update(row).eq('id', c.id).select().single();
     if (error && isMissingSheetCol(error)) {
       SHEET_COLS.forEach((k) => delete row[k]);
+      row.identity = identityWithSheetState(c, 'fallback');
       ({ data, error } = await sb.from('characters').update(row).eq('id', c.id).select().single());
     }
     if (error) {
@@ -2193,11 +2221,18 @@
       statuses: Array.isArray(c.statuses) ? c.statuses : [],
       inventory: Array.isArray(c.inventory) ? c.inventory : [],
       spells: Array.isArray(c.spells) ? c.spells : [],
+      identity: identityWithSheetState(c),
       updated_at: new Date().toISOString()
     };
-    const { error } = await sb.from('characters').update(payload).eq('id', c.id);
+    let { error } = await sb.from('characters').update(payload).eq('id', c.id);
+    if (error && isMissingSheetCol(error)) {
+      const fallbackPayload = {
+        identity: identityWithSheetState(c, 'fallback'),
+        updated_at: payload.updated_at
+      };
+      ({ error } = await sb.from('characters').update(fallbackPayload).eq('id', c.id));
+    }
     if (error) {
-      if (isMissingSheetCol(error)) throw new Error(SHEET_HINT);
       throw error;
     }
   }
