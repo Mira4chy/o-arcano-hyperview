@@ -8926,7 +8926,7 @@
         let imagePath = existing?.imagePath || '';
 
         if (file) {
-          const up = await uploadBanner(file, `characters/${auth.user.id}`);
+          const up = await uploadBanner(file, `characters/${auth.user.id}/portrait`);
           uploadedPath = up.path;
           if (existing?.imagePath) oldPathsToRemove.push(existing.imagePath);
           image = up.url;

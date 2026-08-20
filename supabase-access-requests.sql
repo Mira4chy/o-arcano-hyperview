@@ -214,6 +214,8 @@ drop policy if exists "banners_admin_delete" on storage.objects;
 drop policy if exists "banners_master_upload" on storage.objects;
 drop policy if exists "banners_master_update" on storage.objects;
 drop policy if exists "banners_master_delete" on storage.objects;
+drop policy if exists "character_portraits_player_upload" on storage.objects;
+drop policy if exists "character_portraits_player_delete" on storage.objects;
 
 create policy "banners_master_upload" on storage.objects
   for insert to authenticated
@@ -261,5 +263,35 @@ create policy "banners_master_delete" on storage.objects
       where ar.user_id = (select auth.uid())
         and ar.status = 'approved'
         and ar.approved_role = 'admin'
+    )
+  );
+
+-- Retratos pertencem ao jogador. O caminho novo usa characters/<user_id>/...;
+-- o segundo formato mantem os retratos criados antes desta organizacao.
+create policy "character_portraits_player_upload" on storage.objects
+  for insert to authenticated
+  with check (
+    bucket_id = 'banners'
+    and public.current_arcano_role() = 'player'
+    and (
+      (
+        (storage.foldername(name))[1] = 'characters'
+        and (storage.foldername(name))[2] = ((select auth.uid())::text)
+      )
+      or name like ('characters/' || ((select auth.uid())::text) || '-%')
+    )
+  );
+
+create policy "character_portraits_player_delete" on storage.objects
+  for delete to authenticated
+  using (
+    bucket_id = 'banners'
+    and public.current_arcano_role() = 'player'
+    and (
+      (
+        (storage.foldername(name))[1] = 'characters'
+        and (storage.foldername(name))[2] = ((select auth.uid())::text)
+      )
+      or name like ('characters/' || ((select auth.uid())::text) || '-%')
     )
   );
