@@ -1595,7 +1595,6 @@
     Eras:      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>',
     Sistemas:  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M2 12h3M19 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1"/></svg>',
     Persona:   '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 4-7 8-7s8 3 8 7"/></svg>',
-    Mesa:      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 3v18M15 3v18M3 9h18M3 15h18"/><circle cx="12" cy="12" r="2.2" fill="currentColor" stroke="none"/></svg>',
     Historias: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3"/><circle cx="17" cy="9" r="2.5"/><path d="M3 20c0-3 3-5 6-5s6 2 6 5M14 20c0-2 2-3.5 4.5-3.5S22 18 22 20"/></svg>',
     Racas:     '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="7" cy="7" r="3"/><circle cx="17" cy="7" r="3"/><circle cx="12" cy="17" r="3"/><path d="M7 10v3M17 10v3M9 15l1.5-1M15 15l-1.5-1"/></svg>',
     Mapa:      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6l6-2 6 2 6-2v14l-6 2-6-2-6 2V6z"/><line x1="9" y1="4" x2="9" y2="18"/><line x1="15" y1="6" x2="15" y2="20"/></svg>',
@@ -1613,7 +1612,6 @@
     Eras:      { hue: 45,  label: 'TEMPO' },
     Sistemas:  { hue: 160, label: 'REGRAS' },
     Persona:   { hue: 320, label: 'PESSOAS' },
-    Mesa:      { hue: 185, label: 'MESA' },
     Historias: { hue: 250, label: 'HISTÓRIAS' },
     Racas:     { hue: 130, label: 'POVOS' },
     Mapa:      { hue: 195, label: 'MUNDO' },
@@ -1743,13 +1741,12 @@
   const tabById = (id) => ARCHIVE.tabs.find((t) => t.id === canonicalTabId(id));
   const entriesIn = (tabId) => ARCHIVE.entries.filter((e) => canonicalTabId(e.tab) === canonicalTabId(tabId));
   const entryById = (id) => ARCHIVE.entries.find((e) => e.id === id);
-  /* Persona conta fichas; Mesa conta tokens; demais abas contam entries. */
+  /* Persona conta fichas; as demais abas contam entries. */
   const tabCount = (id) => {
     const tabId = canonicalTabId(id);
     if (tabId === 'Persona') {
       return auth.user ? CHARACTERS.filter((c) => auth.isAdmin || c.userId === auth.user.id).length : 0;
     }
-    if (tabId === 'Mesa') return MESA_STATE.tokens.length;
     return entriesIn(id).length;
   };
 
@@ -1758,174 +1755,9 @@
   const TAG_COLOR_RE = /^#[0-9a-f]{6}$/i;
   const DEFAULT_TAG_COLOR = '#f59e0b';
   const categoryState = {};
-  const MESA_STORAGE_KEY = 'arcano.mesa.active.v1';
-  const MESA_GRID_LIMITS = {
-    minW: 6,
-    maxW: 36,
-    minH: 6,
-    maxH: 28,
-    minCell: 28,
-    maxCell: 64
-  };
-  const MESA_DEFAULT_COLOR = '#22d3ee';
-  const MESA_ACTIVE_ID = 'active';
-  let MESA_STATE = normalizeMesaState();
-  let mesaSelectedTokenId = '';
-  let mesaSyncWarning = '';
 
   function slugify(str) {
     return normalize(str).replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 80) || 'historia';
-  }
-
-  function clampNumber(value, min, max, fallback) {
-    const n = Number(value);
-    if (!Number.isFinite(n)) return fallback;
-    return Math.max(min, Math.min(max, Math.round(n)));
-  }
-
-  function mesaTokenId(prefix = 'tok') {
-    return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
-  }
-
-  function normalizeMesaToken(token, index = 0, grid = {}) {
-    const width = grid.width || 18;
-    const height = grid.height || 12;
-    const size = clampNumber(token?.size, 1, 4, 1);
-    return {
-      id: String(token?.id || mesaTokenId()),
-      name: String(token?.name || `Token ${index + 1}`).trim().slice(0, 80) || `Token ${index + 1}`,
-      refType: String(token?.refType || 'custom'),
-      refId: String(token?.refId || ''),
-      ownerId: String(token?.ownerId || ''),
-      ownerLabel: String(token?.ownerLabel || ''),
-      image: String(token?.image || ''),
-      color: TAG_COLOR_RE.test(String(token?.color || '')) ? token.color : MESA_DEFAULT_COLOR,
-      x: clampNumber(token?.x, 0, Math.max(0, width - size), index % width),
-      y: clampNumber(token?.y, 0, Math.max(0, height - size), Math.floor(index / width)),
-      size,
-      hp: String(token?.hp || '').slice(0, 30),
-      note: String(token?.note || '').slice(0, 160),
-      hidden: !!token?.hidden,
-      locked: !!token?.locked
-    };
-  }
-
-  function normalizeMesaState(raw = {}) {
-    const width = clampNumber(raw.width, MESA_GRID_LIMITS.minW, MESA_GRID_LIMITS.maxW, 18);
-    const height = clampNumber(raw.height, MESA_GRID_LIMITS.minH, MESA_GRID_LIMITS.maxH, 12);
-    const cellSize = clampNumber(raw.cellSize, MESA_GRID_LIMITS.minCell, MESA_GRID_LIMITS.maxCell, 42);
-    const grid = { width, height };
-    return {
-      id: String(raw.id || MESA_ACTIVE_ID),
-      title: String(raw.title || 'Cena ativa').trim().slice(0, 90) || 'Cena ativa',
-      width,
-      height,
-      cellSize,
-      background: String(raw.background || '#101421').trim().slice(0, 80) || '#101421',
-      showGrid: raw.showGrid !== false,
-      allowPlayerMove: raw.allowPlayerMove !== false,
-      tokens: Array.isArray(raw.tokens)
-        ? raw.tokens.slice(0, 80).map((token, i) => normalizeMesaToken(token, i, grid))
-        : [],
-      updatedAt: raw.updatedAt || Date.now()
-    };
-  }
-
-  function loadMesaLocal() {
-    try {
-      const raw = localStorage.getItem(MESA_STORAGE_KEY);
-      return raw ? normalizeMesaState(JSON.parse(raw)) : normalizeMesaState();
-    } catch {
-      return normalizeMesaState();
-    }
-  }
-
-  function saveMesaLocal() {
-    MESA_STATE.updatedAt = Date.now();
-    try {
-      localStorage.setItem(MESA_STORAGE_KEY, JSON.stringify(MESA_STATE));
-    } catch (err) {
-      console.warn('Falha ao salvar Mesa local:', err);
-    }
-  }
-
-  async function loadMesaState() {
-    MESA_STATE = loadMesaLocal();
-    mesaSyncWarning = '';
-    if (!sb || !auth.canRead) return;
-    try {
-      const { data, error } = await sb
-        .from('battle_grids')
-        .select('id,title,state,updated_at')
-        .eq('is_active', true)
-        .order('updated_at', { ascending: false })
-        .limit(1)
-        .maybeSingle();
-      if (error) throw error;
-      if (data && data.state) {
-        MESA_STATE = normalizeMesaState({ ...data.state, id: data.id || data.state.id, title: data.title || data.state.title });
-        saveMesaLocal();
-      }
-    } catch (err) {
-      mesaSyncWarning = 'Mesa em modo local. Rode supabase-battle-grid.sql para sincronizar entre jogadores.';
-      console.warn('Mesa sem sincronização Supabase:', err);
-    }
-  }
-
-  async function saveMesaState() {
-    MESA_STATE = normalizeMesaState(MESA_STATE);
-    saveMesaLocal();
-    if (!sb || !auth.canRead) return;
-    try {
-      const payload = {
-        id: MESA_STATE.id || MESA_ACTIVE_ID,
-        title: MESA_STATE.title,
-        state: MESA_STATE,
-        is_active: true,
-        updated_at: new Date().toISOString()
-      };
-      const { error } = await sb.from('battle_grids').upsert(payload, { onConflict: 'id' });
-      if (error) throw error;
-      mesaSyncWarning = '';
-    } catch (err) {
-      mesaSyncWarning = 'Mesa salva neste navegador, mas ainda sem sincronização Supabase.';
-      console.warn('Falha ao sincronizar Mesa:', err);
-    }
-  }
-
-  function mesaCanUse() {
-    return !sb || auth.canRead;
-  }
-
-  function mesaIsMaster() {
-    return !sb || auth.isAdmin;
-  }
-
-  function mesaCanMove(token) {
-    if (!token) return false;
-    if (mesaIsMaster()) return true;
-    if (token.locked) return false;
-    return !!(MESA_STATE.allowPlayerMove && auth.user && token.ownerId === auth.user.id);
-  }
-
-  function mesaVisibleTokens() {
-    return MESA_STATE.tokens.filter((token) => mesaIsMaster() || !token.hidden || (auth.user && token.ownerId === auth.user.id));
-  }
-
-  function mesaTokenById(id) {
-    return MESA_STATE.tokens.find((token) => token.id === id) || null;
-  }
-
-  function mesaTokenInitials(name) {
-    const parts = String(name || '?').trim().split(/\s+/).filter(Boolean);
-    return (parts.length > 1 ? `${parts[0][0]}${parts[1][0]}` : (parts[0] || '?').slice(0, 2)).toUpperCase();
-  }
-
-  function mesaPlaceToken(token, x, y) {
-    if (!token || !mesaCanMove(token)) return false;
-    token.x = clampNumber(x, 0, Math.max(0, MESA_STATE.width - token.size), token.x);
-    token.y = clampNumber(y, 0, Math.max(0, MESA_STATE.height - token.size), token.y);
-    return true;
   }
 
   function safeTagColor(color) {
@@ -2393,6 +2225,44 @@
   /* ── PALETA DE CORES PERSONALIZADA DO MESTRE ──── */
   const masterPalette = { loaded: false, colors: [] };
   const MAX_PALETTE = 16;
+  const MASTER_PALETTE_STORAGE_PREFIX = 'o-arcano:master-palette:';
+
+  function normalizeMasterPalette(colors) {
+    return (Array.isArray(colors) ? colors : [])
+      .map((color) => safeTagColor(color))
+      .filter((color, index, list) => list.indexOf(color) === index)
+      .slice(0, MAX_PALETTE);
+  }
+
+  function masterPaletteStorageKey() {
+    return auth.user ? `${MASTER_PALETTE_STORAGE_PREFIX}${auth.user.id}` : null;
+  }
+
+  function readLocalMasterPalette() {
+    const key = masterPaletteStorageKey();
+    if (!key) return [];
+    try {
+      return normalizeMasterPalette(JSON.parse(localStorage.getItem(key) || '[]'));
+    } catch (_) {
+      return [];
+    }
+  }
+
+  function writeLocalMasterPalette(colors) {
+    const key = masterPaletteStorageKey();
+    if (!key) return;
+    try {
+      localStorage.setItem(key, JSON.stringify(normalizeMasterPalette(colors)));
+    } catch (err) {
+      console.warn('[O Arcano] Não foi possível manter a paleta local:', err);
+    }
+  }
+
+  function isMasterPaletteUnavailable(error) {
+    const message = error?.message || '';
+    return error?.code === 'PGRST205' ||
+      /(?:master_palette.*(?:does not exist|schema cache)|relation .*master_palette)/i.test(message);
+  }
 
   async function loadMasterPalette() {
     if (!sb || !auth.user) return;
@@ -2403,35 +2273,45 @@
         .eq('user_id', auth.user.id)
         .maybeSingle();
       if (error && error.code !== 'PGRST116') {
-        // PGRST116 = no rows; ignora; outros loga
-        if (!/master_palette.*does not exist|relation .*master_palette/i.test(error.message || '')) {
+        // PGRST116 = nenhuma linha. Se a migração ainda não chegou ao banco,
+        // preserva a paleta no navegador até que o Supabase fique disponível.
+        if (isMasterPaletteUnavailable(error)) {
+          masterPalette.colors = readLocalMasterPalette();
+        } else {
           console.warn('[O Arcano] Falha ao carregar paleta:', error);
         }
         masterPalette.loaded = true;
         return;
       }
-      const raw = Array.isArray(data?.colors) ? data.colors : [];
-      masterPalette.colors = raw.map((c) => safeTagColor(c)).filter((c, i, arr) => arr.indexOf(c) === i).slice(0, MAX_PALETTE);
+      masterPalette.colors = normalizeMasterPalette(data?.colors);
+      writeLocalMasterPalette(masterPalette.colors);
       masterPalette.loaded = true;
     } catch (err) {
       console.warn('[O Arcano] Erro paleta:', err);
+      masterPalette.colors = readLocalMasterPalette();
       masterPalette.loaded = true;
     }
   }
 
   async function saveMasterPalette(colors) {
     if (!sb || !auth.user) throw new Error('Sessão indisponível');
-    const clean = (colors || []).map((c) => safeTagColor(c)).filter((c, i, arr) => arr.indexOf(c) === i).slice(0, MAX_PALETTE);
+    const clean = normalizeMasterPalette(colors);
     const { error } = await sb
       .from('master_palette')
       .upsert({ user_id: auth.user.id, colors: clean, updated_at: new Date().toISOString() }, { onConflict: 'user_id' });
     if (error) {
-      if (/master_palette.*does not exist|relation .*master_palette/i.test(error.message || '')) {
-        throw new Error('A tabela master_palette ainda não foi criada. Rode o arquivo supabase-master-palette.sql no SQL Editor.');
+      if (isMasterPaletteUnavailable(error)) {
+        // Permite continuar trabalhando enquanto a migração do Supabase não foi aplicada.
+        // A paleta volta a sincronizar assim que a tabela estiver exposta pela Data API.
+        writeLocalMasterPalette(clean);
+        masterPalette.colors = clean;
+        console.warn('[O Arcano] Paleta salva apenas neste navegador; aplique supabase-master-palette.sql para sincronizá-la.', error);
+        return;
       }
       throw error;
     }
     masterPalette.colors = clean;
+    writeLocalMasterPalette(clean);
   }
 
   async function persistIndexCustom(patch) {
@@ -6105,208 +5985,6 @@
   }
 
   /* ── NOT FOUND ────────────────────────────────── */
-  /* MESA / GRID TATICO */
-  function viewMesa() {
-    if (!mesaCanUse()) return viewForbidden();
-    MESA_STATE = normalizeMesaState(MESA_STATE);
-    const theme = themeOf('Mesa');
-    const isMaster = mesaIsMaster();
-    const visibleTokens = mesaVisibleTokens();
-    const selected = mesaTokenById(mesaSelectedTokenId);
-    const playerChars = CHARACTERS.filter((c) => isMaster || (auth.user && c.userId === auth.user.id));
-    const beasts = entriesIn('Bestiario');
-    const cells = [];
-    for (let y = 0; y < MESA_STATE.height; y++) {
-      for (let x = 0; x < MESA_STATE.width; x++) {
-        cells.push(`<button type="button" class="mesa-cell" data-mesa-cell data-x="${x}" data-y="${y}" aria-label="Casa ${x + 1}, ${y + 1}"></button>`);
-      }
-    }
-
-    const charOptions = playerChars.length
-      ? playerChars.map((c) => `<option value="${escapeHtml(c.id)}">${escapeHtml(c.name || 'Persona')}</option>`).join('')
-      : '<option value="">Nenhuma Persona disponivel</option>';
-    const beastOptions = beasts.length
-      ? beasts.map((b) => `<option value="${escapeHtml(b.id)}">${escapeHtml(b.title)}</option>`).join('')
-      : '<option value="">Nenhuma criatura cadastrada</option>';
-
-    const selectedPanel = selected ? `
-      <section class="mesa-panel mesa-selected">
-        <div class="mesa-panel__head">
-          <span>Token selecionado</span>
-          <strong>${escapeHtml(selected.name)}</strong>
-        </div>
-        <div class="mesa-token-meta">
-          <span>X ${selected.x + 1}</span>
-          <span>Y ${selected.y + 1}</span>
-          <span>${selected.size}x${selected.size}</span>
-          ${selected.hp ? `<span>${escapeHtml(selected.hp)}</span>` : ''}
-        </div>
-        <div class="mesa-token-actions">
-          ${isMaster ? `
-            <button type="button" class="mesa-mini-btn" data-mesa-token-toggle-hidden="${escapeHtml(selected.id)}">${selected.hidden ? 'Revelar' : 'Ocultar'}</button>
-            <button type="button" class="mesa-mini-btn" data-mesa-token-toggle-lock="${escapeHtml(selected.id)}">${selected.locked ? 'Destravar' : 'Travar'}</button>
-          ` : ''}
-          ${(isMaster || (auth.user && selected.ownerId === auth.user.id)) ? `
-            <button type="button" class="mesa-mini-btn mesa-mini-btn--danger" data-mesa-token-remove="${escapeHtml(selected.id)}">Remover</button>
-          ` : ''}
-        </div>
-      </section>
-    ` : `
-      <section class="mesa-panel mesa-selected">
-        <div class="mesa-panel__head">
-          <span>Token selecionado</span>
-          <strong>Nenhum</strong>
-        </div>
-        <p class="mesa-help">Clique em um token para ver ações. Clique em uma casa vazia para mover o token selecionado.</p>
-      </section>
-    `;
-
-    return `
-      <section class="cat-hero" style="--hue:${theme.hue}">
-        <div class="cat-hero__icon">${iconOf('Mesa')}</div>
-        <div class="cat-hero__body">
-          <span class="cat-hero__eyebrow">${escapeHtml(theme.label)}</span>
-          <h1 class="cat-hero__title" data-text-reveal>Mesa</h1>
-          <p class="cat-hero__tone">Grid tatico para cenas ativas, movimentacao de tokens e entrada das Personas dos jogadores.</p>
-        </div>
-      </section>
-
-      <section class="mesa-app" style="--hue:${theme.hue};--mesa-cols:${MESA_STATE.width};--mesa-rows:${MESA_STATE.height};--mesa-cell:${MESA_STATE.cellSize}px;--mesa-bg:${escapeHtml(MESA_STATE.background)}">
-        <aside class="mesa-side">
-          <section class="mesa-panel">
-            <div class="mesa-panel__head">
-              <span>Cena ativa</span>
-              <strong>${escapeHtml(MESA_STATE.title)}</strong>
-            </div>
-            <div class="mesa-stats">
-              <span>${MESA_STATE.width} x ${MESA_STATE.height}</span>
-              <span>${MESA_STATE.cellSize}px</span>
-              <span>${MESA_STATE.tokens.length} tokens</span>
-            </div>
-            ${mesaSyncWarning ? `<p class="mesa-sync">${escapeHtml(mesaSyncWarning)}</p>` : ''}
-          </section>
-
-          ${isMaster ? `
-            <form class="mesa-panel mesa-form" data-mesa-config>
-              <div class="mesa-panel__head">
-                <span>Configurar grid</span>
-                <strong>Mestre</strong>
-              </div>
-              <label>Nome da cena
-                <input class="create-form__input" name="title" maxlength="90" value="${escapeHtml(MESA_STATE.title)}">
-              </label>
-              <div class="mesa-form__grid">
-                <label>Largura
-                  <input class="create-form__input" name="width" type="number" min="${MESA_GRID_LIMITS.minW}" max="${MESA_GRID_LIMITS.maxW}" value="${MESA_STATE.width}">
-                </label>
-                <label>Altura
-                  <input class="create-form__input" name="height" type="number" min="${MESA_GRID_LIMITS.minH}" max="${MESA_GRID_LIMITS.maxH}" value="${MESA_STATE.height}">
-                </label>
-                <label>Célula
-                  <input class="create-form__input" name="cellSize" type="number" min="${MESA_GRID_LIMITS.minCell}" max="${MESA_GRID_LIMITS.maxCell}" value="${MESA_STATE.cellSize}">
-                </label>
-              </div>
-              <label>Fundo
-                <input class="create-form__input" name="background" maxlength="80" value="${escapeHtml(MESA_STATE.background)}" placeholder="#101421">
-              </label>
-              <div class="mesa-checks">
-                <label><input type="checkbox" name="showGrid" ${MESA_STATE.showGrid ? 'checked' : ''}> Grade visível</label>
-                <label><input type="checkbox" name="allowPlayerMove" ${MESA_STATE.allowPlayerMove ? 'checked' : ''}> Jogadores movem seus tokens</label>
-              </div>
-              <button type="submit" class="btn btn-primary">Aplicar cena</button>
-            </form>
-          ` : ''}
-
-          <form class="mesa-panel mesa-form" data-mesa-join>
-            <div class="mesa-panel__head">
-              <span>Entrar na cena</span>
-              <strong>Persona</strong>
-            </div>
-            <label>Ficha
-              <select class="create-form__input char-select" name="characterId" ${playerChars.length ? '' : 'disabled'}>
-                ${charOptions}
-              </select>
-            </label>
-            <button type="submit" class="btn btn-ghost" ${playerChars.length ? '' : 'disabled'}>Adicionar Persona</button>
-          </form>
-
-          ${isMaster ? `
-            <form class="mesa-panel mesa-form" data-mesa-custom>
-              <div class="mesa-panel__head">
-                <span>Adicionar token</span>
-                <strong>Avulso</strong>
-              </div>
-              <label>Nome
-                <input class="create-form__input" name="name" maxlength="80" placeholder="Guarda, altar, criatura...">
-              </label>
-              <div class="mesa-form__grid">
-                <label>Cor
-                  <input class="create-form__input" name="color" type="color" value="${MESA_DEFAULT_COLOR}">
-                </label>
-                <label>Tamanho
-                  <input class="create-form__input" name="size" type="number" min="1" max="4" value="1">
-                </label>
-              </div>
-              <button type="submit" class="btn btn-ghost">Adicionar avulso</button>
-            </form>
-
-            <form class="mesa-panel mesa-form" data-mesa-beast>
-              <div class="mesa-panel__head">
-                <span>Adicionar criatura</span>
-                <strong>Bestiário</strong>
-              </div>
-              <label>Criatura
-                <select class="create-form__input char-select" name="beastId" ${beasts.length ? '' : 'disabled'}>
-                  ${beastOptions}
-                </select>
-              </label>
-              <button type="submit" class="btn btn-ghost" ${beasts.length ? '' : 'disabled'}>Adicionar criatura</button>
-            </form>
-          ` : ''}
-
-          ${selectedPanel}
-        </aside>
-
-        <main class="mesa-stage">
-          <div class="mesa-stage__bar">
-            <div>
-              <span class="section__eyebrow">CENA</span>
-              <strong>${escapeHtml(MESA_STATE.title)}</strong>
-            </div>
-            <div class="mesa-stage__actions">
-              <button type="button" class="mesa-mini-btn" data-mesa-center>Centralizar</button>
-              ${isMaster ? `<button type="button" class="mesa-mini-btn mesa-mini-btn--danger" data-mesa-clear>Limpar tokens</button>` : ''}
-            </div>
-          </div>
-          <div class="mesa-board-wrap">
-            <div class="mesa-board ${MESA_STATE.showGrid ? '' : 'is-grid-hidden'}" data-mesa-board>
-              ${cells.join('')}
-              ${visibleTokens.map((token) => {
-                const canMove = mesaCanMove(token);
-                const selectedClass = token.id === mesaSelectedTokenId ? ' is-selected' : '';
-                const hiddenClass = token.hidden ? ' is-hidden' : '';
-                const lockedClass = token.locked ? ' is-locked' : '';
-                const image = token.image ? `<img src="${escapeHtml(token.image)}" alt="">` : '';
-                return `
-                  <button type="button"
-                          class="mesa-token${selectedClass}${hiddenClass}${lockedClass}"
-                          data-mesa-token="${escapeHtml(token.id)}"
-                          draggable="${canMove ? 'true' : 'false'}"
-                          style="--token:${escapeHtml(token.color)};grid-column:${token.x + 1} / span ${token.size};grid-row:${token.y + 1} / span ${token.size};"
-                          aria-label="${escapeHtml(token.name)}">
-                    ${image || `<span>${escapeHtml(mesaTokenInitials(token.name))}</span>`}
-                    <b>${escapeHtml(token.name)}</b>
-                  </button>
-                `;
-              }).join('')}
-            </div>
-          </div>
-          <p class="mesa-help">Arraste tokens para mover. Também é possível selecionar um token e clicar em uma casa do grid.</p>
-        </main>
-      </section>
-    `;
-  }
-
   function viewNotFound(what) {
     return `
       <section class="not-found">
@@ -6350,7 +6028,7 @@
       else if (entry) html = viewCharacterSheetFolio(entry);
       else html = viewPersonaRoster();
     }
-    else if (tab === 'Mesa') html = viewMesa();
+    else if (!tabById(tab)) html = viewNotFound(tab);
     else if (action === 'criar' && !entry) html = viewCreate(tab);
     else if (action === 'editar' && entry) html = viewCreate(tab, entry);
     else if (entry) html = viewEntry(tab, entry);
@@ -6378,7 +6056,6 @@
         attachDeleteHandlers();
         attachCharacterDeleteHandlers();
         attachCharacterSheet();
-        attachMesaGrid();
         attachBeastAbilityCards();
       });
       window.scrollTo({ top: 0, behavior: 'instant' });
@@ -8985,196 +8662,6 @@
   }
 
   /* ── FICHA VIVA: handlers (HP, status, inventário, magias) ── */
-  function attachMesaGrid() {
-    const root = document.querySelector('.mesa-app');
-    if (!root || root.dataset.bound) return;
-    root.dataset.bound = '1';
-
-    const rerender = async () => {
-      await saveMesaState();
-      render(true);
-    };
-
-    root.querySelector('[data-mesa-config]')?.addEventListener('submit', async (e) => {
-      e.preventDefault();
-      if (!mesaIsMaster()) return;
-      const form = e.currentTarget;
-      const width = clampNumber(form.width.value, MESA_GRID_LIMITS.minW, MESA_GRID_LIMITS.maxW, MESA_STATE.width);
-      const height = clampNumber(form.height.value, MESA_GRID_LIMITS.minH, MESA_GRID_LIMITS.maxH, MESA_STATE.height);
-      MESA_STATE.title = form.title.value.trim() || 'Cena ativa';
-      MESA_STATE.width = width;
-      MESA_STATE.height = height;
-      MESA_STATE.cellSize = clampNumber(form.cellSize.value, MESA_GRID_LIMITS.minCell, MESA_GRID_LIMITS.maxCell, MESA_STATE.cellSize);
-      MESA_STATE.background = form.background.value.trim() || '#101421';
-      MESA_STATE.showGrid = !!form.showGrid.checked;
-      MESA_STATE.allowPlayerMove = !!form.allowPlayerMove.checked;
-      MESA_STATE.tokens = MESA_STATE.tokens.map((token, i) => normalizeMesaToken(token, i, MESA_STATE));
-      await rerender();
-    });
-
-    root.querySelector('[data-mesa-join]')?.addEventListener('submit', async (e) => {
-      e.preventDefault();
-      const id = e.currentTarget.characterId.value;
-      const c = CHARACTERS.find((row) => row.id === id);
-      if (!c) return;
-      const existing = MESA_STATE.tokens.find((token) => token.refType === 'character' && token.refId === c.id);
-      if (existing) {
-        mesaSelectedTokenId = existing.id;
-        render(true);
-        return;
-      }
-      const ownerLabel = c.identity?.ownerLabel || c.name || 'Jogador';
-      const token = normalizeMesaToken({
-        id: mesaTokenId('char'),
-        name: c.name || 'Persona',
-        refType: 'character',
-        refId: c.id,
-        ownerId: c.userId || (auth.user && auth.user.id) || '',
-        ownerLabel,
-        image: c.image || '',
-        color: '#ec4899',
-        x: Math.min(MESA_STATE.tokens.length % MESA_STATE.width, MESA_STATE.width - 1),
-        y: Math.min(Math.floor(MESA_STATE.tokens.length / MESA_STATE.width), MESA_STATE.height - 1),
-        size: 1
-      }, MESA_STATE.tokens.length, MESA_STATE);
-      MESA_STATE.tokens.push(token);
-      mesaSelectedTokenId = token.id;
-      await rerender();
-    });
-
-    root.querySelector('[data-mesa-custom]')?.addEventListener('submit', async (e) => {
-      e.preventDefault();
-      if (!mesaIsMaster()) return;
-      const form = e.currentTarget;
-      const name = form.name.value.trim();
-      if (!name) {
-        form.name.focus();
-        return;
-      }
-      const token = normalizeMesaToken({
-        id: mesaTokenId('custom'),
-        name,
-        refType: 'custom',
-        color: form.color.value || MESA_DEFAULT_COLOR,
-        size: form.size.value,
-        x: Math.min(MESA_STATE.tokens.length % MESA_STATE.width, MESA_STATE.width - 1),
-        y: Math.min(Math.floor(MESA_STATE.tokens.length / MESA_STATE.width), MESA_STATE.height - 1)
-      }, MESA_STATE.tokens.length, MESA_STATE);
-      MESA_STATE.tokens.push(token);
-      mesaSelectedTokenId = token.id;
-      await rerender();
-    });
-
-    root.querySelector('[data-mesa-beast]')?.addEventListener('submit', async (e) => {
-      e.preventDefault();
-      if (!mesaIsMaster()) return;
-      const id = e.currentTarget.beastId.value;
-      const beast = entryById(id);
-      if (!beast) return;
-      const token = normalizeMesaToken({
-        id: mesaTokenId('beast'),
-        name: beast.title || 'Criatura',
-        refType: 'beast',
-        refId: beast.id,
-        image: beast.image || '',
-        color: '#f43f5e',
-        size: 1,
-        hp: itemFieldValue(beast.fields, 'HP') || '',
-        x: Math.min(MESA_STATE.tokens.length % MESA_STATE.width, MESA_STATE.width - 1),
-        y: Math.min(Math.floor(MESA_STATE.tokens.length / MESA_STATE.width), MESA_STATE.height - 1)
-      }, MESA_STATE.tokens.length, MESA_STATE);
-      MESA_STATE.tokens.push(token);
-      mesaSelectedTokenId = token.id;
-      await rerender();
-    });
-
-    root.addEventListener('click', async (e) => {
-      const tokenBtn = e.target.closest('[data-mesa-token]');
-      if (tokenBtn) {
-        mesaSelectedTokenId = tokenBtn.dataset.mesaToken;
-        render(true);
-        return;
-      }
-
-      const cell = e.target.closest('[data-mesa-cell]');
-      if (cell && mesaSelectedTokenId) {
-        const token = mesaTokenById(mesaSelectedTokenId);
-        if (mesaPlaceToken(token, Number(cell.dataset.x), Number(cell.dataset.y))) await rerender();
-        return;
-      }
-
-      const hiddenBtn = e.target.closest('[data-mesa-token-toggle-hidden]');
-      if (hiddenBtn && mesaIsMaster()) {
-        const token = mesaTokenById(hiddenBtn.dataset.mesaTokenToggleHidden);
-        if (token) token.hidden = !token.hidden;
-        await rerender();
-        return;
-      }
-
-      const lockBtn = e.target.closest('[data-mesa-token-toggle-lock]');
-      if (lockBtn && mesaIsMaster()) {
-        const token = mesaTokenById(lockBtn.dataset.mesaTokenToggleLock);
-        if (token) token.locked = !token.locked;
-        await rerender();
-        return;
-      }
-
-      const removeBtn = e.target.closest('[data-mesa-token-remove]');
-      if (removeBtn) {
-        const token = mesaTokenById(removeBtn.dataset.mesaTokenRemove);
-        if (!token) return;
-        if (!(mesaIsMaster() || (auth.user && token.ownerId === auth.user.id))) return;
-        MESA_STATE.tokens = MESA_STATE.tokens.filter((row) => row.id !== token.id);
-        if (mesaSelectedTokenId === token.id) mesaSelectedTokenId = '';
-        await rerender();
-        return;
-      }
-
-      if (e.target.closest('[data-mesa-clear]') && mesaIsMaster()) {
-        if (!confirm('Remover todos os tokens da cena?')) return;
-        MESA_STATE.tokens = [];
-        mesaSelectedTokenId = '';
-        await rerender();
-        return;
-      }
-
-      if (e.target.closest('[data-mesa-center]')) {
-        root.querySelector('.mesa-board-wrap')?.scrollTo({ left: 0, top: 0, behavior: 'smooth' });
-      }
-    });
-
-    root.addEventListener('dragstart', (e) => {
-      const tokenBtn = e.target.closest('[data-mesa-token]');
-      const token = tokenBtn ? mesaTokenById(tokenBtn.dataset.mesaToken) : null;
-      if (!token || !mesaCanMove(token)) {
-        e.preventDefault();
-        return;
-      }
-      mesaSelectedTokenId = token.id;
-      e.dataTransfer.setData('text/plain', token.id);
-      e.dataTransfer.effectAllowed = 'move';
-    });
-
-    root.addEventListener('dragover', (e) => {
-      if (e.target.closest('[data-mesa-cell]')) {
-        e.preventDefault();
-        e.dataTransfer.dropEffect = 'move';
-      }
-    });
-
-    root.addEventListener('drop', async (e) => {
-      const cell = e.target.closest('[data-mesa-cell]');
-      if (!cell) return;
-      e.preventDefault();
-      const id = e.dataTransfer.getData('text/plain');
-      const token = mesaTokenById(id);
-      if (mesaPlaceToken(token, Number(cell.dataset.x), Number(cell.dataset.y))) {
-        mesaSelectedTokenId = token.id;
-        await rerender();
-      }
-    });
-  }
-
   function attachCharacterSheet() {
     const root = document.getElementById('charSheet');
     if (!root || root.dataset.bound) return;
@@ -9834,7 +9321,6 @@
 
     if (!sb) {
       // Sem Supabase: roda offline com defaults
-      await loadMesaState();
       render();
       return;
     }
@@ -9858,7 +9344,7 @@
 
     // Logado: carrega dados e renderiza
     try {
-      await Promise.all([loadIndexCustom(), loadUserEntries(), loadMasterPalette(), loadCharacters(), loadMesaState()]);
+      await Promise.all([loadIndexCustom(), loadUserEntries(), loadMasterPalette(), loadCharacters()]);
     } catch (err) {
       console.error('Erro ao sincronizar com Supabase:', err);
     }
