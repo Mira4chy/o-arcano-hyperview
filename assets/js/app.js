@@ -153,7 +153,6 @@
 
   const DURATION_OPTIONS = ['1 turno', '2 turnos', '3 turnos', '4 turnos', '5 turnos', '6 turnos', '7 turnos', '8 turnos', '9 turnos', '10 turnos', 'instantâneo', 'concentração'];
   const ACTIVATION_OPTIONS = ['Sempre ativa', 'Ao receber dano', 'Ao iniciar combate', 'Quando HP < X%', 'Manual (custo MP)'];
-  const SPELL_ERAS = ['Azul do Velho Mundo', 'Tempos Medievais', 'Modernismo', 'P\u00f3s-Modernismo'];
   const SPELL_CLASSIFICATIONS = ['Ancestral', 'T\u00e9cnica', 'Codificada', 'Fragmentada'];
   const SPELL_CONTROL_LEVELS = ['Selvagem', 'Inst\u00e1vel', 'Moldada', 'Refinada', 'Codificada', 'Degradada'];
   const SPELL_USE_FORMS = ['Instinto', 'Tradi\u00e7\u00e3o', 'T\u00e9cnica', 'Tecnologia', 'Anomalia'];
@@ -389,118 +388,50 @@
     return '';
   }
 
-  function normalizeSpellHistoricalFields(fields, fallbackTitle = '') {
+  function normalizeSpellArcaneFields(fields) {
     const source = fields || {};
-    const originRaw = String(spellField(source, 'Era de origem', 'Era Origem') || '').trim();
-    const versionRaw = String(spellField(source, 'Era da vers\u00e3o', 'Era da Vers\u00e3o', 'Era') || originRaw || '').trim();
     const classificationRaw = String(spellField(source, 'Classifica\u00e7\u00e3o Arcana', 'Classifica\u00e7\u00e3o', 'Classificacao') || '').trim();
-    const lineage = String(spellField(source, 'Linhagem M\u00e1gica', 'Linhagem', 'Familia Magica') || fallbackTitle || '').trim();
-    const previous = String(spellField(source, 'Vers\u00e3o Anterior', 'Versao Anterior', 'Deriva de') || '').trim();
     const controlRaw = String(spellField(source, 'Grau de Controle', 'Controle') || '').trim();
     const useRaw = String(spellField(source, 'Forma de Uso', 'Uso') || '').trim();
     return {
-      eraOrigem: SPELL_ERAS.includes(originRaw) ? originRaw : '',
-      eraVersao: SPELL_ERAS.includes(versionRaw) ? versionRaw : '',
       classificacao: SPELL_CLASSIFICATIONS.includes(classificationRaw) ? classificationRaw : '',
-      lineage,
-      previous,
       control: SPELL_CONTROL_LEVELS.includes(controlRaw) ? controlRaw : '',
       useForm: SPELL_USE_FORMS.includes(useRaw) ? useRaw : ''
     };
   }
 
-  function spellLineageKey(entry) {
-    const meta = normalizeSpellHistoricalFields(entry?.fields || {}, entry?.title || '');
-    return normalize(meta.lineage || entry?.title || '');
-  }
-
-  function spellLineageEntries(entry) {
-    if (!entry) return [];
-    const key = spellLineageKey(entry);
-    return entriesIn('Magias')
-      .filter((candidate) => spellLineageKey(candidate) === key)
-      .sort((a, b) => {
-        const ma = normalizeSpellHistoricalFields(a.fields, a.title);
-        const mb = normalizeSpellHistoricalFields(b.fields, b.title);
-        const ia = SPELL_ERAS.indexOf(ma.eraVersao);
-        const ib = SPELL_ERAS.indexOf(mb.eraVersao);
-        return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib)
-          || (a.createdAt || 0) - (b.createdAt || 0)
-          || String(a.title || '').localeCompare(String(b.title || ''), 'pt-BR');
-      });
-  }
-
-  function spellNextEra(era) {
-    const index = SPELL_ERAS.indexOf(era);
-    return index >= 0 && index < SPELL_ERAS.length - 1 ? SPELL_ERAS[index + 1] : '';
-  }
-
-  function spellNextOpenEra(entry) {
-    if (!entry) return '';
-    const meta = normalizeSpellHistoricalFields(entry.fields, entry.title);
-    const used = new Set(spellLineageEntries(entry)
-      .map((candidate) => normalizeSpellHistoricalFields(candidate.fields, candidate.title).eraVersao)
-      .filter(Boolean));
-    const start = Math.max(0, SPELL_ERAS.indexOf(meta.eraVersao) + 1);
-    for (let i = start; i < SPELL_ERAS.length; i += 1) {
-      if (!used.has(SPELL_ERAS[i])) return SPELL_ERAS[i];
-    }
-    for (const era of SPELL_ERAS) {
-      if (!used.has(era)) return era;
-    }
-    return '';
-  }
-
-  function spellPreviousVersionForEra(entry, targetEra) {
-    const targetIndex = SPELL_ERAS.indexOf(targetEra);
-    if (!entry || targetIndex < 0) return '';
-    const previous = spellLineageEntries(entry)
-      .map((candidate) => ({
-        entry: candidate,
-        index: SPELL_ERAS.indexOf(normalizeSpellHistoricalFields(candidate.fields, candidate.title).eraVersao)
-      }))
-      .filter((candidate) => candidate.index >= 0 && candidate.index < targetIndex)
-      .sort((a, b) => b.index - a.index);
-    return previous[0]?.entry?.id || '';
-  }
-
-  const EMPTY_SPELL_FILTERS = { type: '', affinity: '', era: '', classification: '' };
+  const EMPTY_SPELL_FILTERS = { type: '', affinity: '', classification: '' };
   function normalizeSpellFilters(filters) {
     const src = filters || {};
     const type = isSpellType(src.type) ? src.type : '';
     const affinity = SPELL_AFFINITY_KEYS.includes(src.affinity) ? src.affinity : '';
-    const era = SPELL_ERAS.includes(src.era) ? src.era : '';
     const classification = SPELL_CLASSIFICATIONS.includes(src.classification) ? src.classification : '';
-    return { type, affinity, era, classification };
+    return { type, affinity, classification };
   }
   function hasSpellFilters(filters) {
     const f = normalizeSpellFilters(filters);
-    return !!(f.type || f.affinity || f.era || f.classification);
+    return !!(f.type || f.affinity || f.classification);
   }
   function spellFilterStats(entries) {
     const types = SPELL_TYPE_KEYS.map((key) => ({ key, label: SPELL_TYPES[key].label, count: 0 }));
     const affinities = SPELL_AFFINITY_KEYS.map((key) => ({ key, label: SPELL_AFFINITIES[key].label, count: 0, meta: SPELL_AFFINITIES[key] }));
-    const eras = SPELL_ERAS.map((key) => ({ key, label: key, count: 0 }));
     const classifications = SPELL_CLASSIFICATIONS.map((key) => ({ key, label: key, count: 0 }));
     const byType = Object.fromEntries(types.map((row) => [row.key, row]));
     const byAffinity = Object.fromEntries(affinities.map((row) => [row.key, row]));
-    const byEra = Object.fromEntries(eras.map((row) => [row.key, row]));
     const byClassification = Object.fromEntries(classifications.map((row) => [row.key, row]));
 
     entries.forEach((entry) => {
       const fields = entry.fields || {};
       const type = isSpellType(entry.subtype) ? entry.subtype : 'ativa';
-      const history = normalizeSpellHistoricalFields(fields, entry.title);
+      const arcane = normalizeSpellArcaneFields(fields);
       if (byType[type]) byType[type].count += 1;
       if (byAffinity[fields['Afinidade']]) byAffinity[fields['Afinidade']].count += 1;
-      if (byEra[history.eraVersao]) byEra[history.eraVersao].count += 1;
-      if (byClassification[history.classificacao]) byClassification[history.classificacao].count += 1;
+      if (byClassification[arcane.classificacao]) byClassification[arcane.classificacao].count += 1;
     });
 
     return {
       types: types.filter((row) => row.count > 0),
       affinities: affinities.filter((row) => row.count > 0),
-      eras: eras.filter((row) => row.count > 0),
       classifications: classifications.filter((row) => row.count > 0)
     };
   }
@@ -509,7 +440,6 @@
     if (key === 'type') return SPELL_TYPES[value]?.label || value;
     if (key === 'affinity') return SPELL_AFFINITIES[value]?.label || value;
     if (key === 'classification') return value;
-    if (key === 'era') return value;
     return value;
   }
 
@@ -521,29 +451,10 @@
       .filter(Boolean);
   }
 
-  function spellEraRailHTML(entries, filters) {
-    const active = normalizeSpellFilters(filters);
-    const stats = spellFilterStats(entries);
-    const byEra = Object.fromEntries(stats.eras.map((row) => [row.key, row.count]));
-    return `
-      <section class="spell-era-rail" aria-label="Filtrar magias por era">
-        <button type="button" class="spell-era-tab ${!active.era ? 'is-active' : ''}" data-spell-filter="era" data-spell-filter-value="">
-          <span>Todas</span>
-          <strong>${entries.length}</strong>
-        </button>
-        ${SPELL_ERAS.map((era) => `
-          <button type="button" class="spell-era-tab ${active.era === era ? 'is-active' : ''}" data-spell-filter="era" data-spell-filter-value="${escapeHtml(era)}">
-            <span>${escapeHtml(era)}</span>
-            <strong>${byEra[era] || 0}</strong>
-          </button>
-        `).join('')}
-      </section>`;
-  }
-
   function spellCategoryFiltersHTML(entries, filters, open = false) {
     const active = normalizeSpellFilters(filters);
     const stats = spellFilterStats(entries);
-    if (!stats.types.length && !stats.affinities.length && !stats.eras.length && !stats.classifications.length) return '';
+    if (!stats.types.length && !stats.affinities.length && !stats.classifications.length) return '';
 
     const group = (label, key, rows, renderLabel) => rows.length ? `
       <div class="spell-filter-group" aria-label="${escapeHtml(label)}">
@@ -571,7 +482,6 @@
         </div>
         ${group('Tipo', 'type', stats.types, (row) => `<span>${escapeHtml(SPELL_TYPES[row.key].badge)}</span>`)}
         ${group('Afinidade', 'affinity', stats.affinities, (row) => `<span class="spell-filter-chip__icon">${row.meta.icon}</span><span>${escapeHtml(row.label)}</span>`)}
-        ${group('Era', 'era', stats.eras, (row) => `<span>${escapeHtml(row.label)}</span>`)}
         ${group('Classifica\u00e7\u00e3o', 'classification', stats.classifications, (row) => `<span>${escapeHtml(row.label)}</span>`)}
       </section>
     `;
@@ -2688,11 +2598,10 @@
       if (spellTab) {
         const fields = e.fields || {};
         const type = isSpellType(e.subtype) ? e.subtype : 'ativa';
-        const history = normalizeSpellHistoricalFields(fields, e.title);
+        const arcane = normalizeSpellArcaneFields(fields);
         if (spellFilter.type && type !== spellFilter.type) return false;
         if (spellFilter.affinity && fields['Afinidade'] !== spellFilter.affinity) return false;
-        if (spellFilter.era && history.eraVersao !== spellFilter.era) return false;
-        if (spellFilter.classification && history.classificacao !== spellFilter.classification) return false;
+        if (spellFilter.classification && arcane.classificacao !== spellFilter.classification) return false;
       }
       if (beastTab) {
         const fields = e.fields || {};
@@ -2713,7 +2622,6 @@
     const beastFiltersOpen = beastTab && !!(categoryState[tabId]?.beastFiltersOpen);
     const spellFilterLabels = spellActiveFilterLabels(spellFilter);
     const beastFilterLabels = Object.values(beastFilter).filter(Boolean);
-    const spellLineageCount = spellTab ? new Set(all.map((entry) => spellLineageKey(entry))).size : 0;
     const visibleCountLabel = spellTab
       ? `${list.length} ${list.length === 1 ? 'magia vis\u00edvel' : 'magias vis\u00edveis'}`
       : beastTab
@@ -2729,7 +2637,7 @@
           <p class="cat-hero__tone">${escapeHtml(tab.tone || '')}</p>
           <div class="cat-hero__meta">
             <span class="badge"><strong>${all.length}</strong> ${spellTab ? (all.length === 1 ? 'magia' : 'magias') : beastTab ? (all.length === 1 ? 'criatura' : 'criaturas') : (all.length === 1 ? 'história' : 'histórias')}</span>
-            ${spellTab ? `<span class="badge badge-soft"><strong>${spellLineageCount}</strong> ${spellLineageCount === 1 ? 'linhagem' : 'linhagens'}</span>` : (showCreate ? '<span class="badge badge-soft">Cria\u00e7\u00e3o aberta</span>' : '')}
+            ${!spellTab && showCreate ? '<span class="badge badge-soft">Cria\u00e7\u00e3o aberta</span>' : ''}
           </div>
         </div>
         ${(spellTab || beastTab) && showCreate ? `
@@ -2742,7 +2650,7 @@
       <section class="filter-bar ${spellTab ? 'filter-bar--magias' : ''} ${beastTab ? 'filter-bar--bestiario' : ''}">
         <label class="filter-search">
           <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
-          <input id="catSearch" type="search" placeholder="${spellTab ? 'Buscar magia, linhagem, efeito...' : (beastTab ? 'Buscar criatura, habitat, habilidade...' : `Filtrar em ${escapeHtml(tab.title)}...`)}" value="${escapeHtml(query || '')}" autocomplete="off">
+          <input id="catSearch" type="search" placeholder="${spellTab ? 'Buscar magia, afinidade, efeito...' : (beastTab ? 'Buscar criatura, habitat, habilidade...' : `Filtrar em ${escapeHtml(tab.title)}...`)}" value="${escapeHtml(query || '')}" autocomplete="off">
         </label>
         <span class="filter-count">${escapeHtml(visibleCountLabel)}</span>
         ${spellTab ? `
@@ -2762,8 +2670,6 @@
         <div class="spell-active-filters">
           ${spellFilterLabels.map((label) => `<span>${escapeHtml(label)}</span>`).join('')}
         </div>` : ''}
-
-      ${spellTab ? spellEraRailHTML(all, spellFilter) : ''}
 
       ${spellTab ? spellCategoryFiltersHTML(all, spellFilter, spellFiltersOpen) : ''}
 
@@ -3204,47 +3110,17 @@
 
   function spellCreateView(tabId, entryId, editing, existingEntry) {
     const theme = themeOf(tabId);
-    let versionDraft = {};
-    if (!editing) {
-      try {
-        versionDraft = JSON.parse(sessionStorage.getItem('arcanoSpellVersionDraft') || '{}') || {};
-      } catch {
-        versionDraft = {};
-      }
-    }
-    const versionSource = (!editing && versionDraft.id) ? entryById(versionDraft.id) : null;
-    const seedFields = versionSource?.fields || {};
-    const f = (editing && existingEntry.fields) ? existingEntry.fields : (versionSource ? seedFields : {});
-    const type = (editing && isSpellType(existingEntry.subtype))
-      ? existingEntry.subtype
-      : (versionSource && isSpellType(versionSource.subtype) ? versionSource.subtype : 'ativa');
+    const f = (editing && existingEntry.fields) ? existingEntry.fields : {};
+    const type = (editing && isSpellType(existingEntry.subtype)) ? existingEntry.subtype : 'ativa';
     const affinity = f['Afinidade'] || '';
     const aff = affinityMeta(affinity);
     const scopeEntries = spellScopeEntries(f);
     const effectEntries = normalizeSpellEffects(f);
     const v = (x) => escapeHtml(x ?? '');
-    const sourceHistory = versionSource ? normalizeSpellHistoricalFields(seedFields, versionSource.title) : null;
-    const history = normalizeSpellHistoricalFields(f, editing ? existingEntry.title : (versionSource?.title || ''));
-    const originEra = history.eraOrigem || sourceHistory?.eraOrigem || sourceHistory?.eraVersao || '';
-    const versionEra = editing
-      ? history.eraVersao
-      : (versionDraft.era || (versionSource ? '' : history.eraVersao) || '');
-    const lineage = history.lineage || sourceHistory?.lineage || versionSource?.title || '';
-    const previousVersion = editing ? history.previous : (versionDraft.previousId || versionSource?.id || history.previous || '');
-    const previousOptions = entriesIn(tabId)
-      .filter((entry) => isMagiasTab(entry.tab) && (!editing || entry.id !== entryId))
-      .sort((a, b) => String(a.title || '').localeCompare(String(b.title || ''), 'pt-BR'))
-      .map((entry) => {
-        const meta = normalizeSpellHistoricalFields(entry.fields, entry.title);
-        return `<option value="${escapeHtml(entry.id)}" ${entry.id === previousVersion ? 'selected' : ''}
-                  data-era="${escapeHtml(meta.eraVersao)}"
-                  data-origin="${escapeHtml(meta.eraOrigem)}"
-                  data-lineage="${escapeHtml(meta.lineage || entry.title)}">${escapeHtml(entry.title)}</option>`;
-      }).join('');
-
+    const arcane = normalizeSpellArcaneFields(f);
     const heroEyebrow = editing ? `EDITAR · ${theme.label}` : `CRIAR · ${theme.label}`;
-    const heroH1 = editing ? `Editar magia · ${existingEntry.title}` : (versionSource ? `Nova vers\u00e3o de ${versionSource.title}` : 'Nova magia em Magias');
-    const heroTone = 'Defina a era, a classifica\u00e7\u00e3o e a linhagem. A ficha guarda como a magia muda ao longo da hist\u00f3ria.';
+    const heroH1 = editing ? `Editar magia · ${existingEntry.title}` : 'Nova magia em Magias';
+    const heroTone = 'Defina os atributos arcanos e os efeitos desta magia.';
 
     return `
       <section class="cat-hero" style="--hue:${theme.hue}">
@@ -3311,45 +3187,23 @@
           <input type="hidden" id="spellAffinity" value="${v(affinity)}">
         </div>
 
-        <section class="spell-history-form" aria-label="Hist\u00f3ria da magia">
+        <section class="spell-history-form" aria-label="Características arcanas">
           <div class="spell-history-form__head">
-            <span>Linhas do tempo</span>
-            <p>Use a linhagem para ligar vers\u00f5es da mesma magia em eras diferentes.</p>
+            <span>Características arcanas</span>
+            <p>Defina a classificação, o grau de controle e a forma de uso.</p>
           </div>
           <div class="create-form__row create-form__row--history">
             <div class="create-form__field">
-              <label class="create-form__label" for="spLineage">Linhagem M\u00e1gica</label>
-              <input type="text" id="spLineage" class="create-form__input" placeholder="Ex.: Chama Cortante" maxlength="120" value="${v(lineage)}">
-            </div>
-            <div class="create-form__field">
-              <label class="create-form__label" for="spPreviousVersion">Vers\u00e3o Anterior <span class="spell-opt">(opcional)</span></label>
-              <div class="spell-select">
-                <select id="spPreviousVersion" class="create-form__input">
-                  <option value="" ${previousVersion ? '' : 'selected'}>Sem vers\u00e3o anterior</option>
-                  ${previousOptions}
-                </select>
-                <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 9l6 6 6-6"/></svg>
-              </div>
-            </div>
-            <div class="create-form__field">
-              <label class="create-form__label" for="spEraOrigem">Era de origem</label>
-              ${spellSelectHTML('spEraOrigem', SPELL_ERAS, originEra, '\u2014')}
-            </div>
-            <div class="create-form__field">
-              <label class="create-form__label" for="spEraVersao">Era desta vers\u00e3o</label>
-              ${spellSelectHTML('spEraVersao', SPELL_ERAS, versionEra, '\u2014')}
-            </div>
-            <div class="create-form__field">
-              <label class="create-form__label" for="spClassification">Classifica\u00e7\u00e3o Arcana</label>
-              ${spellSelectHTML('spClassification', SPELL_CLASSIFICATIONS, history.classificacao, '\u2014')}
+              <label class="create-form__label" for="spClassification">Classificação Arcana</label>
+              ${spellSelectHTML('spClassification', SPELL_CLASSIFICATIONS, arcane.classificacao, '—')}
             </div>
             <div class="create-form__field">
               <label class="create-form__label" for="spControlLevel">Grau de Controle</label>
-              ${spellSelectHTML('spControlLevel', SPELL_CONTROL_LEVELS, history.control, '\u2014')}
+              ${spellSelectHTML('spControlLevel', SPELL_CONTROL_LEVELS, arcane.control, '—')}
             </div>
             <div class="create-form__field">
               <label class="create-form__label" for="spUseForm">Forma de Uso</label>
-              ${spellSelectHTML('spUseForm', SPELL_USE_FORMS, history.useForm, '\u2014')}
+              ${spellSelectHTML('spUseForm', SPELL_USE_FORMS, arcane.useForm, '—')}
             </div>
           </div>
         </section>
@@ -3485,21 +3339,6 @@
       });
       if (custoHint) custoHint.hidden = (type !== 'passiva');
     };
-
-    const prevSelect = $f('spPreviousVersion');
-    if (prevSelect && !prevSelect.dataset.bound) {
-      prevSelect.dataset.bound = '1';
-      prevSelect.addEventListener('change', () => {
-        const option = prevSelect.selectedOptions && prevSelect.selectedOptions[0];
-        if (!option || !option.value) return;
-        const lineageInput = $f('spLineage');
-        const originSelect = $f('spEraOrigem');
-        const versionSelect = $f('spEraVersao');
-        if (lineageInput && !lineageInput.value.trim()) lineageInput.value = option.dataset.lineage || option.textContent.trim();
-        if (originSelect && !originSelect.value) originSelect.value = option.dataset.origin || option.dataset.era || '';
-        if (versionSelect && !versionSelect.value) versionSelect.value = spellNextEra(option.dataset.era || '') || option.dataset.era || '';
-      });
-    }
 
     // Toggle tipo
     form.querySelector('#spellTypeTabs').addEventListener('click', (e) => {
@@ -3644,10 +3483,6 @@
       const val = (id) => ($f(id) ? $f(id).value.trim() : '');
       const name = val('spellName');
       const affinity = affHidden.value;
-      const eraOrigem = val('spEraOrigem');
-      const eraVersao = val('spEraVersao');
-      const lineageName = val('spLineage');
-      const previousVersion = val('spPreviousVersion');
       const classification = val('spClassification');
       const controlLevel = val('spControlLevel');
       const useForm = val('spUseForm');
@@ -3664,9 +3499,6 @@
 
       if (!name) { missing.push('Nome'); mark('spellName'); }
       if (!affinity) { missing.push('Afinidade'); form.querySelector('#affinityPicker').classList.add('is-invalid'); }
-      if (!lineageName) { missing.push('Linhagem M\u00e1gica'); mark('spLineage'); }
-      if (!eraOrigem) { missing.push('Era de origem'); mark('spEraOrigem'); }
-      if (!eraVersao) { missing.push('Era desta vers\u00e3o'); mark('spEraVersao'); }
       if (!classification) { missing.push('Classifica\u00e7\u00e3o Arcana'); mark('spClassification'); }
       if (!controlLevel) { missing.push('Grau de Controle'); mark('spControlLevel'); }
       if (!useForm) { missing.push('Forma de Uso'); mark('spUseForm'); }
@@ -3686,11 +3518,7 @@
         });
       }
 
-      const historicalFields = {
-        'Era de origem': eraOrigem,
-        'Era da vers\u00e3o': eraVersao,
-        'Linhagem M\u00e1gica': lineageName || name,
-        'Vers\u00e3o Anterior': previousVersion,
+      const arcaneFields = {
         'Classifica\u00e7\u00e3o Arcana': classification,
         'Grau de Controle': controlLevel,
         'Forma de Uso': useForm
@@ -3707,7 +3535,7 @@
         if (!duracao) { missing.push('Duração'); mark('spDuracao'); }
         if (!descricao) { missing.push('Descrição'); mark('spDescricao'); }
         fields = {
-          ...historicalFields,
+          ...arcaneFields,
           Custo: custo, CustoUnidade: custoUnidade, Alcance: alcance,
           AreaLargura: areaL, AreaAltura: areaA,
           'Duração': duracao, Afinidade: affinity,
@@ -3721,7 +3549,7 @@
         if (!ativacao) { missing.push('Condição de Ativação'); mark('spAtivacao'); }
         if (!efeito) { missing.push('Efeito Contínuo'); mark('spEfeitoContinuo'); }
         fields = {
-          ...historicalFields,
+          ...arcaneFields,
           Custo: custo, CustoUnidade: custoUnidade,
           'Condição de Ativação': ativacao, Afinidade: affinity,
           Escopos: scopeEntries, 'Efeito Contínuo': efeito,
@@ -3792,7 +3620,6 @@
             throw err;
           }
           ARCHIVE.entries.push(newEntry);
-          try { sessionStorage.removeItem('arcanoSpellVersionDraft'); } catch {}
           location.hash = `#/${tabId}/${id}`;
         }
       } catch (err) {
@@ -3814,9 +3641,7 @@
     const typeMeta = SPELL_TYPES[type];
     const aff = affinityMeta(f['Afinidade']);
     const scopeEntries = spellScopeEntries(f);
-    const history = normalizeSpellHistoricalFields(f, e.title);
-    const lineageEntries = spellLineageEntries(e);
-    const previousLinked = history.previous ? entryById(history.previous) : null;
+    const arcane = normalizeSpellArcaneFields(f);
     const unit = safeCostUnit(f['CustoUnidade'] || 'MP');
 
     const area = (f['AreaLargura'] && f['AreaAltura'])
@@ -3830,15 +3655,13 @@
 
     const stones = type === 'ativa' ? [
       stone('Custo', formatCusto(f), 'is-cost'),
-      stone('Era', escapeHtml(history.eraVersao || '—'), 'is-era'),
-      stone('Classifica\u00e7\u00e3o', escapeHtml(history.classificacao || '—'), 'is-classification'),
+      stone('Classifica\u00e7\u00e3o', escapeHtml(arcane.classificacao || '—'), 'is-classification'),
       stone('Alcance', f['Alcance'] ? `${escapeHtml(f['Alcance'])} <i>q</i>` : '—'),
       stone('Área', area),
       stone('Duração', escapeHtml(f['Duração'] || '—'), 'is-duration')
     ].join('') : [
       stone('Custo', formatCusto(f), 'is-cost'),
-      stone('Era', escapeHtml(history.eraVersao || '—'), 'is-era'),
-      stone('Classifica\u00e7\u00e3o', escapeHtml(history.classificacao || '—'), 'is-classification'),
+      stone('Classifica\u00e7\u00e3o', escapeHtml(arcane.classificacao || '—'), 'is-classification'),
       stone('Ativação', escapeHtml(f['Condição de Ativação'] || '—')),
       stone('Manutenção', f['Manutenção'] ? `${escapeHtml(f['Manutenção'])} <i>${escapeHtml(unit)}/t</i>` : '—', 'is-duration')
     ].join('');
@@ -3892,11 +3715,6 @@
         <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 1 1 3 3L7 19l-4 1 1-4 12.5-12.5z"/></svg>
         Editar magia
       </a>` : '';
-    const newVersionButton = auth.isAdmin ? `
-      <button type="button" class="back-link back-link--edit" data-create-spell-version="${escapeHtml(e.id)}">
-        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 7h10v10"/><path d="M7 17 17 7"/><path d="M5 5v14h14"/></svg>
-        Nova vers\u00e3o
-      </button>` : '';
     const deleteButton = (e.isUserCreated && auth.isAdmin) ? `
       <button type="button" class="back-link back-link--danger" data-delete-entry="${escapeHtml(e.id)}">
         <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"/></svg>
@@ -3925,63 +3743,17 @@
       </div>`;
     const bookStats = type === 'ativa' ? [
       bookStat('Custo', escapeHtml(formatCusto(f)), 'is-cost'),
-      bookStat('Era', escapeHtml(history.eraVersao || '\u2014'), 'is-era'),
-      bookStat('Classifica\u00e7\u00e3o', escapeHtml(history.classificacao || '\u2014'), 'is-classification'),
+      bookStat('Classifica\u00e7\u00e3o', escapeHtml(arcane.classificacao || '\u2014'), 'is-classification'),
       bookStat('Alcance', f['Alcance'] ? `${escapeHtml(f['Alcance'])} <i>q</i>` : '—'),
       bookStat('Área', area),
       bookStat('Duração', escapeHtml(readSpellField('Duração') || '—'), 'is-duration')
     ].join('') : [
       bookStat('Custo', escapeHtml(formatCusto(f)), 'is-cost'),
-      bookStat('Era', escapeHtml(history.eraVersao || '\u2014'), 'is-era'),
-      bookStat('Classifica\u00e7\u00e3o', escapeHtml(history.classificacao || '\u2014'), 'is-classification'),
+      bookStat('Classifica\u00e7\u00e3o', escapeHtml(arcane.classificacao || '\u2014'), 'is-classification'),
       bookStat('Ativação', escapeHtml(bookActivation)),
-      bookStat('Controle', escapeHtml(history.control || '\u2014'), 'is-duration'),
+      bookStat('Controle', escapeHtml(arcane.control || '\u2014'), 'is-duration'),
       bookStat('Manutenção', bookMaintenance ? `${escapeHtml(bookMaintenance)} <i>${escapeHtml(unit)}/t</i>` : '—', 'is-duration')
     ].join('');
-    const historyItem = (label, value) => `
-      <div class="spell-history-chip">
-        <span>${escapeHtml(label)}</span>
-        <strong>${escapeHtml(value || '\u2014')}</strong>
-      </div>`;
-    const lineageVersionForEra = (era) => lineageEntries.find((entry) => {
-      const meta = normalizeSpellHistoricalFields(entry.fields, entry.title);
-      return meta.eraVersao === era;
-    });
-    const lineageTimeline = `
-      <div class="spell-era-strip" aria-label="Linha do tempo da linhagem ${escapeHtml(history.lineage || e.title)}">
-        ${SPELL_ERAS.map((era) => {
-          const version = lineageVersionForEra(era);
-          const active = version && version.id === e.id;
-          if (version) {
-            return `<a class="spell-era-node is-linked ${active ? 'is-current' : ''}" href="#/${tabId}/${encodeURIComponent(version.id)}">
-              <span>${escapeHtml(era)}</span>
-              <strong>${escapeHtml(version.title)}</strong>
-            </a>`;
-          }
-          return auth.isAdmin ? `<button type="button" class="spell-era-node is-empty" data-create-spell-version="${escapeHtml(e.id)}" data-version-era="${escapeHtml(era)}">
-            <span>${escapeHtml(era)}</span>
-            <strong>Criar vers\u00e3o</strong>
-          </button>` : `<span class="spell-era-node is-empty">
-            <span>${escapeHtml(era)}</span>
-            <strong>Sem registro</strong>
-          </span>`;
-        }).join('')}
-      </div>`;
-    const bookHistoryPanel = `
-      <section class="spell-book-section spell-book-section--history">
-        <div class="spell-book-section__head">
-          <h2>Linhagem m\u00e1gica</h2>
-          <span>${lineageEntries.length}</span>
-        </div>
-        <div class="spell-history-grid">
-          ${historyItem('Origem', history.eraOrigem)}
-          ${historyItem('Linhagem', history.lineage || e.title)}
-          ${historyItem('Uso', history.useForm)}
-          ${historyItem('Controle', history.control)}
-          ${previousLinked ? `<a class="spell-history-chip spell-history-chip--link" href="#/${tabId}/${encodeURIComponent(previousLinked.id)}"><span>Vers\u00e3o anterior</span><strong>${escapeHtml(previousLinked.title)}</strong></a>` : historyItem('Vers\u00e3o anterior', history.previous)}
-        </div>
-        ${lineageTimeline}
-      </section>`;
     const bookScopeNotes = scopeEntries.length ? `
       <div class="spell-book-scope-list">
         ${scopeEntries.map((s) => `
@@ -4061,8 +3833,7 @@
             <div class="spell-book__badges">
               <span class="spell-type-badge spell-type-badge--${type}">${escapeHtml(typeMeta.badge)}</span>
               <span class="spell-affinity-badge"><span class="spell-affinity-badge__ic">${aff.icon}</span>${escapeHtml(aff.label)}</span>
-              <span class="spell-era-badge">${escapeHtml(history.eraVersao || 'Sem era')}</span>
-              <span class="spell-era-badge spell-era-badge--soft">${escapeHtml(history.classificacao || 'Sem classifica\u00e7\u00e3o')}</span>
+              <span class="spell-classification-badge">${escapeHtml(arcane.classificacao || 'Sem classifica\u00e7\u00e3o')}</span>
             </div>
             <h1 class="spell-book__title">${escapeHtml(e.title)}</h1>
             ${bookSummary ? `
@@ -4072,7 +3843,6 @@
               </div>` : ''}
             ${scopeEntries.length ? `<div class="spell-book__pills">${spellScopePills(scopeEntries.map((s) => s.tipo))}</div>` : ''}
             <div class="spell-book-rules">${bookStats}</div>
-            ${bookHistoryPanel}
           </section>
 
           <section class="spell-book__page spell-book__page--notes">
@@ -4097,7 +3867,6 @@
 
         <div class="entry__actions-row">
           ${editButton}
-          ${newVersionButton}
           ${deleteButton}
           <a href="#/${tabId}" class="back-link">
             <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
@@ -4174,7 +3943,7 @@
     const f = e.fields || {};
     const type = isSpellType(e.subtype) ? e.subtype : 'ativa';
     const aff = affinityMeta(f['Afinidade']);
-    const history = normalizeSpellHistoricalFields(f, e.title);
+    const arcane = normalizeSpellArcaneFields(f);
     const names = spellScopeNames(f);
     const hasCusto = String(f['Custo'] ?? '').trim() !== '';
     const runeSvg = aff.rune
@@ -4194,11 +3963,9 @@
         </div>
         <div class="tome-card__body">
           <h3 class="tome-card__name">${escapeHtml(e.title)}</h3>
-          <span class="tome-card__lineage">${escapeHtml(history.lineage || e.title)}</span>
         </div>
         <div class="tome-card__meta">
-          <span class="tome-card__era">${escapeHtml(history.eraVersao || 'Sem era')}</span>
-          <span class="tome-card__classification">${escapeHtml(history.classificacao || 'Sem classifica\u00e7\u00e3o')}</span>
+          <span class="tome-card__classification">${escapeHtml(arcane.classificacao || 'Sem classifica\u00e7\u00e3o')}</span>
           <span class="tome-card__aff"><span>${aff.icon}</span>${escapeHtml(aff.label)}</span>
         </div>
         <div class="tome-card__footer">
@@ -5216,7 +4983,7 @@
   function spellRuntimeInfo(it) {
     const entry = it && it.refId ? entryById(it.refId) : null;
     const f = (entry && entry.fields) || {};
-    const history = entry ? normalizeSpellHistoricalFields(f, entry.title) : {};
+    const arcane = entry ? normalizeSpellArcaneFields(f) : {};
     const costValue = parseInt((f['Custo'] ?? it.costValue ?? ''), 10);
     const costUnit = safeCostUnit(String(f['CustoUnidade'] || it.costUnit || 'MP').trim() || 'MP');
     const costText = Number.isFinite(costValue) && costValue > 0 ? `${costValue} ${costUnit}` : '';
@@ -5224,8 +4991,7 @@
       costValue: Number.isFinite(costValue) && costValue > 0 ? costValue : 0,
       costUnit,
       costText,
-      era: history.eraVersao || it.era || '',
-      classification: history.classificacao || it.classification || '',
+      classification: arcane.classificacao || it.classification || '',
       affinity: f['Afinidade'] || it.affinity || '',
       duration: f['Duração'] || it.duration || ''
     };
@@ -5235,7 +5001,6 @@
     const info = spellRuntimeInfo(it);
     const chips = [
       info.costText ? `Custo ${info.costText}` : '',
-      info.era || '',
       info.classification || '',
       info.affinity || '',
       info.duration ? `Duracao ${info.duration}` : ''
@@ -6052,7 +5817,6 @@
         attachEditIndexForm();
         attachIndexEditButton();
         attachSpellPageTurns();
-        attachSpellLineageActions();
         attachDeleteHandlers();
         attachCharacterDeleteHandlers();
         attachCharacterSheet();
@@ -9053,25 +8817,7 @@
     });
   }
 
-  /* ── DELETE HANDLER (entradas do usuário) ────── */
-  function attachSpellLineageActions() {
-    document.querySelectorAll('[data-create-spell-version]').forEach((btn) => {
-      if (btn.dataset.bound) return;
-      btn.dataset.bound = '1';
-      btn.addEventListener('click', () => {
-        const sourceId = btn.dataset.createSpellVersion;
-        const source = entryById(sourceId);
-        if (!source) return;
-        const era = btn.dataset.versionEra || spellNextOpenEra(source);
-        const previousId = era ? spellPreviousVersionForEra(source, era) : source.id;
-        try {
-          sessionStorage.setItem('arcanoSpellVersionDraft', JSON.stringify({ id: source.id, era, previousId }));
-        } catch {}
-        location.hash = '#/Magias/criar';
-      });
-    });
-  }
-
+  /* ── NAVEGAÇÃO DO GRIMÓRIO ───────────────────── */
   function attachSpellPageTurns() {
     document.querySelectorAll('[data-spell-page-turn]').forEach((btn) => {
       if (btn.dataset.bound) return;
