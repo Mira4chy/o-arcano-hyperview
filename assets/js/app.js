@@ -366,7 +366,7 @@
     const meta = [draft.type, draft.duration].filter(Boolean);
     return `
       <article class="spell-effect-card" style="--effect:${escapeHtml(draft.color)}">
-        <div class="spell-effect-card__sigil" aria-hidden="true">${escapeHtml(draft.symbol)}</div>
+        <div class="spell-effect-card__sigil" aria-hidden="true"><span>${escapeHtml(draft.symbol)}</span></div>
         <div class="spell-effect-card__body">
           <div class="spell-effect-card__head">
             <h3>${escapeHtml(title)}</h3>
@@ -3784,6 +3784,17 @@
     const hasPageTurns = spellBookEntries.length > 1 && bookIndex >= 0;
     const prevSpell = hasPageTurns ? spellBookEntries[(bookIndex - 1 + spellBookEntries.length) % spellBookEntries.length] : null;
     const nextSpell = hasPageTurns ? spellBookEntries[(bookIndex + 1) % spellBookEntries.length] : null;
+    const bookPageStart = Math.max(0, bookIndex) * 2 + 1;
+    const toRoman = (value) => {
+      const numerals = [[1000, 'M'], [900, 'CM'], [500, 'D'], [400, 'CD'], [100, 'C'], [90, 'XC'], [50, 'L'], [40, 'XL'], [10, 'X'], [9, 'IX'], [5, 'V'], [4, 'IV'], [1, 'I']];
+      let remaining = Math.max(1, value);
+      return numerals.map(([amount, symbol]) => {
+        const count = Math.floor(remaining / amount);
+        remaining %= amount;
+        return symbol.repeat(count);
+      }).join('');
+    };
+    const bookKicker = `INSCRIÇÃO ${aff.label.toUpperCase()} · ${typeMeta.label.toUpperCase()}`;
     let arrivingTurn = '';
     try {
       arrivingTurn = sessionStorage.getItem('arcanoSpellPageTurn') || '';
@@ -3821,12 +3832,25 @@
 
         ${pageTurnControls}
 
-        <div class="spell-book">
+        <div class="spell-book-shell">
+          <span class="spell-book-frame" aria-hidden="true"></span>
+          <div class="spell-book">
+          <span class="spell-book__page-stack spell-book__page-stack--left" aria-hidden="true"></span>
+          <span class="spell-book__page-stack spell-book__page-stack--right" aria-hidden="true"></span>
+          <span class="spell-book__corner spell-book__corner--tl" aria-hidden="true"></span>
+          <span class="spell-book__corner spell-book__corner--tr" aria-hidden="true"></span>
+          <span class="spell-book__corner spell-book__corner--br" aria-hidden="true"></span>
+          <span class="spell-book__corner spell-book__corner--bl" aria-hidden="true"></span>
+          <span class="spell-book__bookmark" aria-hidden="true"></span>
           ${hasPageTurns ? `${pageTurnEdge(prevSpell, 'prev')}${pageTurnEdge(nextSpell, 'next')}` : ''}
           <section class="spell-book__page spell-book__page--identity">
+            <span class="spell-book__margin-runes spell-book__margin-runes--left" aria-hidden="true">✦ ◇ ✶ ☽ ◆ ✧ ⬡ ✦ ◇ ✶</span>
             <div class="spell-book__watermark" aria-hidden="true">${aff.icon}</div>
+            <span class="spell-book__kicker">${escapeHtml(bookKicker)}</span>
             <div class="spell-book__media ${e.image ? 'has-img' : ''}" aria-hidden="true">
+              <span class="spell-book__media-ring spell-book__media-ring--outer"></span>
               <span class="spell-book__media-ring"></span>
+              <span class="spell-book__media-ring spell-book__media-ring--inner"></span>
               ${e.image ? `<img src="${e.image}" alt="" onerror="this.closest('.spell-book__media').classList.add('is-fallback')">` : ''}
               <span class="spell-book__media-rune">${runeSvg}</span>
             </div>
@@ -3843,9 +3867,11 @@
               </div>` : ''}
             ${scopeEntries.length ? `<div class="spell-book__pills">${spellScopePills(scopeEntries.map((s) => s.tipo))}</div>` : ''}
             <div class="spell-book-rules">${bookStats}</div>
+            <span class="spell-book__folio spell-book__folio--left">${toRoman(bookPageStart)}</span>
           </section>
 
           <section class="spell-book__page spell-book__page--notes">
+            <span class="spell-book__margin-runes spell-book__margin-runes--right" aria-hidden="true">✦ ◇ ✶ ☽ ◆ ✧ ⬡ ✦ ◇ ✶</span>
             <section class="spell-book-section spell-book-section--lead">
               <h2>${type === 'ativa' ? 'Descrição' : 'Efeito contínuo'}</h2>
               ${bookDescription ? `<p>${escapeHtml(bookDescription)}</p>` : '<p class="spell-empty-text">Sem descrição.</p>'}
@@ -3862,7 +3888,9 @@
               </div>
               ${bookEffects}
             </section>
+            <span class="spell-book__folio spell-book__folio--right">${toRoman(bookPageStart + 1)}</span>
           </section>
+          </div>
         </div>
 
         <div class="entry__actions-row">
