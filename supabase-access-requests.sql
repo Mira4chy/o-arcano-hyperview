@@ -86,6 +86,11 @@ begin
 end;
 $$;
 
+-- Função exclusiva do trigger: não deve ser chamada pela API.
+revoke all on function public.create_access_request_for_new_user() from public;
+revoke all on function public.create_access_request_for_new_user() from anon;
+revoke all on function public.create_access_request_for_new_user() from authenticated;
+
 drop trigger if exists on_auth_user_created_access_request on auth.users;
 create trigger on_auth_user_created_access_request
   after insert on auth.users
@@ -130,6 +135,8 @@ as $$
     ), 'pending');
 $$;
 
+revoke all on function public.current_arcano_role() from public;
+revoke all on function public.current_arcano_role() from anon;
 grant execute on function public.current_arcano_role() to authenticated;
 
 alter table public.access_requests enable row level security;

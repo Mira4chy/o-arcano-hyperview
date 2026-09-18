@@ -1062,8 +1062,6 @@
     console.warn('[O Arcano] Supabase não configurado — preencha assets/js/config.js para ativar o salvamento online.');
   }
   const BANNERS_BUCKET = 'banners';
-  const ADMIN_EMAIL = cfg.adminEmail || 'admin@arcano.local';
-  const PLAYER_EMAIL = cfg.playerEmail || 'jogador@arcano.local';
 
   /* ── AUTH STATE ───────────────────────────────── */
   const auth = {
@@ -1147,181 +1145,138 @@
     return data;
   }
 
-  /* ── AUTH GATE (tela de login) ────────────────── */
-  function ensureLegacyAuthGate() {
-    let gate = document.getElementById('authGate');
-    if (gate) return gate;
-    gate = document.createElement('div');
-    gate.id = 'authGate';
-    gate.className = 'auth-gate';
-    gate.innerHTML = `
-      <div class="auth-gate__bg" aria-hidden="true"></div>
-      <div class="auth-gate__card">
-        <div class="auth-gate__brand">
-          <img src="assets/images/Logo.png" alt="">
-          <h1>O Arcano</h1>
-          <p>Codex de campanha · acesso restrito</p>
-        </div>
-
-        <div class="auth-gate__roles" role="tablist">
-          <button type="button" class="auth-role is-active" data-role="player" role="tab">
-            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 4-7 8-7s8 3 8 7"/></svg>
-            <span>Jogador</span>
-          </button>
-          <button type="button" class="auth-role" data-role="admin" role="tab">
-            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l9 4v6c0 5-4 9-9 10-5-1-9-5-9-10V6l9-4z"/><path d="M9 12l2 2 4-4"/></svg>
-            <span>Mestre</span>
-          </button>
-        </div>
-
-        <form class="auth-gate__form" id="authForm" novalidate>
-          <label class="auth-gate__label">
-            <span>Senha</span>
-            <input type="password" id="authPassword" placeholder="Digite a senha" autocomplete="current-password" required>
-          </label>
-          <button type="submit" class="btn btn-primary auth-gate__submit" id="authSubmit">
-            <span>Entrar</span>
-            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 5l7 7-7 7"/></svg>
-          </button>
-          <p class="auth-gate__error" id="authError" role="alert"></p>
-        </form>
-      </div>
-    `;
-    document.body.appendChild(gate);
-
-    const roles = gate.querySelectorAll('.auth-role');
-    roles.forEach((b) => {
-      b.addEventListener('click', () => {
-        roles.forEach((x) => x.classList.toggle('is-active', x === b));
-      });
-    });
-
-    const form = gate.querySelector('#authForm');
-    const passInput = gate.querySelector('#authPassword');
-    const errEl = gate.querySelector('#authError');
-    const submitBtn = gate.querySelector('#authSubmit');
-
-    form.addEventListener('submit', async (e) => {
-      e.preventDefault();
-      errEl.textContent = '';
-      const role = gate.querySelector('.auth-role.is-active').dataset.role;
-      const email = role === 'admin' ? ADMIN_EMAIL : PLAYER_EMAIL;
-      const password = passInput.value;
-      if (!password) {
-        errEl.textContent = 'Informe a senha.';
-        return;
-      }
-      submitBtn.disabled = true;
-      submitBtn.querySelector('span').textContent = 'Entrando…';
-      try {
-        const { data, error } = await sb.auth.signInWithPassword({ email, password });
-        if (error) throw error;
-        setAuthState(data.session);
-        gate.classList.add('is-gone');
-        setTimeout(() => gate.remove(), 500);
-        await Promise.all([loadIndexCustom(), loadUserEntries(), loadMasterPalette(), loadCharacters()]);
-        renderRoleBadge();
-        render(true);
-      } catch (err) {
-        console.error(err);
-        errEl.textContent = 'Senha incorreta ou sessão indisponível.';
-        submitBtn.disabled = false;
-        submitBtn.querySelector('span').textContent = 'Entrar';
-      }
-    });
-
-    return gate;
-  }
-
-  /* ── LOGOUT + ROLE BADGE ──────────────────────── */
+  /* ── AUTH GATE, LOGOUT + ROLE BADGE ───────────── */
   function ensureAuthGate() {
     let gate = document.getElementById('authGate');
-    if (gate) return gate;
+    if (gate) {
+      window.ArcanoAuthExperience?.mount(gate);
+      return gate;
+    }
 
     gate = document.createElement('div');
     gate.id = 'authGate';
     gate.className = 'auth-gate';
+    gate.dataset.mode = 'login';
     gate.innerHTML = `
-      <div class="auth-gate__bg" aria-hidden="true"></div>
-      <div class="auth-gate__card">
-        <div class="auth-gate__brand">
-          <img src="assets/images/Logo.png" alt="">
-          <h1>O Arcano</h1>
-          <p>Codex de campanha &middot; acesso restrito</p>
-        </div>
-
-        <div class="auth-gate__modes" role="tablist">
-          <button type="button" class="auth-mode is-active" data-auth-mode="login" role="tab">Entrar</button>
-          <button type="button" class="auth-mode" data-auth-mode="request" role="tab">Solicitar acesso</button>
-        </div>
-
-        <form class="auth-gate__form" id="authLoginForm" data-auth-panel="login" novalidate>
-          <label class="auth-gate__label">
-            <span>E-mail</span>
-            <input type="email" id="authEmail" placeholder="seu@email.com" autocomplete="email" required>
-          </label>
-          <label class="auth-gate__label">
-            <span>Senha</span>
-            <input type="password" id="authPassword" placeholder="Digite sua senha" autocomplete="current-password" required>
-          </label>
-          <button type="submit" class="btn btn-primary auth-gate__submit" id="authSubmit">
-            <span>Entrar</span>
-            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 5l7 7-7 7"/></svg>
-          </button>
-          <p class="auth-gate__error" data-auth-error role="alert"></p>
-        </form>
-
-        <form class="auth-gate__form" id="authRequestForm" data-auth-panel="request" novalidate hidden>
-          <label class="auth-gate__label">
-            <span>Nome</span>
-            <input type="text" id="requestName" placeholder="Como voce quer aparecer" autocomplete="name" maxlength="80" required>
-          </label>
-          <label class="auth-gate__label">
-            <span>E-mail</span>
-            <input type="email" id="requestEmail" placeholder="seu@email.com" autocomplete="email" required>
-          </label>
-          <label class="auth-gate__label">
-            <span>Senha</span>
-            <input type="password" id="requestPassword" placeholder="Crie uma senha" autocomplete="new-password" minlength="6" required>
-          </label>
-          <div class="auth-gate__label">
-            <span>Acesso desejado</span>
-            <div class="auth-gate__roles" role="tablist">
-              <button type="button" class="auth-role is-active" data-role="player" role="tab">
-                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 4-7 8-7s8 3 8 7"/></svg>
-                <span>Jogador</span>
-              </button>
-              <button type="button" class="auth-role" data-role="admin" role="tab">
-                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l9 4v6c0 5-4 9-9 10-5-1-9-5-9-10V6l9-4z"/><path d="M9 12l2 2 4-4"/></svg>
-                <span>Mestre</span>
-              </button>
-            </div>
-          </div>
-          <button type="submit" class="btn btn-primary auth-gate__submit" id="requestSubmit">
-            <span>Enviar solicitacao</span>
-            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>
-          </button>
-          <p class="auth-gate__error" data-auth-error role="alert"></p>
-          <p class="auth-gate__message" data-auth-message></p>
-        </form>
+      <div class="auth-gate__world" aria-hidden="true">
+        <div class="auth-gate__layer auth-gate__base" data-auth-depth="5"></div>
+        <div class="auth-gate__layer auth-gate__nebula" data-auth-depth="18"></div>
+        <div class="auth-gate__layer auth-gate__starlight" data-auth-depth="34"></div>
+        <div class="auth-gate__layer auth-gate__foreground" data-auth-depth="52"></div>
+        <canvas class="auth-gate__fog" data-auth-fog></canvas>
+        <canvas class="auth-gate__dust" data-auth-dust></canvas>
+        <div class="auth-gate__grade"></div>
+        <div class="auth-gate__grain"></div>
+        <div class="auth-gate__vignette"></div>
       </div>
+
+      <header class="auth-gate__masthead">
+        <span class="auth-gate__mark"><img src="assets/images/Logo.png" alt="Logo O Arcano"></span>
+        <span class="auth-gate__identity"><strong>O Arcano</strong><span>Codex de campanha</span></span>
+      </header>
+
+      <section class="auth-gate__console" aria-labelledby="authGateTitle">
+        <div class="auth-gate__intro">
+          <h1 id="authGateTitle" data-auth-title>Abrir o Codex</h1>
+          <p data-auth-subtitle>Conhecimento algum é consultado sem deixar vestígios.</p>
+        </div>
+
+        <div class="auth-gate__workspace">
+          <form class="auth-gate__form auth-gate__form--login" id="authLoginForm" data-auth-panel="login" novalidate>
+            <label class="auth-gate__field">
+              <span>E-mail do iniciado</span>
+              <span class="auth-gate__control"><input type="email" id="authEmail" placeholder="seu@email.com" autocomplete="email" required></span>
+            </label>
+            <label class="auth-gate__field">
+              <span>Chave de acesso</span>
+              <span class="auth-gate__control"><input type="password" id="authPassword" placeholder="••••••••" autocomplete="current-password" required></span>
+            </label>
+            <button type="submit" class="auth-gate__submit" id="authSubmit">
+              <span>Entrar no Codex</span><span aria-hidden="true">→</span>
+            </button>
+            <p class="auth-gate__feedback auth-gate__error" data-auth-error role="alert"></p>
+          </form>
+
+          <form class="auth-gate__form auth-gate__form--request" id="authRequestForm" data-auth-panel="request" novalidate hidden>
+            <label class="auth-gate__field">
+              <span>Nome no arquivo</span>
+              <span class="auth-gate__control"><input type="text" id="requestName" placeholder="Como deseja aparecer" autocomplete="name" maxlength="80" required></span>
+            </label>
+            <label class="auth-gate__field">
+              <span>E-mail</span>
+              <span class="auth-gate__control"><input type="email" id="requestEmail" placeholder="seu@email.com" autocomplete="email" required></span>
+            </label>
+            <label class="auth-gate__field">
+              <span>Crie sua chave</span>
+              <span class="auth-gate__control"><input type="password" id="requestPassword" placeholder="Mínimo de 6 caracteres" autocomplete="new-password" minlength="6" required></span>
+            </label>
+            <div class="auth-gate__role-picker">
+              <span class="auth-gate__role-title">Acesso desejado</span>
+              <div class="auth-gate__roles" role="group" aria-label="Acesso desejado">
+                <button type="button" class="auth-role is-active" data-role="player" aria-pressed="true">
+                  <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 4-7 8-7s8 3 8 7"/></svg>
+                  <span>Jogador</span>
+                </button>
+                <button type="button" class="auth-role" data-role="admin" aria-pressed="false">
+                  <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l9 4v6c0 5-4 9-9 10-5-1-9-5-9-10V6l9-4z"/><path d="M9 12l2 2 4-4"/></svg>
+                  <span>Mestre</span>
+                </button>
+              </div>
+            </div>
+            <button type="submit" class="auth-gate__submit" id="requestSubmit">
+              <span>Enviar solicitação</span><span aria-hidden="true">→</span>
+            </button>
+            <p class="auth-gate__feedback auth-gate__error" data-auth-error role="alert"></p>
+            <p class="auth-gate__feedback auth-gate__message" data-auth-message aria-live="polite"></p>
+          </form>
+
+          <div class="auth-gate__meta">
+            <button type="button" data-auth-switch="request">Solicitar acesso ao arquivo</button>
+            <button type="button" data-auth-switch="login" hidden>Voltar ao login</button>
+            <span data-auth-note>Acesso restrito aos participantes aprovados</span>
+          </div>
+        </div>
+      </section>
     `;
     document.body.appendChild(gate);
+    window.ArcanoAuthExperience?.mount(gate);
 
-    const modes = gate.querySelectorAll('.auth-mode');
     const panels = gate.querySelectorAll('[data-auth-panel]');
-    modes.forEach((b) => {
-      b.addEventListener('click', () => {
-        const mode = b.dataset.authMode;
-        modes.forEach((x) => x.classList.toggle('is-active', x === b));
-        panels.forEach((p) => { p.hidden = p.dataset.authPanel !== mode; });
-      });
+    const switchers = gate.querySelectorAll('[data-auth-switch]');
+    const title = gate.querySelector('[data-auth-title]');
+    const subtitle = gate.querySelector('[data-auth-subtitle]');
+    const note = gate.querySelector('[data-auth-note]');
+
+    function setMode(mode) {
+      const requestMode = mode === 'request';
+      gate.dataset.mode = requestMode ? 'request' : 'login';
+      panels.forEach((panel) => { panel.hidden = panel.dataset.authPanel !== gate.dataset.mode; });
+      switchers.forEach((button) => { button.hidden = button.dataset.authSwitch === gate.dataset.mode; });
+      title.textContent = requestMode ? 'Solicitar acesso' : 'Abrir o Codex';
+      subtitle.textContent = requestMode
+        ? 'Todo novo nome precisa ser reconhecido pelo arquivo.'
+        : 'Conhecimento algum é consultado sem deixar vestígios.';
+      note.textContent = requestMode
+        ? 'O pedido ficará pendente até a aprovação do administrador'
+        : 'Acesso restrito aos participantes aprovados';
+      gate.querySelectorAll('[data-auth-error], [data-auth-message]').forEach((element) => { element.textContent = ''; });
+      const focusTarget = requestMode ? gate.querySelector('#requestName') : gate.querySelector('#authEmail');
+      setTimeout(() => focusTarget?.focus(), 80);
+    }
+
+    switchers.forEach((button) => {
+      button.addEventListener('click', () => setMode(button.dataset.authSwitch));
     });
 
-    const roles = gate.querySelectorAll('.auth-role');
+    const requestForm = gate.querySelector('#authRequestForm');
+    const roles = requestForm.querySelectorAll('.auth-role');
     roles.forEach((b) => {
       b.addEventListener('click', () => {
-        roles.forEach((x) => x.classList.toggle('is-active', x === b));
+        roles.forEach((x) => {
+          const active = x === b;
+          x.classList.toggle('is-active', active);
+          x.setAttribute('aria-pressed', String(active));
+        });
       });
     });
 
@@ -1358,7 +1313,7 @@
         return;
       }
       submitBtn.disabled = true;
-      submitBtn.querySelector('span').textContent = 'Entrando...';
+      submitBtn.querySelector('span').textContent = 'Abrindo...';
       try {
         const { data, error } = await sb.auth.signInWithPassword({ email, password });
         if (error) throw error;
@@ -1367,11 +1322,10 @@
         console.error(err);
         loginErr.textContent = 'E-mail ou senha incorretos.';
         submitBtn.disabled = false;
-        submitBtn.querySelector('span').textContent = 'Entrar';
+        submitBtn.querySelector('span').textContent = 'Entrar no Codex';
       }
     });
 
-    const requestForm = gate.querySelector('#authRequestForm');
     const requestName = gate.querySelector('#requestName');
     const requestEmail = gate.querySelector('#requestEmail');
     const requestPassword = gate.querySelector('#requestPassword');
@@ -1386,10 +1340,10 @@
       const displayName = requestName.value.trim();
       const email = requestEmail.value.trim();
       const password = requestPassword.value;
-      const requestedRole = gate.querySelector('.auth-role.is-active').dataset.role;
+      const requestedRole = requestForm.querySelector('.auth-role.is-active').dataset.role;
 
       if (!displayName || !email || password.length < 6) {
-        requestErr.textContent = 'Preencha nome, e-mail e uma senha com pelo menos 6 caracteres.';
+        requestErr.textContent = 'Preencha nome, e-mail e uma chave com pelo menos 6 caracteres.';
         return;
       }
 
@@ -1408,19 +1362,23 @@
         });
         if (error) throw error;
 
-        requestMsg.textContent = `Solicitacao enviada como ${roleLabel(requestedRole)}. Aguarde aprovacao no Supabase.`;
+        requestMsg.textContent = `Solicitação enviada como ${roleLabel(requestedRole)}. Confirme seu e-mail, se solicitado, e aguarde a aprovação.`;
         requestForm.reset();
-        roles.forEach((x) => x.classList.toggle('is-active', x.dataset.role === 'player'));
+        roles.forEach((x) => {
+          const active = x.dataset.role === 'player';
+          x.classList.toggle('is-active', active);
+          x.setAttribute('aria-pressed', String(active));
+        });
 
         if (data.session) await finishLogin(data.session);
       } catch (err) {
         console.error(err);
         requestErr.textContent = err.message?.includes('already registered')
-          ? 'Esse e-mail ja existe. Use Entrar ou peca para redefinir a senha.'
-          : 'Nao foi possivel enviar a solicitacao agora.';
+          ? 'Esse e-mail já existe. Volte ao login para entrar.'
+          : 'Não foi possível enviar a solicitação agora.';
       } finally {
         requestBtn.disabled = false;
-        requestBtn.querySelector('span').textContent = 'Enviar solicitacao';
+        requestBtn.querySelector('span').textContent = 'Enviar solicitação';
       }
     });
 
@@ -1429,25 +1387,28 @@
   }
 
   function renderPendingGate(gate) {
-    const card = gate.querySelector('.auth-gate__card');
+    const card = gate.querySelector('.auth-gate__console');
     const status = auth.status || 'pending';
     const requested = roleLabel(auth.requestedRole || 'player');
-    const title = status === 'rejected' ? 'Acesso recusado' : 'Aguardando aprovacao';
+    const title = status === 'rejected' ? 'Acesso recusado' : 'Aguardando aprovação';
     const text = status === 'rejected'
-      ? 'Sua solicitacao foi recusada. Fale com o administrador da campanha.'
-      : `Sua conta esta registrada, mas ainda precisa ser aprovada como ${requested}.`;
+      ? 'Sua solicitação foi recusada. Fale com o administrador da campanha.'
+      : `Sua conta está registrada e aguarda aprovação como ${requested}.`;
+    const statusLabel = status === 'rejected' ? 'recusado' : 'pendente';
 
+    gate.dataset.mode = 'pending';
     card.innerHTML = `
-      <div class="auth-gate__brand">
-        <img src="assets/images/Logo.png" alt="">
-        <h1>O Arcano</h1>
-        <p>Codex de campanha &middot; acesso restrito</p>
+      <div class="auth-gate__intro">
+        <h1>${escapeHtml(title)}</h1>
+        <p>O arquivo reconheceu sua presença.</p>
       </div>
       <div class="auth-pending">
-        <span class="auth-pending__status">${escapeHtml(status)}</span>
-        <h2>${escapeHtml(title)}</h2>
-        <p>${escapeHtml(text)}</p>
-        <button type="button" class="btn btn-ghost auth-gate__submit" data-pending-logout>Sair</button>
+        <span class="auth-pending__status">${escapeHtml(statusLabel)}</span>
+        <div>
+          <h2>Solicitação registrada</h2>
+          <p>${escapeHtml(text)}</p>
+        </div>
+        <button type="button" class="auth-gate__submit" data-pending-logout>Sair</button>
       </div>
     `;
 
