@@ -95,6 +95,12 @@ window.ARCANO_ARCHIVE = {
       tone: "Povos jogáveis, linhagens, culturas e marcas de origem."
     },
     {
+      id: "Culturas",
+      title: "Culturas",
+      tone: "Costumes, valores, idiomas, ritos, tabus e modos de vida.",
+      template: ["Povo", "Região", "Idioma", "Valores", "Costumes", "Ritos", "Tabus"]
+    },
+    {
       id: "Faccoes",
       title: "Facções",
       tone: "Ordens, guildas, cultos, exércitos e poderes em movimento."

@@ -15,7 +15,7 @@
   });
 
   /* Categorias em que o usuário pode criar histórias */
-  const CREATABLE_TABS = ['Paises', 'Cenarios', 'Biomas', 'Eras', 'Sistemas', 'Mapa', 'Deuses', 'Faccoes', 'Campanhas', 'Historias', 'Itens', 'Racas', 'Bestiario', 'Magias'];
+  const CREATABLE_TABS = ['Paises', 'Cenarios', 'Biomas', 'Eras', 'Sistemas', 'Mapa', 'Deuses', 'Faccoes', 'Culturas', 'Campanhas', 'Historias', 'Itens', 'Racas', 'Bestiario', 'Magias'];
   const isCreatable = (id) => CREATABLE_TABS.includes(canonicalTabId(id));
 
   /* Categorias com layout alternativo (imagem ao lado do dossiê).
@@ -1474,6 +1474,7 @@
     Campanhas: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M5 3h11l3 3v15H5z"/><path d="M8 8h8M8 12h8M8 16h5"/><path d="M16 3v4h4"/></svg>',
     Historias: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3"/><circle cx="17" cy="9" r="2.5"/><path d="M3 20c0-3 3-5 6-5s6 2 6 5M14 20c0-2 2-3.5 4.5-3.5S22 18 22 20"/></svg>',
     Racas:     '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="7" cy="7" r="3"/><circle cx="17" cy="7" r="3"/><circle cx="12" cy="17" r="3"/><path d="M7 10v3M17 10v3M9 15l1.5-1M15 15l-1.5-1"/></svg>',
+    Culturas:  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7c2.2-2.7 5-4 8-4s5.8 1.3 8 4v8c-2.2 3.4-5 5-8 6-3-1-5.8-2.6-8-6z"/><path d="M8 9h.01M16 9h.01M8 15c2.7 1.5 5.3 1.5 8 0"/><path d="M12 6v7"/></svg>',
     Faccoes:   '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l8 4v5c0 4.5-3.2 7.7-8 9-4.8-1.3-8-4.5-8-9V7z"/><path d="M8 12h8M12 8v8"/></svg>',
     Mapa:      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6l6-2 6 2 6-2v14l-6 2-6-2-6 2V6z"/><line x1="9" y1="4" x2="9" y2="18"/><line x1="15" y1="6" x2="15" y2="20"/></svg>',
     Deuses:    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l2.4 6.6L21 9.5l-5 4.3 1.4 6.7L12 17l-5.4 3.5L8 13.8l-5-4.3 6.6-.9L12 2z"/></svg>',
@@ -1494,6 +1495,7 @@
     Campanhas: { hue: 18,  label: 'CAMPANHAS' },
     Historias: { hue: 250, label: 'HISTÓRIAS' },
     Racas:     { hue: 130, label: 'POVOS' },
+    Culturas:  { hue: 328, label: 'IDENTIDADE' },
     Faccoes:   { hue: 12,  label: 'FACÇÕES' },
     Mapa:      { hue: 195, label: 'MUNDO' },
     Deuses:    { hue: 50,  label: 'DIVINO' },
@@ -1509,8 +1511,8 @@
     {
       id: 'sociedades',
       title: 'Sociedades',
-      tone: 'Povos, poderes e crenças',
-      tabs: ['Racas', 'Faccoes', 'Deuses']
+      tone: 'Povos, culturas, poderes e crenças',
+      tabs: ['Racas', 'Culturas', 'Faccoes', 'Deuses']
     },
     {
       id: 'arcano',
