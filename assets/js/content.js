@@ -60,9 +60,14 @@ window.ARCANO_ARCHIVE = {
       tone: "Locais, ruínas, cidades, rotas e regiões de campanha."
     },
     {
+      id: "Biomas",
+      title: "Biomas",
+      tone: "Ecossistemas, climas, paisagens e fenômenos naturais do mundo."
+    },
+    {
       id: "Eras",
-      title: "Eras",
-      tone: "Linhas do tempo, quedas, guerras e cicatrizes históricas."
+      title: "Linha do Tempo",
+      tone: "Eras, acontecimentos, quedas, guerras e cicatrizes históricas."
     },
     {
       id: "Sistemas",
@@ -71,8 +76,13 @@ window.ARCANO_ARCHIVE = {
     },
     {
       id: "Persona",
-      title: "Persona",
+      title: "Personagens",
       tone: "Crie e gerencie suas fichas de personagem — raça, atributos e mais."
+    },
+    {
+      id: "Campanhas",
+      title: "Campanhas",
+      tone: "Arcos em andamento, missões, capítulos e consequências da mesa."
     },
     {
       id: "Historias",
@@ -85,9 +95,14 @@ window.ARCANO_ARCHIVE = {
       tone: "Povos jogáveis, linhagens, culturas e marcas de origem."
     },
     {
+      id: "Faccoes",
+      title: "Facções",
+      tone: "Ordens, guildas, cultos, exércitos e poderes em movimento."
+    },
+    {
       id: "Mapa",
       title: "Mapa",
-      tone: "Mapa do mundo, rotas, regiões e pontos de interesse."
+      tone: "Cartografia, rotas, regiões e pontos de interesse."
     },
     {
       id: "Deuses",

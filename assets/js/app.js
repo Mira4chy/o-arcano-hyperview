@@ -15,7 +15,7 @@
   });
 
   /* Categorias em que o usuário pode criar histórias */
-  const CREATABLE_TABS = ['Cenarios', 'Eras', 'Sistemas', 'Mapa', 'Deuses', 'Historias', 'Itens', 'Racas', 'Bestiario', 'Magias'];
+  const CREATABLE_TABS = ['Paises', 'Cenarios', 'Biomas', 'Eras', 'Sistemas', 'Mapa', 'Deuses', 'Faccoes', 'Campanhas', 'Historias', 'Itens', 'Racas', 'Bestiario', 'Magias'];
   const isCreatable = (id) => CREATABLE_TABS.includes(canonicalTabId(id));
 
   /* Categorias com layout alternativo (imagem ao lado do dossiê).
@@ -1176,6 +1176,8 @@
       </header>
 
       <section class="auth-gate__console" aria-labelledby="authGateTitle">
+        <span class="arc-trace arc-trace--top" aria-hidden="true"></span>
+        <span class="arc-trace arc-trace--bottom" aria-hidden="true"></span>
         <div class="auth-gate__intro">
           <h1 id="authGateTitle" data-auth-title>Abrir o Codex</h1>
           <p data-auth-subtitle>Conhecimento algum é consultado sem deixar vestígios.</p>
@@ -1398,6 +1400,8 @@
 
     gate.dataset.mode = 'pending';
     card.innerHTML = `
+      <span class="arc-trace arc-trace--top" aria-hidden="true"></span>
+      <span class="arc-trace arc-trace--bottom" aria-hidden="true"></span>
       <div class="auth-gate__intro">
         <h1>${escapeHtml(title)}</h1>
         <p>O arquivo reconheceu sua presença.</p>
@@ -1463,11 +1467,14 @@
     Bestiario: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M5 11c0-3 2-5 5-5s5 2 5 5v3l3 3v3h-4l-2-2-2 2H5l-2-2v-3l2-3z"/><circle cx="9" cy="11" r=".7" fill="currentColor"/><circle cx="13" cy="11" r=".7" fill="currentColor"/></svg>',
     Paises:    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M5 21V4l7-1 7 2v11l-7-2-7 1z"/><line x1="5" y1="21" x2="5" y2="3"/></svg>',
     Cenarios:  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21V9l4-3 4 3v3h6l4 3v6"/><path d="M3 21h18M9 21v-6h2v6M15 21v-3h2v3"/></svg>',
+    Biomas:    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21V9"/><path d="M7 14c-2.8 0-5-2.2-5-5 3.8-.2 6.3 1.5 7 5"/><path d="M17 11c2.8 0 5-2.2 5-5-3.8-.2-6.3 1.5-7 5"/><path d="M6 21h12"/></svg>',
     Eras:      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>',
     Sistemas:  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M2 12h3M19 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1"/></svg>',
     Persona:   '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 4-7 8-7s8 3 8 7"/></svg>',
+    Campanhas: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M5 3h11l3 3v15H5z"/><path d="M8 8h8M8 12h8M8 16h5"/><path d="M16 3v4h4"/></svg>',
     Historias: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3"/><circle cx="17" cy="9" r="2.5"/><path d="M3 20c0-3 3-5 6-5s6 2 6 5M14 20c0-2 2-3.5 4.5-3.5S22 18 22 20"/></svg>',
     Racas:     '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="7" cy="7" r="3"/><circle cx="17" cy="7" r="3"/><circle cx="12" cy="17" r="3"/><path d="M7 10v3M17 10v3M9 15l1.5-1M15 15l-1.5-1"/></svg>',
+    Faccoes:   '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l8 4v5c0 4.5-3.2 7.7-8 9-4.8-1.3-8-4.5-8-9V7z"/><path d="M8 12h8M12 8v8"/></svg>',
     Mapa:      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6l6-2 6 2 6-2v14l-6 2-6-2-6 2V6z"/><line x1="9" y1="4" x2="9" y2="18"/><line x1="15" y1="6" x2="15" y2="20"/></svg>',
     Deuses:    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l2.4 6.6L21 9.5l-5 4.3 1.4 6.7L12 17l-5.4 3.5L8 13.8l-5-4.3 6.6-.9L12 2z"/></svg>',
   };
@@ -1480,14 +1487,44 @@
     Bestiario: { hue: 0,   label: 'AMEAÇAS' },
     Paises:    { hue: 220, label: 'TERRITÓRIO' },
     Cenarios:  { hue: 200, label: 'LUGARES' },
+    Biomas:    { hue: 150, label: 'NATUREZA' },
     Eras:      { hue: 45,  label: 'TEMPO' },
     Sistemas:  { hue: 160, label: 'REGRAS' },
     Persona:   { hue: 320, label: 'PESSOAS' },
+    Campanhas: { hue: 18,  label: 'CAMPANHAS' },
     Historias: { hue: 250, label: 'HISTÓRIAS' },
     Racas:     { hue: 130, label: 'POVOS' },
+    Faccoes:   { hue: 12,  label: 'FACÇÕES' },
     Mapa:      { hue: 195, label: 'MUNDO' },
     Deuses:    { hue: 50,  label: 'DIVINO' },
   };
+
+  const NAV_GROUPS = [
+    {
+      id: 'mundo',
+      title: 'Mundo',
+      tone: 'Territórios, paisagens e lugares',
+      tabs: ['Mapa', 'Paises', 'Cenarios', 'Biomas']
+    },
+    {
+      id: 'sociedades',
+      title: 'Sociedades',
+      tone: 'Povos, poderes e crenças',
+      tabs: ['Racas', 'Faccoes', 'Deuses']
+    },
+    {
+      id: 'arcano',
+      title: 'Regras & Arcano',
+      tone: 'Poder, artefatos e ameaças',
+      tabs: ['Sistemas', 'Magias', 'Itens', 'Bestiario']
+    },
+    {
+      id: 'historias',
+      title: 'Histórias',
+      tone: 'Campanhas, pessoas e memória',
+      tabs: ['Campanhas', 'Persona', 'Eras', 'Historias']
+    }
+  ];
 
   /* ── DOM REFS ─────────────────────────────────── */
   const $ = (id) => document.getElementById(id);
@@ -2350,151 +2387,118 @@
 
   /* ── SIDEBAR NAV ──────────────────────────────── */
   function renderSidenav(active) {
-    sidebarCount.textContent = ARCHIVE.tabs.length;
-    sidenav.innerHTML = ARCHIVE.tabs.map((t) => {
-      const count = t.id === 'Index' ? '' : `<span class="sidenav__count">${tabCount(t.id)}</span>`;
-      const theme = themeOf(t.id);
+    sidebarCount.textContent = Math.max(0, ARCHIVE.tabs.length - 1);
+    const itemMarkup = (tabId) => {
+      const tab = tabById(tabId);
+      if (!tab) return '';
+      const theme = themeOf(tab.id);
       return `
-        <a href="#/${t.id}" class="sidenav__item ${t.id === active ? 'is-active' : ''}" data-tab="${t.id}" style="--hue:${theme.hue}">
-          <span class="sidenav__icon">${iconOf(t.id)}</span>
-          <span class="sidenav__label">${escapeHtml(t.title)}</span>
-          ${count}
-        </a>
-      `;
-    }).join('');
+        <a href="#/${tab.id}" class="sidenav__item ${tab.id === active ? 'is-active' : ''}" data-tab="${tab.id}" style="--hue:${theme.hue}">
+          <span class="sidenav__icon">${iconOf(tab.id)}</span>
+          <span class="sidenav__label">${escapeHtml(tab.title)}</span>
+          <span class="sidenav__count">${tabCount(tab.id)}</span>
+        </a>`;
+    };
+
+    sidenav.innerHTML = `
+      <a href="#/" class="sidenav__item sidenav__home ${active === 'Index' ? 'is-active' : ''}" data-tab="Index" style="--hue:${themeOf('Index').hue}">
+        <span class="sidenav__icon">${iconOf('Index')}</span>
+        <span class="sidenav__label">Início</span>
+      </a>
+      <div class="sidenav__groups">
+        ${NAV_GROUPS.map((group) => {
+          const open = group.tabs.includes(active);
+          const total = group.tabs.reduce((sum, tabId) => sum + tabCount(tabId), 0);
+          return `
+            <section class="sidenav__group ${open ? 'is-open' : ''}" data-nav-group="${escapeHtml(group.id)}">
+              <button type="button" class="sidenav__group-toggle" aria-expanded="${open ? 'true' : 'false'}">
+                <span><strong>${escapeHtml(group.title)}</strong><small>${escapeHtml(group.tone)}</small></span>
+                <span class="sidenav__group-meta"><b>${total}</b><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg></span>
+              </button>
+              <div class="sidenav__subnav" ${open ? '' : 'hidden'}>
+                ${group.tabs.map(itemMarkup).join('')}
+              </div>
+            </section>`;
+        }).join('')}
+      </div>`;
   }
 
   /* ── HOME VIEW ────────────────────────────────── */
   function viewHome() {
     const idx = ARCHIVE.index;
-    const totalEntries = ARCHIVE.entries.length;
-    const totalCategories = ARCHIVE.tabs.length - 1;
-    const totalPillars = (idx.pillars || []).length;
-
     const featured = pickFeatured(4);
+    const directory = NAV_GROUPS.map((group) => ({
+      ...group,
+      entries: group.tabs.reduce((sum, tabId) => sum + tabCount(tabId), 0)
+    }));
     const manifestoMarkup = idx.manifestoHtml
       ? `<div class="rt-content">${sanitizeHtml(idx.manifestoHtml)}</div>`
       : (idx.paragraphs || []).map((p) => `<p>${escapeHtml(p)}</p>`).join('');
 
     return `
-      <section class="hero">
-        <div class="hero__bg" style="background-image:url('${idx.image}')"></div>
-        <div class="hero__overlay"></div>
+      <section class="codex-home__hero" data-home-parallax>
+        <div class="codex-home__world auth-gate__world" aria-hidden="true">
+          <div class="auth-gate__layer auth-gate__base" data-auth-depth="5"></div>
+          <div class="auth-gate__layer auth-gate__nebula" data-auth-depth="18"></div>
+          <div class="auth-gate__layer auth-gate__starlight" data-auth-depth="34"></div>
+          <div class="auth-gate__layer auth-gate__foreground" data-auth-depth="52"></div>
+          <canvas class="auth-gate__fog" data-auth-fog></canvas>
+          <canvas class="auth-gate__dust" data-auth-dust></canvas>
+          <div class="auth-gate__grade"></div>
+          <div class="auth-gate__grain"></div>
+          <div class="auth-gate__vignette"></div>
+        </div>
+        <div class="codex-home__veil"></div>
+        <span class="arc-trace arc-trace--top" aria-hidden="true"></span>
+        <span class="arc-trace arc-trace--bottom" aria-hidden="true"></span>
         ${auth.isAdmin ? `
           <button type="button" class="hero__edit" data-edit-index aria-label="Editar apresentação">
             <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 113 3L7 19l-4 1 1-4 12.5-12.5z"/></svg>
             <span>Editar apresentação</span>
           </button>
         ` : ''}
-        <div class="hero__inner">
-          <div class="hero__eyebrow">
-            <span class="hero__dot"></span>
-            <span>CODEX DE CAMPANHA · DARK FANTASY</span>
-          </div>
-          <h1 class="hero__title" data-text-reveal>${escapeHtml(idx.title)}</h1>
-          <p class="hero__subtitle">${escapeHtml(idx.subtitle)}</p>
-          <div class="hero__actions">
-            <a href="#/Itens" class="btn btn-primary">
-              <span>Explorar arquivos</span>
+        <div class="codex-home__copy">
+          <div class="codex-home__eyebrow"><i></i><span>ARQUIVO VIVO · DARK FANTASY</span></div>
+          <p class="codex-home__kicker">Conhecimento preservado contra o fim</p>
+          <h1 data-text-reveal>${escapeHtml(idx.title)}</h1>
+          <p class="codex-home__subtitle">${escapeHtml(idx.subtitle)}</p>
+          <div class="codex-home__actions">
+            <a href="#/Cenarios" class="btn btn-primary arc-energy-button">
+              <span>Abrir o Codex</span>
               <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M13 5l7 7-7 7"/></svg>
             </a>
-            <a href="#/Mapa" class="btn btn-ghost">
-              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6l6-2 6 2 6-2v14l-6 2-6-2-6 2V6z"/></svg>
-              <span>Mapa do mundo</span>
-            </a>
           </div>
-        </div>
-        <div class="hero__scroll" aria-hidden="true">
-          <span>scroll</span>
-          <div class="hero__scrollLine"></div>
         </div>
       </section>
 
-      <section class="stats">
-        ${[
-          { v: totalEntries,    label: 'Entradas no codex',  hue: 268, icon: ICONS.Index },
-          { v: totalCategories, label: 'Categorias ativas',  hue: 38,  icon: ICONS.Magias },
-          { v: totalPillars,    label: 'Pilares narrativos', hue: 195, icon: ICONS.Eras },
-          { v: '∞',             label: 'Histórias possíveis', hue: 320, icon: ICONS.Persona, raw: true },
-        ].map((s, i) => `
-          <div class="stat" style="--hue:${s.hue};--delay:${i * 80}ms">
-            <div class="stat__icon">${s.icon}</div>
-            <div class="stat__value" ${s.raw ? '' : 'data-counter'}>${s.v}</div>
-            <div class="stat__label">${s.label}</div>
-          </div>
-        `).join('')}
-      </section>
-
-      ${featured.length ? `
-        <section class="section">
-          <header class="section__head">
-            <div>
-              <span class="section__eyebrow">EM DESTAQUE</span>
-              <h2 class="section__title">Entradas selecionadas</h2>
-            </div>
-            <a href="#/Itens" class="section__link">
-              ver todas <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M13 5l7 7-7 7"/></svg>
-            </a>
-          </header>
-          <div class="featured">
-            ${featured.map((e, i) => featuredCardHTML(e, i)).join('')}
-          </div>
-        </section>
-      ` : ''}
-
-      ${(idx.pillars || []).length ? `
-        <section class="section">
-          <header class="section__head">
-            <div>
-              <span class="section__eyebrow">FUNDAMENTOS</span>
-              <h2 class="section__title">Pilares do mundo</h2>
-            </div>
-          </header>
-          <div class="pillars">
-            ${idx.pillars.map((p, i) => `
-              <article class="pillar" style="--delay:${i * 80}ms">
-                <div class="pillar__num">0${i + 1}</div>
-                <h3 class="pillar__title">${escapeHtml(p.title)}</h3>
-                <p class="pillar__text">${escapeHtml(p.text)}</p>
-                <div class="pillar__glow"></div>
-              </article>
-            `).join('')}
-          </div>
-        </section>
-      ` : ''}
-
-      <section class="section">
-        <header class="section__head">
-          <div>
-            <span class="section__eyebrow">NAVEGAÇÃO</span>
-            <h2 class="section__title">Explore por categoria</h2>
-          </div>
+      <section class="codex-home__directory">
+        <header class="codex-home__section-head">
+          <div><span>ÍNDICE DO MUNDO</span><h2>Quatro caminhos pelo arquivo</h2></div>
+          <p>O mundo, seus povos, suas forças e as histórias deixadas para trás.</p>
         </header>
-        <div class="cat-grid">
-          ${ARCHIVE.tabs.filter((t) => t.id !== 'Index').map((t, i) => {
-            const tt = themeOf(t.id);
-            const count = tabCount(t.id);
-            return `
-              <a href="#/${t.id}" class="cat-card" style="--hue:${tt.hue};--delay:${i * 50}ms">
-                <div class="cat-card__icon">${iconOf(t.id)}</div>
-                <div class="cat-card__body">
-                  <h3 class="cat-card__title">${escapeHtml(t.title)}</h3>
-                  <p class="cat-card__tone">${escapeHtml(t.tone || '')}</p>
-                  <div class="cat-card__meta">
-                    <span class="badge badge-soft">${count} ${count === 1 ? 'entrada' : 'entradas'}</span>
-                    <span class="cat-card__arrow">→</span>
-                  </div>
-                </div>
-              </a>
-            `;
-          }).join('')}
+        <div class="codex-home__groups">
+          ${directory.map((group, index) => `
+            <article class="codex-home__group" style="--group-delay:${index * 90}ms">
+              <div class="codex-home__group-head"><span>0${index + 1}</span><div><h3>${escapeHtml(group.title)}</h3><p>${escapeHtml(group.tone)}</p></div><b>${group.entries}</b></div>
+              <nav aria-label="${escapeHtml(group.title)}">
+                ${group.tabs.map((tabId) => {
+                  const tab = tabById(tabId);
+                  return tab ? `<a href="#/${tab.id}" style="--hue:${themeOf(tab.id).hue}"><span>${iconOf(tab.id)}</span><strong>${escapeHtml(tab.title)}</strong><small>${tabCount(tab.id)}</small></a>` : '';
+                }).join('')}
+              </nav>
+              <span class="codex-home__group-line" aria-hidden="true"></span>
+            </article>`).join('')}
         </div>
       </section>
+
+      ${featured.length ? `<section class="section codex-home__featured"><header class="codex-home__section-head"><div><span>FRAGMENTOS RECUPERADOS</span><h2>Registros em destaque</h2></div><p>Entradas escolhidas entre diferentes partes do Codex.</p></header><div class="featured">${featured.map((e, i) => featuredCardHTML(e, i)).join('')}</div></section>` : ''}
+
+      ${(idx.pillars || []).length ? `<section class="section"><header class="codex-home__section-head"><div><span>FUNDAMENTOS</span><h2>As leis deste mundo</h2></div></header><div class="pillars">${idx.pillars.map((p, i) => `<article class="pillar" style="--delay:${i * 80}ms"><div class="pillar__num">0${i + 1}</div><h3 class="pillar__title">${escapeHtml(p.title)}</h3><p class="pillar__text">${escapeHtml(p.text)}</p><div class="pillar__glow"></div></article>`).join('')}</div></section>` : ''}
 
       ${manifestoMarkup ? `
-        <section class="section">
+        <section class="section codex-home__manifesto">
           <div class="manifesto">
-            <span class="section__eyebrow">MANIFESTO</span>
+            <span class="section__eyebrow">O MUNDO RESPIRA</span>
             ${manifestoMarkup}
           </div>
         </section>
@@ -2583,6 +2587,11 @@
     const beastFiltersOpen = beastTab && !!(categoryState[tabId]?.beastFiltersOpen);
     const spellFilterLabels = spellActiveFilterLabels(spellFilter);
     const beastFilterLabels = Object.values(beastFilter).filter(Boolean);
+    const totalLabel = spellTab
+      ? (all.length === 1 ? 'magia' : 'magias')
+      : beastTab
+        ? (all.length === 1 ? 'criatura' : 'criaturas')
+        : (all.length === 1 ? 'registro' : 'registros');
     const visibleCountLabel = spellTab
       ? `${list.length} ${list.length === 1 ? 'magia vis\u00edvel' : 'magias vis\u00edveis'}`
       : beastTab
@@ -2597,7 +2606,7 @@
           <h1 class="cat-hero__title" data-text-reveal>${escapeHtml(tab.title)}</h1>
           <p class="cat-hero__tone">${escapeHtml(tab.tone || '')}</p>
           <div class="cat-hero__meta">
-            <span class="badge"><strong>${all.length}</strong> ${spellTab ? (all.length === 1 ? 'magia' : 'magias') : beastTab ? (all.length === 1 ? 'criatura' : 'criaturas') : (all.length === 1 ? 'história' : 'histórias')}</span>
+            <span class="badge"><strong>${all.length}</strong> ${totalLabel}</span>
             ${!spellTab && showCreate ? '<span class="badge badge-soft">Cria\u00e7\u00e3o aberta</span>' : ''}
           </div>
         </div>
@@ -3976,27 +3985,11 @@
         <div class="cat-hero__body">
           <span class="cat-hero__eyebrow">EDITAR · ${escapeHtml(theme.label)}</span>
           <h1 class="cat-hero__title">Editar apresentação</h1>
-          <p class="cat-hero__tone">Personalize o banner, o título, a frase de abertura e o manifesto da página inicial.</p>
+          <p class="cat-hero__tone">Personalize o título, a frase de abertura e o manifesto da página inicial.</p>
         </div>
       </section>
 
       <form class="create-form" id="editIndexForm" style="--hue:${theme.hue}" novalidate>
-        <div class="create-form__field">
-          <label class="create-form__label">Banner (16:9)</label>
-          <div class="banner-drop" id="bannerDrop" tabindex="0" role="button" aria-label="Selecionar imagem do banner">
-            <input type="file" accept="image/*" id="bannerInput" hidden>
-            <div class="banner-drop__preview" id="bannerPreview" ${idx.image ? '' : 'hidden'} style="${idx.image ? `background-image:url('${idx.image}')` : ''}"></div>
-            <div class="banner-drop__placeholder" id="bannerPlaceholder" ${idx.image ? 'hidden' : ''}>
-              <svg viewBox="0 0 24 24" width="42" height="42" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="8.5" cy="10.5" r="1.5"/><path d="M21 17l-5-5-9 9"/></svg>
-              <strong>Clique ou arraste uma imagem</strong>
-              <span>Proporção 16:9 — JPG, PNG ou WebP</span>
-            </div>
-            <button type="button" class="banner-drop__clear" id="bannerClear" ${idx.image ? '' : 'hidden'} aria-label="Remover imagem">
-              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
-            </button>
-          </div>
-        </div>
-
         <div class="create-form__field">
           <label class="create-form__label" for="titleInput">Título</label>
           <input type="text" id="titleInput" class="create-form__input" value="${escapeHtml(idx.title || '')}" maxlength="120" required>
@@ -5805,6 +5798,7 @@
         attachCharacterForm();
         attachEditIndexForm();
         attachIndexEditButton();
+        attachHomeParallax();
         attachSpellPageTurns();
         attachDeleteHandlers();
         attachCharacterDeleteHandlers();
@@ -8744,7 +8738,6 @@
     const titleInput = document.getElementById('titleInput');
     const summaryInput = document.getElementById('summaryInput');
     const submitBtn = form.querySelector('[type="submit"]');
-    const banner = bindBannerDrop({ initialUrl: ARCHIVE.index.image || '' });
     const editor = bindEditor();
 
     form.addEventListener('submit', async (e) => {
@@ -8771,14 +8764,6 @@
 
       try {
         const patch = { title, subtitle, manifestoHtml };
-        const file = banner.getFile();
-        if (file) {
-          // remove imagem anterior do bucket (se houver) e sobe a nova
-          if (ARCHIVE.index.imagePath) await removeBanner(ARCHIVE.index.imagePath);
-          const up = await uploadBanner(file, 'index/banner');
-          patch.image = up.url;
-          patch.imagePath = up.path;
-        }
         await persistIndexCustom(patch);
         Object.assign(ARCHIVE.index, patch, { paragraphs: [] });
 
@@ -8804,6 +8789,11 @@
         location.hash = '#/Index/editar';
       });
     });
+  }
+
+  function attachHomeParallax() {
+    const hero = document.querySelector('[data-home-parallax]');
+    if (hero) window.ArcanoAuthExperience?.mount(hero);
   }
 
   /* ── NAVEGAÇÃO DO GRIMÓRIO ───────────────────── */
@@ -8917,44 +8907,81 @@
   }
 
   /* ── EVENT BINDINGS ───────────────────────────── */
-  function closeMobileSidebar() {
-    appShell.classList.remove('is-menu-open');
-    document.body.classList.remove('is-overlay-open');
+  let sidebarAutoCloseTimer = null;
+
+  function clearSidebarAutoClose() {
+    if (sidebarAutoCloseTimer) clearTimeout(sidebarAutoCloseTimer);
+    sidebarAutoCloseTimer = null;
   }
 
-  function isMobileViewport() {
-    return window.innerWidth <= 900;
+  function closeSidebar() {
+    clearSidebarAutoClose();
+    appShell.classList.remove('is-menu-open');
+    document.body.classList.remove('is-overlay-open');
+    menuBtn?.setAttribute('aria-expanded', 'false');
+  }
+
+  function scheduleSidebarAutoClose(delay = 7200) {
+    clearSidebarAutoClose();
+    if (!appShell.classList.contains('is-menu-open')) return;
+    sidebarAutoCloseTimer = setTimeout(closeSidebar, delay);
+  }
+
+  function openSidebar() {
+    appShell.classList.add('is-menu-open');
+    document.body.classList.add('is-overlay-open');
+    menuBtn?.setAttribute('aria-expanded', 'true');
+    scheduleSidebarAutoClose();
+  }
+
+  function toggleSidebar() {
+    if (appShell.classList.contains('is-menu-open')) closeSidebar();
+    else openSidebar();
   }
 
   function bindEvents() {
     window.addEventListener('hashchange', () => {
-      if (isMobileViewport()) closeMobileSidebar();
+      closeSidebar();
       render();
     });
 
-    menuBtn.addEventListener('click', () => {
-      if (isMobileViewport()) {
-        const opening = !appShell.classList.contains('is-menu-open');
-        appShell.classList.toggle('is-menu-open');
-        document.body.classList.toggle('is-overlay-open', opening);
-      } else {
-        appShell.classList.toggle('is-collapsed');
-      }
-    });
+    menuBtn.addEventListener('click', toggleSidebar);
 
     const sidebarBackdrop = document.getElementById('sidebarBackdrop');
     if (sidebarBackdrop) {
-      sidebarBackdrop.addEventListener('click', closeMobileSidebar);
+      sidebarBackdrop.addEventListener('click', closeSidebar);
     }
 
     const sidenav = document.getElementById('sidenav');
     if (sidenav) {
       sidenav.addEventListener('click', (e) => {
-        if (e.target.closest('.sidenav__item') && isMobileViewport()) {
-          closeMobileSidebar();
+        const groupToggle = e.target.closest('.sidenav__group-toggle');
+        if (groupToggle) {
+          const group = groupToggle.closest('.sidenav__group');
+          const opening = !group.classList.contains('is-open');
+          sidenav.querySelectorAll('.sidenav__group').forEach((item) => {
+            const active = item === group && opening;
+            item.classList.toggle('is-open', active);
+            item.querySelector('.sidenav__group-toggle')?.setAttribute('aria-expanded', String(active));
+            const subnav = item.querySelector('.sidenav__subnav');
+            if (subnav) subnav.hidden = !active;
+          });
+          scheduleSidebarAutoClose();
+          return;
+        }
+
+        if (e.target.closest('.sidenav__item')) {
+          closeSidebar();
         }
       });
+      sidenav.addEventListener('pointerenter', () => scheduleSidebarAutoClose(11000));
+      sidenav.addEventListener('pointerleave', () => scheduleSidebarAutoClose(4200));
+      sidenav.addEventListener('focusin', () => scheduleSidebarAutoClose(10000));
     }
+
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && appShell.classList.contains('is-menu-open')) closeSidebar();
+    });
 
     const mobileSearchBtn = document.getElementById('mobileSearchBtn');
     const mobileSearch = document.getElementById('mobileSearch');
