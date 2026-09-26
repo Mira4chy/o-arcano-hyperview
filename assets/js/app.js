@@ -4812,9 +4812,13 @@
               <section class="race-folio-section">
                 <header class="race-folio-head"><b><i>II</i></b><h2>Anatomia e heranças</h2><span></span></header>
                 <div class="race-anatomy-view">
-                  <div class="race-anatomy-figure" aria-hidden="true">
-                    <img src="assets/images/race-anatomy-abstract.png" alt="">
-                    <span>${totalHp ? `${totalHp} HP` : `${anatomy.length} partes`}</span>
+                  <div class="race-anatomy-figure" data-race-anatomy-parallax aria-hidden="true">
+                    <div class="race-anatomy-parallax__sigil"><i></i><i></i><i></i></div>
+                    <div class="race-anatomy-parallax__plane race-anatomy-parallax__plane--mist"><img src="assets/images/race-anatomy-abstract.png" alt=""></div>
+                    <div class="race-anatomy-parallax__plane race-anatomy-parallax__plane--aura"><img src="assets/images/race-anatomy-abstract.png" alt=""></div>
+                    <div class="race-anatomy-parallax__plane race-anatomy-parallax__plane--core"><img src="assets/images/race-anatomy-abstract.png" alt=""></div>
+                    <div class="race-anatomy-parallax__dust">${Array.from({ length: 9 }, (_, index) => `<i style="--dust-duration:${(5.2 + index * .41).toFixed(2)}s;--dust-delay:${(-index * .67).toFixed(2)}s"></i>`).join('')}</div>
+                    <span class="race-anatomy-figure__count">${totalHp ? `${totalHp} HP` : `${anatomy.length} partes`}</span>
                   </div>
                   <div class="race-anatomy-parts">
                     ${anatomy.length ? anatomy.map((part) => `<span><small>${escapeHtml(part.name)}</small><strong>${escapeHtml(part.hp || '—')}<em>HP</em></strong></span>`).join('') : '<p class="race-entry__empty">Nenhuma parte anatômica definida.</p>'}
@@ -6154,6 +6158,77 @@
 
   /* ── RENDER ───────────────────────────────────── */
   let lastRoute = '';
+  let raceAnatomyParallaxCleanup = null;
+
+  function attachRaceAnatomyParallax() {
+    if (raceAnatomyParallaxCleanup) raceAnatomyParallaxCleanup();
+    raceAnatomyParallaxCleanup = null;
+    const roots = [...document.querySelectorAll('[data-race-anatomy-parallax]')];
+    if (!roots.length || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+
+    let frame = 0;
+    const updateScroll = () => {
+      frame = 0;
+      roots.forEach((root) => {
+        const rect = root.getBoundingClientRect();
+        const center = rect.top + rect.height / 2;
+        const ratio = Math.max(-1, Math.min(1, (center - window.innerHeight / 2) / window.innerHeight));
+        root.style.setProperty('--anatomy-scroll', `${ratio * -16}px`);
+        root.style.setProperty('--anatomy-scroll-back', `${ratio * 5.1}px`);
+        root.style.setProperty('--anatomy-scroll-mid', `${ratio * 9.3}px`);
+        root.style.setProperty('--anatomy-scroll-sigil', `${ratio * 3.2}px`);
+      });
+    };
+    const requestScrollUpdate = () => {
+      if (!frame) frame = window.requestAnimationFrame(updateScroll);
+    };
+    const listeners = [];
+    roots.forEach((root) => {
+      const move = (event) => {
+        const rect = root.getBoundingClientRect();
+        const x = Math.max(-1, Math.min(1, ((event.clientX - rect.left) / rect.width - .5) * 2));
+        const y = Math.max(-1, Math.min(1, ((event.clientY - rect.top) / rect.height - .5) * 2));
+        root.style.setProperty('--anatomy-x', `${x * 12}px`);
+        root.style.setProperty('--anatomy-y', `${y * 10}px`);
+        root.style.setProperty('--anatomy-x-back', `${x * -5}px`);
+        root.style.setProperty('--anatomy-y-back', `${y * -4.2}px`);
+        root.style.setProperty('--anatomy-x-mid', `${x * -2.4}px`);
+        root.style.setProperty('--anatomy-y-mid', `${y * -2}px`);
+        root.style.setProperty('--anatomy-x-sigil', `${x * -3.6}px`);
+        root.style.setProperty('--anatomy-y-sigil', `${y * -3}px`);
+        root.style.setProperty('--anatomy-x-dust', `${x * 2.2}px`);
+        root.style.setProperty('--anatomy-tilt-x', `${y * -2.2}deg`);
+        root.style.setProperty('--anatomy-tilt-y', `${x * 2.8}deg`);
+      };
+      const leave = () => {
+        root.style.setProperty('--anatomy-x', '0px');
+        root.style.setProperty('--anatomy-y', '0px');
+        root.style.setProperty('--anatomy-x-back', '0px');
+        root.style.setProperty('--anatomy-y-back', '0px');
+        root.style.setProperty('--anatomy-x-mid', '0px');
+        root.style.setProperty('--anatomy-y-mid', '0px');
+        root.style.setProperty('--anatomy-x-sigil', '0px');
+        root.style.setProperty('--anatomy-y-sigil', '0px');
+        root.style.setProperty('--anatomy-x-dust', '0px');
+        root.style.setProperty('--anatomy-tilt-x', '0deg');
+        root.style.setProperty('--anatomy-tilt-y', '0deg');
+      };
+      root.addEventListener('pointermove', move);
+      root.addEventListener('pointerleave', leave);
+      listeners.push([root, move, leave]);
+    });
+    window.addEventListener('scroll', requestScrollUpdate, { passive: true });
+    updateScroll();
+    raceAnatomyParallaxCleanup = () => {
+      window.removeEventListener('scroll', requestScrollUpdate);
+      if (frame) window.cancelAnimationFrame(frame);
+      listeners.forEach(([root, move, leave]) => {
+        root.removeEventListener('pointermove', move);
+        root.removeEventListener('pointerleave', leave);
+      });
+    };
+  }
+
   function render(force) {
     const { tab, entry, action } = parseHash();
     const routeKey = `${tab}|${entry || ''}|${action || ''}`;
@@ -6201,6 +6276,7 @@
         attachCharacterDeleteHandlers();
         attachCharacterSheet();
         attachBeastAbilityCards();
+        attachRaceAnatomyParallax();
       });
       window.scrollTo({ top: 0, behavior: 'instant' });
     }, 180);
