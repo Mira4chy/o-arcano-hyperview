@@ -496,37 +496,77 @@
     { value: 'Lendário',  cssClass: 'rarity-chip--legendary' },
     { value: 'Único',     cssClass: 'rarity-chip--unique' }
   ];
+  function rarityCssClass(value) {
+    const key = normalize(value || '');
+    if (/incomum/.test(key)) return 'rarity-chip--uncommon';
+    if (/comum/.test(key)) return 'rarity-chip--common';
+    if (/raro|rara/.test(key)) return 'rarity-chip--rare';
+    if (/epico|epica/.test(key)) return 'rarity-chip--epic';
+    if (/lendar/.test(key)) return 'rarity-chip--legendary';
+    if (/unico|unica/.test(key)) return 'rarity-chip--unique';
+    return 'rarity-chip--default';
+  }
 
-  /* Estrutura do dossie de Racas (3 secoes). */
+  /* ── RAÇAS: Atlas dos Povos ──────────────────────
+     Os campos novos continuam dentro de stories.fields, portanto não exigem
+     tabela ou migração. Leitores abaixo convertem o formato antigo sob demanda. */
   const RACE_HP_PARTS = ['Cabeça', 'Peito', 'Abdômen', 'Braço Direito', 'Braço Esquerdo', 'Perna Direita', 'Perna Esquerda'];
+  const RACE_TYPES = ['Humanoide', 'Ancestral', 'Etérico', 'Artificial', 'Bestial', 'Abissal', 'Outro'];
+  const RACE_SIZES = ['Minúsculo', 'Pequeno', 'Médio', 'Grande', 'Enorme'];
+  const RACE_RELATION_TABS = [
+    { tab: 'Paises', label: 'Países' },
+    { tab: 'Biomas', label: 'Biomas' },
+    { tab: 'Culturas', label: 'Culturas' },
+    { tab: 'Faccoes', label: 'Facções' },
+    { tab: 'Deuses', label: 'Deuses' }
+  ];
   const RACE_SECTIONS = [
     {
-      id: 'surgimento',
-      title: 'Surgimento',
+      id: 'identidade',
+      title: 'Identidade',
       fields: [
         { key: 'Raridade', type: 'rarity', promoted: true },
-        { key: 'Modificador', type: 'text', placeholder: 'Ex.: +1 Força, -1 Destreza' },
-        { key: 'Origem', type: 'text', placeholder: 'Ex.: Continente Norte' },
-        { key: 'Ponto forte', type: 'text', placeholder: 'Resistência ao frio…' },
-        { key: 'Ponto fraco', type: 'text', placeholder: 'Vulnerável ao fogo…' }
+        { key: 'Tipo', type: 'select', options: RACE_TYPES, placeholder: 'Natureza biológica' },
+        { key: 'Origem', type: 'text', placeholder: 'Ex.: Véu Cinzento' }
       ]
     },
     {
-      id: 'biologia',
-      title: 'Biologia',
+      id: 'fisiologia',
+      title: 'Fisiologia',
       fields: [
-        { key: 'Talento racial', type: 'text', placeholder: 'Talento que define a raça' },
-        { key: 'Passivas', type: 'list', placeholder: 'Digite uma passiva e Enter…' },
-        { key: 'Penalidade', type: 'text', placeholder: 'Limitação inata' }
+        { key: 'Porte', type: 'select', options: RACE_SIZES, placeholder: 'Porte médio' },
+        { key: 'Longevidade', type: 'text', placeholder: 'Ex.: 80–110 anos' },
+        { key: 'Deslocamento', type: 'text', placeholder: 'Ex.: 9 metros' },
+        { key: 'Alimentação', type: 'text', placeholder: 'Ex.: Onívora' },
+        { key: 'Constituição', type: 'text', placeholder: 'Ex.: Semicorpórea, mineral, orgânica' },
+        { key: 'Sentidos', type: 'text', placeholder: 'Ex.: Visão térmica em 12 metros' },
+        { key: 'Resistência natural', type: 'text', placeholder: 'Ex.: Frio, veneno, Mana morta' },
+        { key: 'Limitação física', type: 'text', placeholder: 'Ex.: Luz intensa, repouso prolongado' }
       ]
     },
     {
-      id: 'hpmp',
-      title: 'HP / MP Base',
-      fields: [
-        ...RACE_HP_PARTS.map((p) => ({ key: p, type: 'hp', default: defaultHpFor(p) })),
-        { key: 'Mana', type: 'mana', default: '15/15' }
-      ]
+      id: 'regras',
+      title: 'Impacto na ficha',
+      view: 'raceRules',
+      fields: []
+    },
+    {
+      id: 'anatomia',
+      title: 'Anatomia e vitalidade',
+      view: 'raceAnatomy',
+      fields: []
+    },
+    {
+      id: 'aptidoes',
+      title: 'Aptidões e limitações',
+      view: 'raceAbilities',
+      fields: []
+    },
+    {
+      id: 'mundo',
+      title: 'Presença no mundo',
+      view: 'raceRelations',
+      fields: []
     }
   ];
   function defaultHpFor(part) {
@@ -543,6 +583,121 @@
       for (const f of s.fields) if (f.key === key) return f;
     }
     return null;
+  }
+
+  function normalizeRaceAttributes(fields) {
+    const data = fields || {};
+    const raw = data.Atributos;
+    const legacy = parseRaceModifier(data.Modificador || '');
+    const out = {};
+    CHAR_ATTRIBUTES.forEach((attr) => {
+      const candidate = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw[attr] : legacy[attr];
+      const value = parseInt(candidate, 10);
+      out[attr] = Number.isFinite(value) ? Math.max(-2, Math.min(2, value)) : 0;
+    });
+    return out;
+  }
+
+  function raceModifierText(attributes) {
+    return CHAR_ATTRIBUTES
+      .map((attr) => ({ attr, value: Number(attributes && attributes[attr]) || 0 }))
+      .filter((row) => row.value)
+      .map((row) => `${row.value > 0 ? '+' : ''}${row.value} ${row.attr}`)
+      .join(', ');
+  }
+
+  function raceAnatomy(fields, fillDefaults = false) {
+    const data = fields || {};
+    const source = Array.isArray(data.Anatomia) ? data.Anatomia : (Array.isArray(data.PartesHP) ? data.PartesHP : []);
+    const normalized = source
+      .map((part) => ({
+        name: String(part && (part.name || part.nome) || '').trim(),
+        hp: String(part && (part.hp ?? part.value) || '').trim()
+      }))
+      .filter((part) => part.name);
+    if (normalized.length) return normalized;
+    const legacy = RACE_HP_PARTS
+      .filter((part) => data[part] != null && data[part] !== '')
+      .map((part) => ({ name: part, hp: String(data[part]) }));
+    if (legacy.length || !fillDefaults) return legacy;
+    return RACE_HP_PARTS.map((part) => ({ name: part, hp: defaultHpFor(part) }));
+  }
+
+  function normalizeRaceAbilities(fields) {
+    const data = fields || {};
+    if (Array.isArray(data.Aptidoes)) return normalizeBeastAbilities(data.Aptidoes);
+    const legacy = [];
+    if (data['Talento racial']) legacy.push({ name: data['Talento racial'], kind: 'Passiva', effect: 'Talento racial inato.' });
+    (Array.isArray(data.Passivas) ? data.Passivas : []).forEach((name) => legacy.push({ name, kind: 'Passiva', effect: '' }));
+    if (data.Penalidade) legacy.push({ name: data.Penalidade, kind: 'Limitação', effect: 'Limitação racial inata.' });
+    return normalizeBeastAbilities(legacy);
+  }
+
+  function normalizeRaceRelations(fields) {
+    const raw = fields && fields.Relacoes;
+    const out = {};
+    RACE_RELATION_TABS.forEach(({ tab }) => {
+      const list = raw && typeof raw === 'object' && Array.isArray(raw[tab]) ? raw[tab] : [];
+      out[tab] = [...new Set(list.map((id) => String(id || '').trim()).filter(Boolean))];
+    });
+    return out;
+  }
+
+  function raceTotalHp(fields) {
+    return raceAnatomy(fields).reduce((sum, part) => sum + (parseInt(part.hp, 10) || 0), 0);
+  }
+
+  const EMPTY_RACE_FILTERS = { type: '', size: '', rarity: '', origin: '' };
+  function normalizeRaceFilters(filters) {
+    const source = filters || {};
+    return {
+      type: String(source.type || '').trim(),
+      size: String(source.size || '').trim(),
+      rarity: String(source.rarity || '').trim(),
+      origin: String(source.origin || '').trim()
+    };
+  }
+  function hasRaceFilters(filters) {
+    return Object.values(normalizeRaceFilters(filters)).some(Boolean);
+  }
+  function raceFilterValues(entries, field) {
+    const values = new Map();
+    entries.forEach((entry) => {
+      const value = String((entry.fields || {})[field] || '').trim();
+      if (!value) return;
+      const key = normalize(value);
+      const row = values.get(key) || { value, count: 0 };
+      row.count += 1;
+      values.set(key, row);
+    });
+    return [...values.values()].sort((a, b) => a.value.localeCompare(b.value, 'pt-BR'));
+  }
+  function raceCategoryFiltersHTML(entries, filters, open = false) {
+    const active = normalizeRaceFilters(filters);
+    const groups = [
+      { key: 'type', label: 'Natureza', rows: raceFilterValues(entries, 'Tipo') },
+      { key: 'size', label: 'Porte', rows: raceFilterValues(entries, 'Porte') },
+      { key: 'rarity', label: 'Raridade', rows: raceFilterValues(entries, 'Raridade') },
+      { key: 'origin', label: 'Origem', rows: raceFilterValues(entries, 'Origem') }
+    ].filter((group) => group.rows.length);
+    if (!groups.length) return '';
+    return `
+      <section class="beast-filter-panel race-filter-panel ${open ? 'is-open' : ''}" aria-label="Filtros do Atlas das Raças" ${open ? '' : 'hidden'}>
+        <div class="beast-filter-panel__head">
+          <div><strong>Refinar atlas</strong><span>Encontre povos por natureza, porte, raridade ou origem.</span></div>
+          ${hasRaceFilters(active) ? '<button type="button" class="beast-filter-reset" data-race-filter-reset>Limpar filtros</button>' : ''}
+        </div>
+        <div class="beast-filter-groups">
+          ${groups.map((group) => `
+            <div class="beast-filter-group">
+              <span class="beast-filter-group__label">${escapeHtml(group.label)}</span>
+              <div class="beast-filter-group__chips">
+                <button type="button" class="beast-filter-chip ${!active[group.key] ? 'is-active' : ''}" data-race-filter="${group.key}" data-race-filter-value="">Todos</button>
+                ${group.rows.map((row) => `<button type="button" class="beast-filter-chip ${normalize(active[group.key]) === normalize(row.value) ? 'is-active' : ''}" data-race-filter="${group.key}" data-race-filter-value="${escapeHtml(row.value)}"><span>${escapeHtml(row.value)}</span><small>${row.count}</small></button>`).join('')}
+              </div>
+            </div>`).join('')}
+        </div>
+      </section>`;
   }
 
   /* ── BESTIÁRIO: ficha de criatura ────────────────
@@ -704,7 +859,7 @@
   const CHAR_RES_ATTR = 'Resistência';
 
   const BEAST_EXTRA_PARTS = ['Cauda', 'Asa', 'Braço Extra', 'Tentáculo', 'Personalizada'];
-  const BEAST_ABILITY_KINDS = ['Ativa', 'Passiva'];
+  const BEAST_ABILITY_KINDS = ['Ativa', 'Passiva', 'Reação', 'Limitação'];
 
   function defaultBeastAttributes() {
     const out = {};
@@ -827,7 +982,10 @@
 
   function beastAbilityKindFrom(value) {
     const key = normalize(value);
-    return key === 'passiva' ? 'Passiva' : 'Ativa';
+    if (key === 'passiva') return 'Passiva';
+    if (key === 'reacao') return 'Reação';
+    if (key === 'limitacao' || key === 'penalidade') return 'Limitação';
+    return 'Ativa';
   }
 
   function abilityFromMagicEntry(entry, overrides = {}) {
@@ -2045,12 +2203,20 @@
     const n = parseInt(String(v).split('/')[0], 10);
     return Number.isFinite(n) ? n : 0;
   }
+  function hpPartKeys(hp) {
+    const data = hp && typeof hp === 'object' && !Array.isArray(hp) ? hp : {};
+    const keys = Object.keys(data).filter((key) => data[key] != null && data[key] !== '');
+    return [
+      ...RACE_HP_PARTS.filter((part) => keys.includes(part)),
+      ...keys.filter((part) => !RACE_HP_PARTS.includes(part))
+    ];
+  }
   /* Garante c.vitals.hp/mana a partir do HP/Mana da criação (sem persistir). */
   function ensureVitals(c) {
     c.vitals = (c.vitals && typeof c.vitals === 'object' && !Array.isArray(c.vitals)) ? c.vitals : {};
     if (!c.vitals.hp || typeof c.vitals.hp !== 'object') {
       c.vitals.hp = {};
-      RACE_HP_PARTS.forEach((p) => {
+      hpPartKeys(c.hp).forEach((p) => {
         if (c.hp && c.hp[p] != null && c.hp[p] !== '') {
           const max = parseHpMax(c.hp[p]);
           if (max > 0) c.vitals.hp[p] = { cur: max, max };
@@ -2073,7 +2239,7 @@
       mana: null
     };
     const prevHp = (prev && prev.hp) || {};
-    RACE_HP_PARTS.forEach((p) => {
+    hpPartKeys(hpFields).forEach((p) => {
       if (hpFields[p] != null && hpFields[p] !== '') {
         const max = parseHpMax(hpFields[p]);
         if (max > 0) {
@@ -2554,9 +2720,11 @@
     const q = normalize(query || '');
     const spellTab = isMagiasTab(tabId);
     const beastTab = tabId === 'Bestiario';
+    const raceTab = tabId === 'Racas';
     const tag = spellTab ? '' : tagKey(selectedTag || '');
     const spellFilter = normalizeSpellFilters(spellFilters);
     const beastFilter = normalizeBeastFilters(categoryState[tabId]?.beast || EMPTY_BEAST_FILTERS);
+    const raceFilter = normalizeRaceFilters(categoryState[tabId]?.race || EMPTY_RACE_FILTERS);
     const tagStats = categoryTagStats(all);
     const list = all.filter((e) => {
       const entryTags = sanitizeTags(e.tags);
@@ -2576,6 +2744,13 @@
         if (beastFilter.type && normalize(fields.Tipo) !== normalize(beastFilter.type)) return false;
         if (beastFilter.habitat && normalize(fields.Habitat) !== normalize(beastFilter.habitat)) return false;
       }
+      if (raceTab) {
+        const fields = e.fields || {};
+        if (raceFilter.type && normalize(fields.Tipo) !== normalize(raceFilter.type)) return false;
+        if (raceFilter.size && normalize(fields.Porte) !== normalize(raceFilter.size)) return false;
+        if (raceFilter.rarity && normalize(fields.Raridade) !== normalize(raceFilter.rarity)) return false;
+        if (raceFilter.origin && normalize(fields.Origem) !== normalize(raceFilter.origin)) return false;
+      }
       if (!q) return true;
       const tagText = entryTags.map((t) => t.label).join(' ');
       const hay = [e.title, e.summary, tagText, ...(e.body || []), e.bodyHtml || '', ...fieldSearchValues(e.fields || {})].join(' ');
@@ -2583,46 +2758,52 @@
     });
 
     const showCreate = isCreatable(tabId) && auth.isAdmin;
-    const totalCards = list.length + (showCreate && !spellTab && !beastTab ? 1 : 0);
+    const totalCards = list.length + (showCreate && !spellTab && !beastTab && !raceTab ? 1 : 0);
     const activeTagLabel = !spellTab ? (tagStats.find((t) => t.key === tag)?.label || '') : '';
     const spellFiltersOpen = spellTab && !!(categoryState[tabId]?.spellFiltersOpen);
     const beastFiltersOpen = beastTab && !!(categoryState[tabId]?.beastFiltersOpen);
+    const raceFiltersOpen = raceTab && !!(categoryState[tabId]?.raceFiltersOpen);
     const spellFilterLabels = spellActiveFilterLabels(spellFilter);
     const beastFilterLabels = Object.values(beastFilter).filter(Boolean);
+    const raceFilterLabels = Object.values(raceFilter).filter(Boolean);
     const totalLabel = spellTab
       ? (all.length === 1 ? 'magia' : 'magias')
       : beastTab
         ? (all.length === 1 ? 'criatura' : 'criaturas')
+        : raceTab
+          ? (all.length === 1 ? 'raça' : 'raças')
         : (all.length === 1 ? 'registro' : 'registros');
     const visibleCountLabel = spellTab
       ? `${list.length} ${list.length === 1 ? 'magia vis\u00edvel' : 'magias vis\u00edveis'}`
       : beastTab
         ? `${list.length} ${list.length === 1 ? 'criatura visível' : 'criaturas visíveis'}`
+        : raceTab
+          ? `${list.length} ${list.length === 1 ? 'raça visível' : 'raças visíveis'}`
         : `${totalCards} ${totalCards === 1 ? 'item' : 'itens'}`;
 
     return `
-      <section class="cat-hero ${spellTab ? 'cat-hero--magias' : ''} ${beastTab ? 'cat-hero--bestiario' : ''}" style="--hue:${theme.hue}">
+      <section class="cat-hero ${spellTab ? 'cat-hero--magias' : ''} ${beastTab ? 'cat-hero--bestiario' : ''} ${raceTab ? 'cat-hero--racas' : ''}" style="--hue:${theme.hue}">
         <div class="cat-hero__icon">${iconOf(tabId)}</div>
         <div class="cat-hero__body">
           <span class="cat-hero__eyebrow">${escapeHtml(theme.label)}</span>
-          <h1 class="cat-hero__title" data-text-reveal>${escapeHtml(tab.title)}</h1>
+          <h1 class="cat-hero__title" data-text-reveal>${escapeHtml(raceTab ? 'Atlas das Raças' : tab.title)}</h1>
           <p class="cat-hero__tone">${escapeHtml(tab.tone || '')}</p>
           <div class="cat-hero__meta">
             <span class="badge"><strong>${all.length}</strong> ${totalLabel}</span>
             ${!spellTab && showCreate ? '<span class="badge badge-soft">Cria\u00e7\u00e3o aberta</span>' : ''}
           </div>
         </div>
-        ${(spellTab || beastTab) && showCreate ? `
-          <a href="#/${tabId}/criar" class="spell-primary-action ${beastTab ? 'beast-primary-action' : ''}" aria-label="Criar nova ${beastTab ? 'criatura' : 'magia'}">
+        ${(spellTab || beastTab || raceTab) && showCreate ? `
+          <a href="#/${tabId}/criar" class="spell-primary-action ${beastTab ? 'beast-primary-action' : ''} ${raceTab ? 'race-primary-action' : ''}" aria-label="Criar nova ${beastTab ? 'criatura' : (raceTab ? 'raça' : 'magia')}">
             <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
-            <span>Nova ${beastTab ? 'criatura' : 'magia'}</span>
+            <span>Nova ${beastTab ? 'criatura' : (raceTab ? 'raça' : 'magia')}</span>
           </a>` : ''}
       </section>
 
-      <section class="filter-bar ${spellTab ? 'filter-bar--magias' : ''} ${beastTab ? 'filter-bar--bestiario' : ''}">
+      <section class="filter-bar ${spellTab ? 'filter-bar--magias' : ''} ${beastTab ? 'filter-bar--bestiario' : ''} ${raceTab ? 'filter-bar--racas' : ''}">
         <label class="filter-search">
           <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
-          <input id="catSearch" type="search" placeholder="${spellTab ? 'Buscar magia, afinidade, efeito...' : (beastTab ? 'Buscar criatura, habitat, habilidade...' : `Filtrar em ${escapeHtml(tab.title)}...`)}" value="${escapeHtml(query || '')}" autocomplete="off">
+          <input id="catSearch" type="search" placeholder="${spellTab ? 'Buscar magia, afinidade, efeito...' : (beastTab ? 'Buscar criatura, habitat, habilidade...' : (raceTab ? 'Buscar raça, origem ou aptidão...' : `Filtrar em ${escapeHtml(tab.title)}...`))}" value="${escapeHtml(query || '')}" autocomplete="off">
         </label>
         <span class="filter-count">${escapeHtml(visibleCountLabel)}</span>
         ${spellTab ? `
@@ -2635,6 +2816,11 @@
             <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h16M7 12h10M10 18h4"/></svg>
             <span>Filtros</span>
             ${beastFilterLabels.length ? `<b>${beastFilterLabels.length}</b>` : ''}
+          </button>` : raceTab && all.length ? `
+          <button type="button" class="beast-filter-toggle race-filter-toggle ${raceFiltersOpen ? 'is-open' : ''}" data-race-filter-toggle aria-expanded="${raceFiltersOpen ? 'true' : 'false'}">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h16M7 12h10M10 18h4"/></svg>
+            <span>Filtros</span>
+            ${raceFilterLabels.length ? `<b>${raceFilterLabels.length}</b>` : ''}
           </button>` : ''}
       </section>
 
@@ -2646,6 +2832,8 @@
       ${spellTab ? spellCategoryFiltersHTML(all, spellFilter, spellFiltersOpen) : ''}
 
       ${beastTab ? beastCategoryFiltersHTML(all, beastFilter, beastFiltersOpen) : ''}
+
+      ${raceTab ? raceCategoryFiltersHTML(all, raceFilter, raceFiltersOpen) : ''}
 
       ${(!spellTab && tagStats.length) ? `
         <section class="tag-filter" aria-label="Filtrar por tag">
@@ -2667,10 +2855,10 @@
         </div>
       ` : ''}
 
-      ${(list.length === 0 && (!showCreate || spellTab || beastTab)) ? emptyStateHTML(tab) : `
-        <section class="entry-grid ${spellTab ? 'entry-grid--magias' : ''} ${beastTab ? 'entry-grid--bestiario' : ''}">
-          ${showCreate && !spellTab && !beastTab ? createCardHTML(tabId) : ''}
-          ${list.map((e, i) => entryCardHTML(e, i + ((showCreate && !spellTab && !beastTab) ? 1 : 0))).join('')}
+      ${(list.length === 0 && (!showCreate || spellTab || beastTab || raceTab)) ? emptyStateHTML(tab) : `
+        <section class="entry-grid ${spellTab ? 'entry-grid--magias' : ''} ${beastTab ? 'entry-grid--bestiario' : ''} ${raceTab ? 'entry-grid--racas' : ''}">
+          ${showCreate && !spellTab && !beastTab && !raceTab ? createCardHTML(tabId) : ''}
+          ${list.map((e, i) => entryCardHTML(e, i + ((showCreate && !spellTab && !beastTab && !raceTab) ? 1 : 0))).join('')}
         </section>
       `}
     `;
@@ -2727,9 +2915,47 @@
       </a>`;
   }
 
+  function raceCardHTML(entry, index) {
+    const fields = entry.fields || {};
+    const tags = sanitizeTags(entry.tags);
+    const attrs = normalizeRaceAttributes(fields);
+    const modifiers = CHAR_ATTRIBUTES
+      .map((attr) => ({ attr, value: Number(attrs[attr]) || 0 }))
+      .filter((row) => row.value)
+      .slice(0, 3);
+    const abilities = normalizeRaceAbilities(fields);
+    const anatomy = raceAnatomy(fields);
+    const rarity = fields.Raridade || 'Raridade não definida';
+    return `
+      <a href="#/${entry.tab}/${entry.id}" class="entry-card entry-card--race" style="--hue:${themeOf(entry.tab).hue};--delay:${index * 45}ms">
+        <div class="race-card__media ${entry.image ? '' : 'is-fallback'}">
+          ${entry.image ? `<img loading="lazy" src="${entry.image}" alt="" onerror="this.parentElement.classList.add('is-fallback')">` : ''}
+          <div class="race-card__fallback" aria-hidden="true">${iconOf('Racas')}</div>
+          <div class="race-card__veil"></div>
+          <span class="race-card__archive">ARQ · ${String(index + 1).padStart(2, '0')}</span>
+          <span class="rarity-chip ${rarityCssClass(rarity)}">${escapeHtml(rarity)}</span>
+        </div>
+        <div class="race-card__body">
+          <span class="race-card__type">${escapeHtml([fields.Tipo || 'Povo', fields.Porte].filter(Boolean).join(' · '))}</span>
+          <h3>${escapeHtml(entry.title)}</h3>
+          <p>${escapeHtml(entry.summary || 'Registro ainda sem frase de identidade.')}</p>
+          <div class="race-card__facts">
+            <span><small>Origem</small><strong>${escapeHtml(fields.Origem || '—')}</strong></span>
+            <span><small>Vitalidade</small><strong>${raceTotalHp(fields) ? `${raceTotalHp(fields)} HP` : `${anatomy.length} ${anatomy.length === 1 ? 'parte' : 'partes'}`}</strong></span>
+            <span><small>Heranças</small><strong>${abilities.length || '—'}</strong></span>
+          </div>
+          ${(modifiers.length || tags.length) ? `<div class="race-card__footer">
+            <div class="race-card__mods">${modifiers.map((row) => `<span class="${row.value < 0 ? 'is-penalty' : ''}">${row.value > 0 ? '+' : ''}${row.value}d6 ${escapeHtml(row.attr)}</span>`).join('')}</div>
+            ${tags.length ? `<div class="race-card__tags">${tags.slice(0, 2).map((tag) => tagChipHTML(tag, 'story-tag story-tag--card')).join('')}</div>` : ''}
+          </div>` : ''}
+        </div>
+      </a>`;
+  }
+
   function entryCardHTML(e, i) {
     if (isMagiasTab(e.tab)) return spellCardHTML(e, i);
     if (e.tab === 'Bestiario') return beastCardHTML(e, i);
+    if (e.tab === 'Racas') return raceCardHTML(e, i);
     const theme = themeOf(e.tab);
     const fieldKeys = Object.keys(e.fields || {});
     const tags = sanitizeTags(e.tags);
@@ -2934,7 +3160,7 @@
       : (isItens
           ? 'Escolha o tipo, anexe uma imagem 4:3 e preencha o dossiê.'
           : isRacas
-            ? 'Anexe uma imagem 2:3, preencha as três seções do dossiê e descreva a raça.'
+            ? 'Construa identidade, fisiologia, regras, anatomia, aptidões e vínculos com o mundo.'
             : isBestiario
               ? 'Anexe uma imagem 3:4 e organize natureza, vitalidade, instruções, espólios e habilidades.'
               : 'Preencha o banner, o título e o relato. Use a barra de ferramentas para formatar e colorir o texto.');
@@ -4457,6 +4683,111 @@
             </div>
           </section>
           ${relatedMarkup ? `<div class="entry__main entry__main--full">${relatedMarkup}</div>` : ''}
+      </article>`;
+    }
+
+    function renderRaceEntry(actionsMarkup) {
+      const data = e.fields || {};
+      const attributes = normalizeRaceAttributes(data);
+      const anatomy = raceAnatomy(data);
+      const abilities = normalizeRaceAbilities(data);
+      const relations = normalizeRaceRelations(data);
+      const totalHp = raceTotalHp(data);
+      const physiology = [
+        ['Constituição', data['Constituição']],
+        ['Sentidos', data.Sentidos],
+        ['Resistência', data['Resistência natural'] || data['Ponto forte']],
+        ['Limitação', data['Limitação física'] || data.Penalidade || data['Ponto fraco']]
+      ].filter(([, value]) => value);
+      const identity = [
+        ['Porte', data.Porte],
+        ['Longevidade', data.Longevidade],
+        ['Deslocamento', data.Deslocamento],
+        ['Alimentação', data['Alimentação']],
+        ['Origem', data.Origem]
+      ].filter(([, value]) => value);
+      const relationGroups = RACE_RELATION_TABS.map(({ tab: relationTab, label }) => ({
+        tab: relationTab,
+        label,
+        entries: (relations[relationTab] || []).map((id) => entryById(id)).filter(Boolean)
+      })).filter((group) => group.entries.length);
+      const description = e.bodyHtml
+        ? `<div class="rt-content">${sanitizeHtml(e.bodyHtml)}</div>`
+        : (e.body || []).map((paragraph) => `<p>${escapeHtml(paragraph)}</p>`).join('');
+      const statIcon = {
+        'Constituição': '⌁', Sentidos: '◉', Resistência: '◇', Limitação: '△'
+      };
+      const abilityGlyph = (kind) => kind === 'Limitação' ? '△' : (kind === 'Reação' ? '◇' : (kind === 'Passiva' ? '✦' : '◆'));
+      const modifierLabel = (value) => value ? `${value > 0 ? '+' : ''}${value}d6` : '—';
+      const manaMax = parseHpMax(data.Mana || '');
+
+      return `
+        <article class="race-entry" style="--hue:${theme.hue}">
+          <header class="race-entry__masthead">
+            <nav class="breadcrumb"><a href="#/">Codex</a><span>/</span><a href="#/Racas">Atlas das Raças</a><span>/</span><span class="breadcrumb__current">${escapeHtml(e.title)}</span></nav>
+            <div class="race-entry__title-row">
+              <span class="race-entry__emblem" aria-hidden="true">${raceEmblem}</span>
+              <div class="race-entry__identity">
+                <span class="section__eyebrow">${escapeHtml(data.Tipo || 'POVO')}</span>
+                <h1>${escapeHtml(e.title)}</h1>
+                ${e.summary ? `<p>${escapeHtml(e.summary)}</p>` : ''}
+                <div class="race-entry__chips">
+                  ${data.Raridade ? `<span class="rarity-chip ${rarityCssClass(data.Raridade)}">${escapeHtml(data.Raridade)}</span>` : ''}
+                  ${data.Porte ? `<span>${escapeHtml(data.Porte)}</span>` : ''}
+                  ${tags.map((tag) => tagChipHTML(tag, 'story-tag story-tag--hero')).join('')}
+                </div>
+              </div>
+              <div class="race-entry__actions">${actionsMarkup}</div>
+            </div>
+          </header>
+
+          <div class="race-entry__layout">
+            <aside class="race-entry__portrait-column">
+              <div class="race-entry__portrait ${e.image ? '' : 'is-fallback'}">
+                ${e.image ? `<img src="${e.image}" alt="${escapeHtml(e.title)}" onerror="this.parentElement.classList.add('is-fallback')">` : ''}
+                <span class="race-entry__portrait-fallback">${iconOf('Racas')}</span>
+                <small>ESPÉCIME · ${escapeHtml(String(e.id || '').slice(0, 8).toUpperCase())}</small>
+              </div>
+              ${identity.length ? `<section class="race-entry__specimen"><span class="section__eyebrow">IDENTIFICAÇÃO</span><dl>${identity.map(([label, value]) => `<div><dt>${escapeHtml(label)}</dt><dd>${escapeHtml(String(value))}</dd></div>`).join('')}</dl></section>` : ''}
+            </aside>
+
+            <div class="race-entry__folio">
+              <section class="race-folio-section">
+                <header class="race-folio-head"><b><i>I</i></b><h2>Fisiologia</h2><span></span></header>
+                ${physiology.length ? `<div class="race-biology-grid">${physiology.map(([label, value]) => `<article><i>${statIcon[label] || '◇'}</i><small>${escapeHtml(label)}</small><strong>${escapeHtml(String(value))}</strong></article>`).join('')}</div>` : '<p class="race-entry__empty">A fisiologia ainda não foi descrita.</p>'}
+              </section>
+
+              <section class="race-folio-section">
+                <header class="race-folio-head"><b><i>II</i></b><h2>Anatomia e heranças</h2><span></span></header>
+                <div class="race-anatomy-view">
+                  <div class="race-anatomy-figure" aria-hidden="true">
+                    <svg viewBox="0 0 180 360" fill="none" stroke="currentColor"><circle cx="90" cy="45" r="28"/><path d="M72 70c-6 24-12 50-10 83l-18 84M108 70c6 24 12 50 10 83l18 84M62 105l-28 90M118 105l28 90M62 151c6 36 4 74 0 112l-8 83M118 151c-6 36-4 74 0 112l8 83M62 151c19 14 37 14 56 0M90 75v110"/><circle cx="90" cy="116" r="10"/></svg>
+                    <span>${totalHp ? `${totalHp} HP` : `${anatomy.length} partes`}</span>
+                  </div>
+                  <div class="race-anatomy-parts">
+                    ${anatomy.length ? anatomy.map((part) => `<span><small>${escapeHtml(part.name)}</small><strong>${escapeHtml(part.hp || '—')}<em>HP</em></strong></span>`).join('') : '<p class="race-entry__empty">Nenhuma parte anatômica definida.</p>'}
+                  </div>
+                </div>
+                ${abilities.length ? `<div class="race-ability-view">${abilities.map((ability, index) => `<article><span class="race-ability-view__glyph">${abilityGlyph(ability.kind)}</span><div><strong>${escapeHtml(ability.name || `Aptidão ${index + 1}`)}<small>${escapeHtml(ability.kind)}</small></strong><p>${escapeHtml(ability.effect || ability.summary || ability.trigger || 'Sem descrição.')}</p>${ability.limit ? `<em>${escapeHtml(ability.limit)}</em>` : ''}</div>${ability.source === 'magic' && ability.refId && entryById(ability.refId) ? `<a href="#/Magias/${encodeURIComponent(ability.refId)}">Grimório</a>` : ''}</article>`).join('')}</div>` : ''}
+              </section>
+
+              ${relationGroups.length ? `<section class="race-folio-section"><header class="race-folio-head"><b><i>III</i></b><h2>Presença no mundo</h2><span></span></header><div class="race-relation-view">${relationGroups.map((group) => `<section><small>${escapeHtml(group.label)}</small>${group.entries.map((entry) => `<a href="#/${entry.tab}/${encodeURIComponent(entry.id)}"><strong>${escapeHtml(entry.title)}</strong><span>${escapeHtml(entry.summary || 'Abrir registro no Codex')}</span></a>`).join('')}</section>`).join('')}</div></section>` : ''}
+
+              ${description ? `<section class="race-folio-section race-folio-section--lore"><header class="race-folio-head"><b><i>${relationGroups.length ? 'IV' : 'III'}</i></b><h2>Relato</h2><span></span></header>${description}</section>` : ''}
+            </div>
+
+            <aside class="race-impact">
+              <header><span>APLICAÇÃO AUTOMÁTICA</span><h2>Impacto na ficha</h2></header>
+              <div class="race-impact__attrs">${CHAR_ATTRIBUTES.map((attr) => { const value = Number(attributes[attr]) || 0; return `<div class="${value > 0 ? 'is-boost' : (value < 0 ? 'is-penalty' : '')}"><small>${escapeHtml(attr)}</small><strong>${escapeHtml(modifierLabel(value))}</strong></div>`; }).join('')}</div>
+              <div class="race-impact__vitals">
+                <div><span>Vitalidade anatômica <b>${totalHp || '—'}${totalHp ? ' HP' : ''}</b></span><i><em style="width:${totalHp ? Math.min(100, Math.max(18, totalHp / 7)) : 0}%"></em></i></div>
+                <div><span>Reserva de Mana <b>${escapeHtml(data.Mana || '—')}</b></span><i><em style="width:${manaMax ? Math.min(100, Math.max(18, manaMax * 2.5)) : 0}%"></em></i></div>
+              </div>
+              <div class="race-impact__summary"><div><small>Movimento</small><strong>${escapeHtml(data.Deslocamento || '—')}</strong></div><div><small>Sentidos</small><strong>${escapeHtml(data.Sentidos || '—')}</strong></div><div><small>Aptidões</small><strong>${abilities.filter((ability) => ability.kind !== 'Limitação').length}</strong></div><div><small>Limitações</small><strong>${abilities.filter((ability) => ability.kind === 'Limitação').length}</strong></div></div>
+              <a class="race-impact__persona" href="#/Persona/criar">Usar em personagem</a>
+            </aside>
+          </div>
+          ${relatedMarkup ? `<div class="entry__main entry__main--full">${relatedMarkup}</div>` : ''}
         </article>`;
     }
 
@@ -4586,6 +4917,10 @@
       return renderBestiaryEntry(`${editButton}${deleteButton}${backLink}`);
     }
 
+    if (isRacas) {
+      return renderRaceEntry(`${editButton}${deleteButton}${backLink}`);
+    }
+
     if (portrait) {
       return `
         <article class="entry entry--portrait" style="--hue:${theme.hue}">
@@ -4638,18 +4973,25 @@
      FICHAS DE PERSONAGEM — views (aba Persona)
      ════════════════════════════════════════════════ */
 
-  /* Lê o dossiê de uma raça (entry de Racas) e devolve { mod, hp, mana }. */
+  /* Lê o dossiê de uma raça, aceitando tanto o Atlas novo quanto o formato antigo. */
   function raceDataFor(raceId) {
     const race = raceId ? entryById(raceId) : null;
     const fields = (race && race.fields) || {};
     const hp = {};
-    RACE_HP_PARTS.forEach((p) => { if (fields[p] != null && fields[p] !== '') hp[p] = String(fields[p]); });
+    raceAnatomy(fields).forEach((part) => { if (part.name && part.hp !== '') hp[part.name] = String(part.hp); });
     return {
       race,
-      mod: parseRaceModifier(fields['Modificador'] || ''),
+      mod: normalizeRaceAttributes(fields),
       hp,
       mana: fields['Mana'] || ''
     };
+  }
+
+  function characterHpFormHTML(values) {
+    const data = values || {};
+    const parts = hpPartKeys(data);
+    const visible = parts.length ? parts : RACE_HP_PARTS;
+    return visible.map((part) => `<label class="hp-form__row"><span class="hp-form__name">${escapeHtml(part)}</span><input type="text" inputmode="numeric" class="create-form__input hp-form__input" data-hp-part="${escapeHtml(part)}" value="${escapeHtml(data[part] != null ? data[part] : '')}" maxlength="9"></label>`).join('');
   }
 
 
@@ -4804,7 +5146,7 @@
   }
   function refreshCharacterVitals(c) {
     const v = ensureVitals(c);
-    const parts = RACE_HP_PARTS.filter((p) => v.hp && v.hp[p]);
+    const parts = hpPartKeys(v.hp);
     const hpCur = parts.reduce((sum, part) => sum + (Number(v.hp[part].cur) || 0), 0);
     const hpMax = parts.reduce((sum, part) => sum + (Number(v.hp[part].max) || 0), 0);
     document.querySelectorAll('[data-vital-hp-cur]').forEach((el) => { el.textContent = hpCur; });
@@ -4901,7 +5243,7 @@
   function charVitalsInner(c, canEdit) {
     const v = ensureVitals(c);
     syncArcaneCollapse(c);
-    const parts = RACE_HP_PARTS.filter((p) => v.hp && v.hp[p]);
+    const parts = hpPartKeys(v.hp);
     if (!parts.length) return '<p class="char-empty">Nenhum campo de HP definido.</p>';
     const positions = {
       'Cabeça': 'head',
@@ -4912,6 +5254,7 @@
       'Perna Direita': 'leg-r',
       'Perna Esquerda': 'leg-l'
     };
+    const hasCustomAnatomy = parts.some((part) => !positions[part]);
     const hpRows = parts.map((part) => {
       const slot = v.hp[part];
       return `
@@ -4930,7 +5273,7 @@
         </div>`;
     }).join('');
     return `
-      <div class="arc-anatomy-map">
+      <div class="arc-anatomy-map ${hasCustomAnatomy ? 'arc-anatomy-map--custom' : ''}">
         <svg class="arc-anatomy-figure" viewBox="0 0 160 360" role="img" aria-label="Silhueta anatômica do personagem">
           <circle cx="80" cy="35" r="24" fill="none" stroke="currentColor" stroke-width="2"/>
           <path d="M58 68 Q80 58 102 68 L111 157 Q101 188 96 211 L107 332 M62 332 L66 211 Q58 184 49 157 Z" fill="currentColor" fill-opacity=".05" stroke="currentColor" stroke-width="2"/>
@@ -5170,7 +5513,7 @@
 
     // ── Vitais resumidos para o cabeçalho ──
     const v = ensureVitals(c);
-    const hpParts = RACE_HP_PARTS.filter((p) => v.hp && v.hp[p]);
+    const hpParts = hpPartKeys(v.hp);
     const hpCur = hpParts.reduce((s, p) => s + (Number(v.hp[p].cur) || 0), 0);
     const hpMax = hpParts.reduce((s, p) => s + (Number(v.hp[p].max) || 0), 0);
     const initDice = A['Destreza'] ? A['Destreza'].dice : 1;
@@ -5410,7 +5753,7 @@
     const sc = isMage ? (schoolById(awk.school) || MAGIC_SCHOOLS[0]) : null;
     const className = isMage ? `Mago${sc && sc.name ? ` · ${sc.name}` : ''}` : 'Não-mago';
     const v = ensureVitals(c);
-    const hpParts = RACE_HP_PARTS.filter((part) => v.hp && v.hp[part]);
+    const hpParts = hpPartKeys(v.hp);
     const hpCur = hpParts.reduce((sum, part) => sum + (Number(v.hp[part].cur) || 0), 0);
     const hpMax = hpParts.reduce((sum, part) => sum + (Number(v.hp[part].max) || 0), 0);
     const level = Math.max(1, Number(idn.level || c.level) || 1);
@@ -5712,7 +6055,7 @@
                 <div>
                   <label class="create-form__label">Integridade anatômica</label>
                   <p class="char-hint">Valores máximos definidos pela raça, com ajuste manual quando necessário.</p>
-                  <div class="hp-form" id="charHpForm">${RACE_HP_PARTS.map((p) => `<label class="hp-form__row"><span class="hp-form__name">${escapeHtml(p)}</span><input type="text" inputmode="numeric" class="create-form__input hp-form__input" data-hp-part="${escapeHtml(p)}" value="${escapeHtml(hpValues[p] != null ? hpValues[p] : '')}" maxlength="9"></label>`).join('')}</div>
+                  <div class="hp-form" id="charHpForm">${characterHpFormHTML(hpValues)}</div>
                 </div>
                 <label class="dossier-field dossier-field--mana char-create__mana"><span>Mana</span><input type="text" id="charMana" class="create-form__input" value="${escapeHtml(manaValue || '')}" placeholder="15/15" maxlength="20"><small>Disponível apenas para quem aceita o Despertar.</small></label>
               </div>
@@ -5924,7 +6267,10 @@
     const beastFilterButtons = document.querySelectorAll('[data-beast-filter]');
     const beastFilterReset = document.querySelector('[data-beast-filter-reset]');
     const beastFilterToggle = document.querySelector('[data-beast-filter-toggle]');
-    if (!input && !tagButtons.length && !spellFilterButtons.length && !spellResetButtons.length && !spellFilterToggle && !beastFilterButtons.length && !beastFilterReset && !beastFilterToggle) return;
+    const raceFilterButtons = document.querySelectorAll('[data-race-filter]');
+    const raceFilterReset = document.querySelector('[data-race-filter-reset]');
+    const raceFilterToggle = document.querySelector('[data-race-filter-toggle]');
+    if (!input && !tagButtons.length && !spellFilterButtons.length && !spellResetButtons.length && !spellFilterToggle && !beastFilterButtons.length && !beastFilterReset && !beastFilterToggle && !raceFilterButtons.length && !raceFilterReset && !raceFilterToggle) return;
 
     const refreshCategory = ({ keepFocus = false, cursor = null } = {}) => {
       const { tab } = parseHash();
@@ -6007,6 +6353,47 @@
         const { tab } = parseHash();
         const state = categoryState[tab] || {};
         categoryState[tab] = { ...state, beastFiltersOpen: !state.beastFiltersOpen };
+        refreshCategory();
+      });
+    }
+
+    raceFilterButtons.forEach((btn) => {
+      if (btn.dataset.bound) return;
+      btn.dataset.bound = '1';
+      btn.addEventListener('click', () => {
+        const { tab } = parseHash();
+        const state = categoryState[tab] || {};
+        const current = normalizeRaceFilters(state.race);
+        const key = btn.dataset.raceFilter;
+        if (!Object.prototype.hasOwnProperty.call(current, key)) return;
+        categoryState[tab] = {
+          ...state,
+          raceFiltersOpen: true,
+          race: { ...current, [key]: btn.dataset.raceFilterValue || '' }
+        };
+        refreshCategory();
+      });
+    });
+
+    if (raceFilterReset && !raceFilterReset.dataset.bound) {
+      raceFilterReset.dataset.bound = '1';
+      raceFilterReset.addEventListener('click', () => {
+        const { tab } = parseHash();
+        categoryState[tab] = {
+          ...(categoryState[tab] || {}),
+          raceFiltersOpen: true,
+          race: { ...EMPTY_RACE_FILTERS }
+        };
+        refreshCategory();
+      });
+    }
+
+    if (raceFilterToggle && !raceFilterToggle.dataset.bound) {
+      raceFilterToggle.dataset.bound = '1';
+      raceFilterToggle.addEventListener('click', () => {
+        const { tab } = parseHash();
+        const state = categoryState[tab] || {};
+        categoryState[tab] = { ...state, raceFiltersOpen: !state.raceFiltersOpen };
         refreshCategory();
       });
     }
@@ -6577,11 +6964,70 @@
     };
   }
 
+  function raceRulesFormHTML(values) {
+    const attrs = normalizeRaceAttributes(values);
+    const options = [-2, -1, 0, 1, 2];
+    return `
+      <div class="race-rule-note"><strong>Dados raciais</strong><span>Cada ponto soma ou remove 1d6 dos testes do atributo na ficha de Personagem.</span></div>
+      <div class="race-attr-form">
+        ${CHAR_ATTRIBUTES.map((attr) => `<label class="race-attr-field"><span>${escapeHtml(attr)}</span><select class="create-form__input char-select" data-race-attr="${escapeHtml(attr)}">${options.map((value) => `<option value="${value}" ${attrs[attr] === value ? 'selected' : ''}>${value === 0 ? 'Sem alteração' : `${value > 0 ? '+' : ''}${value}d6`}</option>`).join('')}</select></label>`).join('')}
+      </div>
+      <label class="dossier-field dossier-field--mana race-mana-field"><span>Reserva de Mana</span><input type="text" class="create-form__input" data-dossier-field="Mana" value="${escapeHtml(values.Mana != null ? values.Mana : '15/15')}" placeholder="15/15" maxlength="20"><small>Define a reserva inicial para personagens que aceitam o Despertar.</small></label>`;
+  }
+
+  function raceAnatomyFormHTML(values) {
+    const parts = raceAnatomy(values, true);
+    return `
+      <div class="beast-part-builder race-anatomy-builder" data-beast-parts>
+        <div class="beast-part-builder__head"><div><strong>Partes do corpo</strong><span>A anatomia pode ser humanoide, alada, quadrúpede ou inteiramente própria.</span></div><small>${parts.length} ${parts.length === 1 ? 'parte' : 'partes'}</small></div>
+        <div class="beast-part-list" data-beast-part-list>${parts.map((part, index) => beastHpPartRowHTML(part, index)).join('')}</div>
+        <div class="beast-part-add">
+          <select class="create-form__input char-select" data-beast-part-preset aria-label="Tipo de parte"><option value="Cabeça">Cabeça</option><option value="Peito">Peito</option><option value="Abdômen">Abdômen</option>${BEAST_EXTRA_PARTS.map((part) => `<option value="${escapeHtml(part)}">${escapeHtml(part)}</option>`).join('')}</select>
+          <input type="text" class="create-form__input" data-beast-part-custom placeholder="ou nome personalizado..." maxlength="80">
+          <button type="button" class="btn btn-ghost" data-beast-part-add><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg><span>Adicionar parte</span></button>
+        </div>
+      </div>`;
+  }
+
+  function raceAbilitiesFormHTML(values) {
+    const abilities = normalizeRaceAbilities(values);
+    return `
+      <div class="beast-ability-builder race-ability-builder" data-beast-abilities>
+        <div class="race-rule-note"><strong>Aptidões estruturadas</strong><span>Registre talento, gatilho, efeito e limite. Magias do Grimório também podem ser vinculadas.</span></div>
+        <div class="beast-ability-list-form" data-beast-ability-list>${abilities.map((ability, index) => beastAbilityRowHTML(ability, index)).join('')}</div>
+        <button type="button" class="btn btn-ghost beast-ability-add" data-beast-ability-add><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg><span>Adicionar aptidão</span></button>
+      </div>`;
+  }
+
+  function raceRelationsFormHTML(values) {
+    const relations = normalizeRaceRelations(values);
+    return `
+      <div class="race-relation-builder">
+        <div class="race-rule-note"><strong>Raça não é cultura</strong><span>Vincule povos, territórios e crenças sem transformá-los em características biológicas obrigatórias.</span></div>
+        ${RACE_RELATION_TABS.map(({ tab, label }) => {
+          const entries = entriesIn(tab);
+          const selected = new Set(relations[tab] || []);
+          return `<section class="race-relation-group" data-race-relation="${tab}" data-selected='${escapeHtml(JSON.stringify([...selected]))}'>
+            <header><span>${escapeHtml(label)}</span><small>${selected.size} vinculado${selected.size === 1 ? '' : 's'}</small></header>
+            ${entries.length ? `<div>${entries.map((entry) => `<button type="button" class="race-relation-chip ${selected.has(entry.id) ? 'is-selected' : ''}" data-race-relation-id="${escapeHtml(entry.id)}" aria-pressed="${selected.has(entry.id) ? 'true' : 'false'}">${escapeHtml(entry.title)}</button>`).join('')}</div>` : `<p>Nenhum registro disponível em ${escapeHtml(label)}.</p>`}
+          </section>`;
+        }).join('')}
+      </div>`;
+  }
+
   /* Dossier sectioned (Racas / Bestiario): seções com tipos de campo variados. */
   function raceDossierFormHTML(tabId, values) {
     const v = values || {};
     const cfg = dossierConfigFor(tabId);
-    const sectionContent = (section) => tabId === 'Bestiario' && section.view === 'attributes'
+    const sectionContent = (section) => tabId === 'Racas' && section.view === 'raceRules'
+      ? raceRulesFormHTML(v)
+      : tabId === 'Racas' && section.view === 'raceAnatomy'
+        ? raceAnatomyFormHTML(v)
+        : tabId === 'Racas' && section.view === 'raceAbilities'
+          ? raceAbilitiesFormHTML(v)
+          : tabId === 'Racas' && section.view === 'raceRelations'
+            ? raceRelationsFormHTML(v)
+            : tabId === 'Bestiario' && section.view === 'attributes'
       ? beastAttributesFormHTML(v)
       : tabId === 'Bestiario' && section.view === 'vitals'
         ? beastVitalsFormHTML(v)
@@ -6602,13 +7048,21 @@
       drops: 'Itens e espólios que podem ser obtidos.',
       habilidades: 'Poderes próprios ou magias vinculadas ao Codex.'
     };
+    const raceSectionHints = {
+      identidade: 'Nome, natureza e procedência reconhecível.',
+      fisiologia: 'Corpo, sentidos, longevidade e limitações físicas.',
+      regras: 'Modificadores aplicados diretamente à ficha de Personagem.',
+      anatomia: 'Partes do corpo e vitalidade, sem anatomia obrigatoriamente humanoide.',
+      aptidoes: 'Talentos, passivas, reações e limitações inatas.',
+      mundo: 'Países, biomas, culturas, facções e deuses relacionados.'
+    };
     return `
       <div class="race-dossier" id="${cfg.rootId}">
-        ${cfg.sections.map((section, index) => tabId === 'Bestiario' ? `
-          <details class="dossier-section beast-form-section" ${index === 0 ? 'open' : ''}>
+        ${cfg.sections.map((section, index) => (tabId === 'Bestiario' || tabId === 'Racas') ? `
+          <details class="dossier-section beast-form-section ${tabId === 'Racas' ? 'race-form-section' : ''}" ${index === 0 ? 'open' : ''}>
             <summary class="beast-form-section__summary">
               <span class="beast-form-section__number">${String(index + 1).padStart(2, '0')}</span>
-              <span><strong>${escapeHtml(section.title)}</strong><small>${escapeHtml(beastSectionHints[section.id] || '')}</small></span>
+              <span><strong>${escapeHtml(section.title)}</strong><small>${escapeHtml((tabId === 'Racas' ? raceSectionHints : beastSectionHints)[section.id] || '')}</small></span>
               <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
             </summary>
             <div class="beast-form-section__body">${sectionContent(section)}</div>
@@ -6652,6 +7106,10 @@
                     placeholder="${escapeHtml(field.placeholder || '')}" maxlength="900" rows="4">${escapeHtml(v)}</textarea>
         </label>
       `;
+    }
+    if (field.type === 'select') {
+      const options = Array.isArray(field.options) ? field.options : [];
+      return `<label class="dossier-field"><span>${escapeHtml(field.key)}</span><select class="create-form__input char-select" data-dossier-field="${escapeHtml(field.key)}"><option value="">— ${escapeHtml(field.placeholder || 'selecionar')} —</option>${options.map((option) => `<option value="${escapeHtml(option)}" ${option === v ? 'selected' : ''}>${escapeHtml(option)}</option>`).join('')}</select></label>`;
     }
     if (field.type === 'list') {
       const items = Array.isArray(v) ? v : [];
@@ -7135,6 +7593,20 @@
         refreshListItems(builder, items);
         return;
       }
+      const relationChip = e.target.closest('[data-race-relation-id]');
+      if (relationChip) {
+        e.preventDefault();
+        const group = relationChip.closest('[data-race-relation]');
+        const selected = !relationChip.classList.contains('is-selected');
+        relationChip.classList.toggle('is-selected', selected);
+        relationChip.setAttribute('aria-pressed', selected ? 'true' : 'false');
+        if (group) {
+          const count = group.querySelectorAll('[data-race-relation-id].is-selected').length;
+          const counter = group.querySelector('header small');
+          if (counter) counter.textContent = `${count} vinculado${count === 1 ? '' : 's'}`;
+        }
+        return;
+      }
       if (e.target.closest('[data-beast-part-add]')) {
         e.preventDefault();
         addBeastPart();
@@ -7246,6 +7718,30 @@
 
           const abilities = readBeastAbilityRows();
           if (abilities.length) out['Habilidades'] = abilities;
+        } else if (root.id === 'raceDossier') {
+          const attrs = {};
+          root.querySelectorAll('[data-race-attr]').forEach((input) => {
+            attrs[input.dataset.raceAttr] = Math.max(-2, Math.min(2, parseInt(input.value, 10) || 0));
+          });
+          out.Atributos = attrs;
+          const modifier = raceModifierText(attrs);
+          if (modifier) out.Modificador = modifier;
+
+          const anatomy = readBeastPartRows();
+          if (anatomy.length) out.Anatomia = anatomy;
+
+          const abilities = readBeastAbilityRows();
+          if (abilities.length) out.Aptidoes = abilities;
+
+          const relations = {};
+          root.querySelectorAll('[data-race-relation]').forEach((group) => {
+            const ids = [...group.querySelectorAll('[data-race-relation-id].is-selected')]
+              .map((button) => button.dataset.raceRelationId || '')
+              .filter(Boolean);
+            if (ids.length) relations[group.dataset.raceRelation] = ids;
+          });
+          if (Object.keys(relations).length) out.Relacoes = relations;
+          out.SchemaRaca = 2;
         }
         return out;
       }
@@ -8269,9 +8765,7 @@
     raceSelect.addEventListener('change', () => {
       const { mod, hp, mana } = raceDataFor(raceSelect.value);
       points.refreshRaceMod(mod);
-      hpForm.querySelectorAll('[data-hp-part]').forEach((inp) => {
-        inp.value = hp[inp.dataset.hpPart] != null ? hp[inp.dataset.hpPart] : '';
-      });
+      hpForm.innerHTML = characterHpFormHTML(hp);
       manaInput.value = awkIsAcceptedMage(awakening) ? (mana || '') : '';
     });
 
