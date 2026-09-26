@@ -11262,6 +11262,7 @@ a.spell-card__name:hover { color: var(--primary-3); }
 .race-creator .dossier-field > span { color: #caa8df; font-size: .62rem; }
 .race-creator .create-form__input { border-radius: 2px; background: #08060a; }
 .race-creator__controls { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 17px 30px; border-top: 1px solid rgba(168, 121, 212, .07); background: #09070c; }
+.race-creator__controls > [hidden] { display: none !important; }
 .race-creator__controls > span { display: flex; align-items: baseline; gap: 4px; color: #d8b5f1; font-family: 'JetBrains Mono', ui-monospace, monospace; }
 .race-creator__controls > span b { font-size: .78rem; }
 .race-creator__controls > span small { color: var(--dim); font-size: .55rem; }
