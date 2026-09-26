@@ -3196,10 +3196,34 @@
         </div>
       </section>
 
-      <form class="create-form ${portrait ? 'create-form--portrait' : ''}" id="createForm"
+      <form class="create-form ${portrait ? 'create-form--portrait' : ''} ${isRacas ? 'race-creator' : ''}" id="createForm"
             data-tab="${escapeHtml(tabId)}"
             ${editing ? `data-edit-id="${escapeHtml(entryId)}"` : ''}
             style="--hue:${theme.hue}" novalidate>
+        ${isRacas ? `
+        <aside class="race-creator__nav" aria-label="Etapas da criação de raça">
+          <header>
+            <span>${editing ? 'EDIÇÃO DO ATLAS' : 'NOVO REGISTRO'}</span>
+            <strong>${editing ? 'Revisar raça' : 'Criar raça'}</strong>
+            <p>Construa o povo capítulo por capítulo.</p>
+          </header>
+          <div class="race-creator__progress"><i data-race-wizard-progress></i></div>
+          <nav>
+            ${[
+              ['Identidade', 'Imagem, nome e natureza'],
+              ['Fisiologia', 'Corpo, sentidos e limites'],
+              ['Corpo e regras', 'Atributos, Mana e anatomia'],
+              ['Heranças', 'Aptidões e limitações'],
+              ['Presença no mundo', 'Territórios, culturas e crenças'],
+              ['Relato', 'Tags, história e revisão']
+            ].map(([label, hint], index) => `<button type="button" class="race-creator__step ${index === 0 ? 'is-active' : ''}" data-race-wizard-go="${index}" aria-current="${index === 0 ? 'step' : 'false'}"><b>${String(index + 1).padStart(2, '0')}</b><span><strong>${label}</strong><small>${hint}</small></span></button>`).join('')}
+          </nav>
+          <a href="${cancelHref}" class="race-creator__cancel">Cancelar e voltar</a>
+        </aside>
+        <div class="race-creator__mobile-progress" aria-live="polite"><span data-race-wizard-label>01 · Identidade</span><small data-race-wizard-count>1 de 6</small></div>
+        <section class="race-creator__page race-creator__page--identity" data-race-wizard-page="0">
+          <header class="race-creator__page-head"><b><i>I</i></b><span><small>PRIMEIRO CAPÍTULO</small><h2>Identidade do povo</h2><p>A imagem, o nome e a frase que tornam esta raça reconhecível no Atlas.</p></span></header>
+        ` : ''}
         ${isItens ? `
         <div class="create-form__field">
           <label class="create-form__label">${hintedLabel('Tipo', 'Escolha o modelo do item para carregar os campos certos sem preencher dados desnecessários.')}</label>
@@ -3245,6 +3269,8 @@
           <input type="text" id="summaryInput" class="create-form__input" placeholder="${escapeHtml(summaryPlaceholder)}" maxlength="200" value="${editing ? escapeHtml(initial.summary) : ''}">
         </div>
 
+        ${isRacas ? '</section>' : ''}
+
         ${isItens ? `
         <div class="create-form__field">
           <label class="create-form__label">${hintedLabel('Dossiê', 'Preencha só o que afeta regra, economia ou narrativa; campos vazios não aparecem na ficha do item.')}</label>
@@ -3252,11 +3278,23 @@
         </div>
         ` : ''}
 
-        ${isSectioned ? `
+        ${isSectioned && !isRacas ? `
         <div class="create-form__field">
           <label class="create-form__label">${isBestiario ? 'Ficha' : 'Dossiê'}</label>
           ${raceDossierFormHTML(tabId, editing ? initial.fields : {})}
         </div>
+        ` : ''}
+
+        ${isRacas ? raceDossierFormHTML(tabId, editing ? initial.fields : {}) : ''}
+
+        ${isRacas ? `
+        <section class="race-creator__page race-creator__page--story" data-race-wizard-page="5" hidden>
+          <header class="race-creator__page-head"><b><i>VI</i></b><span><small>ÚLTIMO CAPÍTULO</small><h2>Relato e revisão</h2><p>Organize as marcas de busca, escreva a história e confira o registro antes de salvar.</p></span></header>
+          <div class="race-creator__review" aria-live="polite">
+            <span class="section__eyebrow">PRÉVIA DO REGISTRO</span>
+            <div><strong data-race-review-name>${escapeHtml(editing ? initial.title : 'Raça sem nome')}</strong><small data-race-review-summary>${escapeHtml(editing && initial.summary ? initial.summary : 'Adicione uma frase de identidade.')}</small></div>
+            <dl><div><dt>Partes anatômicas</dt><dd data-race-review-parts>—</dd></div><div><dt>Aptidões</dt><dd data-race-review-abilities>—</dd></div><div><dt>Vínculos</dt><dd data-race-review-relations>—</dd></div></dl>
+          </div>
         ` : ''}
 
         <div class="create-form__field">
@@ -3283,7 +3321,19 @@
           ${editorToolbarHTML(editing ? initial.bodyHtml : '')}
         </div>
 
-        <div class="create-form__actions">
+        ${isRacas ? '</section>' : ''}
+
+        ${isRacas ? `
+        <div class="race-creator__controls">
+          <button type="button" class="btn btn-ghost" data-race-wizard-prev hidden>
+            <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 12H5m7-7-7 7 7 7"/></svg><span>Anterior</span>
+          </button>
+          <span><b data-race-wizard-current>01</b><small>/ 06</small></span>
+          <button type="button" class="btn btn-primary" data-race-wizard-next><span>Próximo capítulo</span><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14m-7-7 7 7-7 7"/></svg></button>
+        </div>
+        ` : ''}
+
+        <div class="create-form__actions ${isRacas ? 'race-creator__final-actions' : ''}" ${isRacas ? 'data-race-wizard-page="5" hidden' : ''}>
           <a href="${cancelHref}" class="btn btn-ghost">Cancelar</a>
           <button type="submit" class="btn btn-primary" id="createSave">
             <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>
@@ -4743,12 +4793,14 @@
 
           <div class="race-entry__layout">
             <aside class="race-entry__portrait-column">
-              <div class="race-entry__portrait ${e.image ? '' : 'is-fallback'}">
-                ${e.image ? `<img src="${e.image}" alt="${escapeHtml(e.title)}" onerror="this.parentElement.classList.add('is-fallback')">` : ''}
-                <span class="race-entry__portrait-fallback">${iconOf('Racas')}</span>
-                <small>ESPÉCIME · ${escapeHtml(String(e.id || '').slice(0, 8).toUpperCase())}</small>
+              <div class="race-entry__portrait-sticky">
+                <div class="race-entry__portrait ${e.image ? '' : 'is-fallback'}">
+                  ${e.image ? `<img src="${e.image}" alt="${escapeHtml(e.title)}" onerror="this.parentElement.classList.add('is-fallback')">` : ''}
+                  <span class="race-entry__portrait-fallback">${iconOf('Racas')}</span>
+                  <small>ESPÉCIME · ${escapeHtml(String(e.id || '').slice(0, 8).toUpperCase())}</small>
+                </div>
+                ${identity.length ? `<section class="race-entry__specimen"><span class="section__eyebrow">IDENTIFICAÇÃO</span><dl>${identity.map(([label, value]) => `<div><dt>${escapeHtml(label)}</dt><dd>${escapeHtml(String(value))}</dd></div>`).join('')}</dl></section>` : ''}
               </div>
-              ${identity.length ? `<section class="race-entry__specimen"><span class="section__eyebrow">IDENTIFICAÇÃO</span><dl>${identity.map(([label, value]) => `<div><dt>${escapeHtml(label)}</dt><dd>${escapeHtml(String(value))}</dd></div>`).join('')}</dl></section>` : ''}
             </aside>
 
             <div class="race-entry__folio">
@@ -4761,7 +4813,7 @@
                 <header class="race-folio-head"><b><i>II</i></b><h2>Anatomia e heranças</h2><span></span></header>
                 <div class="race-anatomy-view">
                   <div class="race-anatomy-figure" aria-hidden="true">
-                    <svg viewBox="0 0 180 360" fill="none" stroke="currentColor"><circle cx="90" cy="45" r="28"/><path d="M72 70c-6 24-12 50-10 83l-18 84M108 70c6 24 12 50 10 83l18 84M62 105l-28 90M118 105l28 90M62 151c6 36 4 74 0 112l-8 83M118 151c-6 36-4 74 0 112l8 83M62 151c19 14 37 14 56 0M90 75v110"/><circle cx="90" cy="116" r="10"/></svg>
+                    <img src="assets/images/race-anatomy-abstract.png" alt="">
                     <span>${totalHp ? `${totalHp} HP` : `${anatomy.length} partes`}</span>
                   </div>
                   <div class="race-anatomy-parts">
@@ -4787,7 +4839,7 @@
               <a class="race-impact__persona" href="#/Persona/criar">Usar em personagem</a>
             </aside>
           </div>
-          ${relatedMarkup ? `<div class="entry__main entry__main--full">${relatedMarkup}</div>` : ''}
+          ${relatedMarkup ? `<div class="entry__main entry__main--full race-entry__related">${relatedMarkup}</div>` : ''}
         </article>`;
     }
 
@@ -7056,13 +7108,42 @@
       aptidoes: 'Talentos, passivas, reações e limitações inatas.',
       mundo: 'Países, biomas, culturas, facções e deuses relacionados.'
     };
+    if (tabId === 'Racas') {
+      const pageGroups = [
+        { page: 0, roman: 'I', eyebrow: 'IDENTIDADE', title: 'Classificação do Atlas', hint: 'Defina a natureza e a procedência reconhecível deste povo.', ids: ['identidade'], compact: true },
+        { page: 1, roman: 'II', eyebrow: 'SEGUNDO CAPÍTULO', title: 'Fisiologia e percepção', hint: 'Descreva o corpo, os sentidos, a longevidade e os limites físicos.', ids: ['fisiologia'] },
+        { page: 2, roman: 'III', eyebrow: 'TERCEIRO CAPÍTULO', title: 'Corpo e regras', hint: 'Modele o impacto na ficha e uma anatomia que pode fugir do humanoide.', ids: ['regras', 'anatomia'] },
+        { page: 3, roman: 'IV', eyebrow: 'QUARTO CAPÍTULO', title: 'Heranças e aptidões', hint: 'Registre talentos, passivas, reações e limitações inatas.', ids: ['aptidoes'] },
+        { page: 4, roman: 'V', eyebrow: 'QUINTO CAPÍTULO', title: 'Presença no mundo', hint: 'Conecte a raça a territórios, culturas, facções e crenças.', ids: ['mundo'] }
+      ];
+      return `
+        <div class="race-dossier" id="${cfg.rootId}">
+          ${pageGroups.map((group) => {
+            const sections = group.ids.map((id) => cfg.sections.find((section) => section.id === id)).filter(Boolean);
+            return `
+              <section class="race-creator__page race-creator__chapter ${group.compact ? 'race-creator__chapter--compact' : ''}" data-race-wizard-page="${group.page}" ${group.page === 0 ? '' : 'hidden'}>
+                ${group.compact ? `
+                  <div class="race-creator__subchapter"><span>${escapeHtml(group.eyebrow)}</span><strong>${escapeHtml(group.title)}</strong><small>${escapeHtml(group.hint)}</small></div>
+                ` : `
+                  <header class="race-creator__page-head"><b><i>${group.roman}</i></b><span><small>${escapeHtml(group.eyebrow)}</small><h2>${escapeHtml(group.title)}</h2><p>${escapeHtml(group.hint)}</p></span></header>
+                `}
+                ${sections.map((section) => `
+                  <div class="race-form-section" data-race-section="${escapeHtml(section.id)}">
+                    ${sections.length > 1 ? `<header class="race-form-section__head"><span>${escapeHtml(section.title)}</span><small>${escapeHtml(raceSectionHints[section.id] || '')}</small></header>` : ''}
+                    <div class="beast-form-section__body">${sectionContent(section)}</div>
+                  </div>
+                `).join('')}
+              </section>`;
+          }).join('')}
+        </div>`;
+    }
     return `
       <div class="race-dossier" id="${cfg.rootId}">
-        ${cfg.sections.map((section, index) => (tabId === 'Bestiario' || tabId === 'Racas') ? `
-          <details class="dossier-section beast-form-section ${tabId === 'Racas' ? 'race-form-section' : ''}" ${index === 0 ? 'open' : ''}>
+        ${cfg.sections.map((section, index) => tabId === 'Bestiario' ? `
+          <details class="dossier-section beast-form-section" ${index === 0 ? 'open' : ''}>
             <summary class="beast-form-section__summary">
               <span class="beast-form-section__number">${String(index + 1).padStart(2, '0')}</span>
-              <span><strong>${escapeHtml(section.title)}</strong><small>${escapeHtml((tabId === 'Racas' ? raceSectionHints : beastSectionHints)[section.id] || '')}</small></span>
+              <span><strong>${escapeHtml(section.title)}</strong><small>${escapeHtml(beastSectionHints[section.id] || '')}</small></span>
               <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
             </summary>
             <div class="beast-form-section__body">${sectionContent(section)}</div>
@@ -7073,8 +7154,7 @@
             ${sectionContent(section)}
           </div>
         `).join('')}
-      </div>
-    `;
+      </div>`;
   }
 
   function raceFieldFormHTML(field, value) {
@@ -8223,6 +8303,86 @@
     return editor;
   }
 
+  function bindRaceCreator(form) {
+    if (!form || form.dataset.tab !== 'Racas') return null;
+    const labels = ['Identidade', 'Fisiologia', 'Corpo e regras', 'Heranças', 'Presença no mundo', 'Relato'];
+    const pageCount = labels.length;
+    const pages = [...form.querySelectorAll('[data-race-wizard-page]')];
+    const navButtons = [...form.querySelectorAll('[data-race-wizard-go]')];
+    const previous = form.querySelector('[data-race-wizard-prev]');
+    const next = form.querySelector('[data-race-wizard-next]');
+    const progress = form.querySelector('[data-race-wizard-progress]');
+    const mobileLabel = form.querySelector('[data-race-wizard-label]');
+    const mobileCount = form.querySelector('[data-race-wizard-count]');
+    const currentLabel = form.querySelector('[data-race-wizard-current]');
+    const titleInput = form.querySelector('#titleInput');
+    const summaryInput = form.querySelector('#summaryInput');
+    let current = 0;
+
+    const review = () => {
+      const name = form.querySelector('[data-race-review-name]');
+      const summary = form.querySelector('[data-race-review-summary]');
+      const parts = form.querySelector('[data-race-review-parts]');
+      const abilities = form.querySelector('[data-race-review-abilities]');
+      const relations = form.querySelector('[data-race-review-relations]');
+      const partCount = form.querySelectorAll('[data-beast-part-row]').length;
+      const abilityCount = form.querySelectorAll('[data-beast-ability-row]').length;
+      const relationCount = form.querySelectorAll('[data-race-relation-id].is-selected').length;
+      if (name) name.textContent = titleInput?.value.trim() || 'Raça sem nome';
+      if (summary) summary.textContent = summaryInput?.value.trim() || 'Adicione uma frase de identidade.';
+      if (parts) parts.textContent = partCount ? String(partCount) : '—';
+      if (abilities) abilities.textContent = abilityCount ? String(abilityCount) : '—';
+      if (relations) relations.textContent = relationCount ? String(relationCount) : '—';
+    };
+
+    const validateIdentity = () => {
+      if (titleInput?.value.trim()) {
+        titleInput.classList.remove('is-invalid');
+        return true;
+      }
+      titleInput?.classList.add('is-invalid');
+      titleInput?.focus();
+      return false;
+    };
+
+    const go = (requested, options = {}) => {
+      const target = Math.max(0, Math.min(pageCount - 1, Number(requested) || 0));
+      if (target > current && current === 0 && !validateIdentity()) return false;
+      current = target;
+      pages.forEach((page) => { page.hidden = Number(page.dataset.raceWizardPage) !== current; });
+      navButtons.forEach((button, index) => {
+        const active = index === current;
+        button.classList.toggle('is-active', active);
+        button.classList.toggle('is-complete', index < current);
+        if (active) button.setAttribute('aria-current', 'step');
+        else button.removeAttribute('aria-current');
+      });
+      if (progress) progress.style.width = `${((current + 1) / pageCount) * 100}%`;
+      if (mobileLabel) mobileLabel.textContent = `${String(current + 1).padStart(2, '0')} · ${labels[current]}`;
+      if (mobileCount) mobileCount.textContent = `${current + 1} de ${pageCount}`;
+      if (currentLabel) currentLabel.textContent = String(current + 1).padStart(2, '0');
+      if (previous) previous.hidden = current === 0;
+      if (next) next.hidden = current === pageCount - 1;
+      review();
+      if (options.scroll !== false) {
+        const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        const top = Math.max(0, form.getBoundingClientRect().top + window.scrollY - 82);
+        window.scrollTo({ top, behavior: reduceMotion ? 'auto' : 'smooth' });
+      }
+      return true;
+    };
+
+    navButtons.forEach((button) => button.addEventListener('click', () => go(button.dataset.raceWizardGo)));
+    previous?.addEventListener('click', () => go(current - 1));
+    next?.addEventListener('click', () => go(current + 1));
+    form.addEventListener('input', review);
+    form.addEventListener('change', review);
+    form.addEventListener('click', () => window.requestAnimationFrame(review));
+    titleInput?.addEventListener('input', () => titleInput.classList.remove('is-invalid'));
+    go(0, { scroll: false });
+    return { isFinal: () => current === pageCount - 1, next: () => go(current + 1), go, review };
+  }
+
   /* ── CREATE / EDIT FORM ───────────────────────── */
   function attachCreateForm() {
     const form = document.getElementById('createForm');
@@ -8256,9 +8416,14 @@
     } else {
       dossier = { getFields: () => ({}), getSubtype: () => null };
     }
+    const raceCreator = bindRaceCreator(form);
 
     form.addEventListener('submit', async (e) => {
       e.preventDefault();
+      if (raceCreator && !raceCreator.isFinal()) {
+        raceCreator.next();
+        return;
+      }
       if (!sb) {
         alert('Supabase não configurado. Edite assets/js/config.js com sua URL e anon key.');
         return;
