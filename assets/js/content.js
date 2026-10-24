@@ -2,7 +2,7 @@ window.ARCANO_ARCHIVE = {
   index: {
     title: "O Arcano",
     subtitle: "Um RPG dark fantasy sobre sobreviventes, magia viva e mana morta.",
-    image: "assets/images/hero-arcano.png",
+    image: "assets/images/hero-arcano.webp",
     paragraphs: [
       "Há terras onde os deuses dormem. Há mundos onde a esperança nunca acordou.",
       "Em O Arcano, a luz é fraca, a terra geme sob séculos de guerra e a sobrevivência raramente é uma vitória limpa. Impérios ruíram, cidades apodreceram atrás de muralhas famintas, e a paz tornou-se apenas uma palavra antiga.",

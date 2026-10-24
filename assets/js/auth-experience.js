@@ -16,6 +16,8 @@
     let height = innerHeight;
     let frameId = 0;
     let lastFogFrame = 0;
+    let stopped = false;
+    const animated = !reduced && !mobile;
 
     function onPointer(event) {
       if (reduced || mobile) return;
@@ -139,7 +141,7 @@
         resize();
         addEventListener('resize', resize, { passive: true });
 
-        return (seconds) => {
+        const render = (seconds) => {
           gl.clearColor(0, 0, 0, 0);
           gl.clear(gl.COLOR_BUFFER_BIT);
           gl.uniform2f(resolution, canvas.width, canvas.height);
@@ -147,6 +149,8 @@
           gl.uniform1f(time, seconds);
           gl.drawArrays(gl.TRIANGLES, 0, 3);
         };
+        render.destroy = () => removeEventListener('resize', resize);
+        return render;
       } catch (error) {
         console.warn('[O Arcano] Névoa WebGL indisponível; mantendo o cenário estático.', error);
         return () => {};
@@ -178,7 +182,7 @@
       resize();
       addEventListener('resize', resize, { passive: true });
 
-      return (ms) => {
+      const render = (ms) => {
         context.clearRect(0, 0, innerWidth, innerHeight);
         for (const mote of motes) {
           if (!reduced) {
@@ -201,17 +205,33 @@
         }
         context.shadowBlur = 0;
       };
+      render.destroy = () => removeEventListener('resize', resize);
+      return render;
     }
 
     const renderFog = makeFogRenderer(fogCanvas);
     const renderDust = makeDustRenderer(dustCanvas);
 
+    function cleanup() {
+      if (stopped) return;
+      stopped = true;
+      cancelAnimationFrame(frameId);
+      removeEventListener('pointermove', onPointer);
+      removeEventListener('pointerleave', resetPointer);
+      removeEventListener('resize', onResize);
+      renderFog.destroy?.();
+      renderDust.destroy?.();
+      observer.disconnect();
+    }
+
+    const observer = new MutationObserver(() => {
+      if (!gate.isConnected) cleanup();
+    });
+    observer.observe(document.body, { childList: true, subtree: true });
+
     function frame(ms) {
       if (!gate.isConnected) {
-        cancelAnimationFrame(frameId);
-        removeEventListener('pointermove', onPointer);
-        removeEventListener('pointerleave', resetPointer);
-        removeEventListener('resize', onResize);
+        cleanup();
         return;
       }
 
@@ -226,12 +246,12 @@
         }
       }
 
-      if (ms - lastFogFrame > 32 || reduced) {
+      if (ms - lastFogFrame > 32 || !animated) {
         renderFog(ms / 1000);
+        renderDust(ms);
         lastFogFrame = ms;
       }
-      renderDust(ms);
-      if (!reduced) frameId = requestAnimationFrame(frame);
+      if (animated) frameId = requestAnimationFrame(frame);
     }
 
     addEventListener('pointermove', onPointer, { passive: true });

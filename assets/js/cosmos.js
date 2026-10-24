@@ -10,7 +10,10 @@
   const ctx = canvas.getContext('2d');
   const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-  let W, H, dpr, raf, mobile;
+  let W, H, dpr, raf = 0, mobile;
+  let lastFrameAt = 0;
+  let ambientSuspended = false;
+  const FRAME_INTERVAL = 1000 / 30;
   let mx = 0, my = 0;       // mouse position normalized -1..1
   let tx = 0, ty = 0;       // smoothed parallax target
 
@@ -19,10 +22,10 @@
   function isStatic() { return reduced || mobile; }
 
   function resize() {
-    dpr = Math.min(window.devicePixelRatio || 1, 2);
     W = window.innerWidth;
     H = window.innerHeight;
     mobile = W < 768;
+    dpr = Math.min(window.devicePixelRatio || 1, mobile ? 1 : 1.35);
     canvas.width = W * dpr;
     canvas.height = H * dpr;
     canvas.style.width = W + 'px';
@@ -115,7 +118,17 @@
   }
 
   /* ── DRAW LOOP ─────────────────────────────────── */
-  function draw() {
+  function shouldAnimate() {
+    return !isStatic() && !ambientSuspended && !document.hidden && !document.getElementById('authGate');
+  }
+
+  function draw(now = 0, force = false) {
+    raf = 0;
+    if (!force && shouldAnimate() && now - lastFrameAt < FRAME_INTERVAL) {
+      raf = requestAnimationFrame(draw);
+      return;
+    }
+    lastFrameAt = now;
     ctx.clearRect(0, 0, W, H);
 
     // Smooth mouse parallax
@@ -224,7 +237,11 @@
       ctx.fill();
     }
 
-    if (!isStatic()) raf = requestAnimationFrame(draw);
+    if (shouldAnimate()) raf = requestAnimationFrame(draw);
+  }
+
+  function resumeIfNeeded() {
+    if (shouldAnimate() && !raf) raf = requestAnimationFrame(draw);
   }
 
   /* ── EVENTS ────────────────────────────────────── */
@@ -240,17 +257,39 @@
     clearTimeout(resizeT);
     resizeT = setTimeout(() => {
       cancelAnimationFrame(raf);
+      raf = 0;
       resize();
       initStars();
       initOrbs();
       initNebula();
-      draw();
+      draw(performance.now(), true);
+      resumeIfNeeded();
     }, 120);
+  });
+
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden && raf) {
+      cancelAnimationFrame(raf);
+      raf = 0;
+      return;
+    }
+    resumeIfNeeded();
+  });
+
+  window.addEventListener('arcano:ambient-mode', (event) => {
+    ambientSuspended = !!event.detail?.suspended;
+    if (ambientSuspended && raf) {
+      cancelAnimationFrame(raf);
+      raf = 0;
+      return;
+    }
+    resumeIfNeeded();
   });
 
   resize();
   initStars();
   initOrbs();
   initNebula();
-  draw();
+  draw(performance.now(), true);
+  resumeIfNeeded();
 })();

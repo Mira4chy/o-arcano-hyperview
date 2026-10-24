@@ -4831,13 +4831,13 @@ body.is-locked > .intro { display: none !important; }
 
 .auth-gate__base {
   --auth-scale: 1.06;
-  background-image: url('../images/login-cosmos-base.png');
+  background-image: url('../images/login-cosmos-base.webp');
   filter: saturate(1.08) brightness(.88) contrast(1.03);
 }
 
 .auth-gate__nebula {
   --auth-scale: 1.1;
-  background-image: url('../images/login-cosmos-nebula.png');
+  background-image: url('../images/login-cosmos-nebula.webp');
   opacity: .52;
   mix-blend-mode: screen;
   animation: authNebulaBreath 8s ease-in-out infinite alternate;
@@ -4857,7 +4857,7 @@ body.is-locked > .intro { display: none !important; }
 
 .auth-gate__foreground {
   --auth-scale: 1.16;
-  background-image: url('../images/login-cosmos-foreground.png');
+  background-image: url('../images/login-cosmos-foreground.webp');
   opacity: .65;
   filter: saturate(1.08) contrast(1.05);
 }

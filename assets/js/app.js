@@ -1329,7 +1329,7 @@
       </div>
 
       <header class="auth-gate__masthead">
-        <span class="auth-gate__mark"><img src="assets/images/Logo.png" alt="Logo O Arcano"></span>
+        <span class="auth-gate__mark"><img src="assets/images/Logo.webp" width="452" height="402" alt="Logo O Arcano"></span>
         <span class="auth-gate__identity"><strong>O Arcano</strong><span>Codex de campanha</span></span>
       </header>
 
@@ -1457,8 +1457,11 @@
       }
 
       gate.classList.add('is-gone');
-      setTimeout(() => gate.remove(), 500);
-      await Promise.all([loadIndexCustom(), loadUserEntries(), loadMasterPalette(), loadCharacters()]);
+      setTimeout(() => {
+        gate.remove();
+        syncAmbientMode(parseHash().tab);
+      }, 500);
+      await Promise.all([loadIndexCustom(), loadUserEntries()]);
       renderRoleBadge();
       render(true);
     }
@@ -1889,7 +1892,13 @@
   }
 
   /* ── PERSISTENCE (Supabase) ───────────────────── */
+  const ENTRY_META_COLUMNS = 'id,tab,title,summary,image,image_path,tags,subtype,created_at';
+  const tabFieldsLoaded = new Set();
+  let searchCorpusPromise = null;
+
   function rowToEntry(row) {
+    const hasBody = Object.prototype.hasOwnProperty.call(row, 'body_html');
+    const hasFields = Object.prototype.hasOwnProperty.call(row, 'fields');
     return {
       id: row.id,
       tab: canonicalTabId(row.tab),
@@ -1902,7 +1911,9 @@
       subtype: row.subtype || '',
       fields: (row.fields && typeof row.fields === 'object') ? row.fields : {},
       createdAt: row.created_at ? new Date(row.created_at).getTime() : Date.now(),
-      isUserCreated: true
+      isUserCreated: true,
+      detailLoaded: hasBody && hasFields,
+      fieldsLoaded: hasFields
     };
   }
 
@@ -1910,7 +1921,7 @@
     if (!sb) return;
     const { data, error } = await sb
       .from('stories')
-      .select('*')
+      .select(ENTRY_META_COLUMNS)
       .order('created_at', { ascending: false });
     if (error) {
       console.error('Erro ao carregar histórias:', error);
@@ -1921,12 +1932,104 @@
     });
   }
 
+  async function loadEntryDetails(entry) {
+    if (!sb || !entry?.isUserCreated || entry.detailLoaded) return;
+    const { data, error } = await sb
+      .from('stories')
+      .select('id,body_html,fields')
+      .eq('id', entry.id)
+      .maybeSingle();
+    if (error) {
+      console.error('Erro ao carregar detalhes da história:', error);
+      return;
+    }
+    if (!data) return;
+    entry.bodyHtml = data.body_html || '';
+    entry.fields = (data.fields && typeof data.fields === 'object') ? data.fields : {};
+    entry.fieldsLoaded = true;
+    entry.detailLoaded = true;
+  }
+
+  async function loadTabFields(tabId) {
+    const canonical = canonicalTabId(tabId);
+    if (!sb || tabFieldsLoaded.has(canonical)) return;
+    const { data, error } = await sb
+      .from('stories')
+      .select('id,fields')
+      .eq('tab', canonical);
+    if (error) {
+      console.error(`Erro ao carregar campos de ${canonical}:`, error);
+      return;
+    }
+    (data || []).forEach((row) => {
+      const entry = entryById(row.id);
+      if (!entry) return;
+      entry.fields = (row.fields && typeof row.fields === 'object') ? row.fields : {};
+      entry.fieldsLoaded = true;
+    });
+    tabFieldsLoaded.add(canonical);
+  }
+
+  async function loadSearchCorpus() {
+    if (!sb) return;
+    if (searchCorpusPromise) return searchCorpusPromise;
+    searchCorpusPromise = (async () => {
+      const { data, error } = await sb.from('stories').select('id,body_html,fields');
+      if (error) throw error;
+      (data || []).forEach((row) => {
+        const entry = entryById(row.id);
+        if (!entry) return;
+        entry.bodyHtml = row.body_html || '';
+        entry.fields = (row.fields && typeof row.fields === 'object') ? row.fields : {};
+        entry.fieldsLoaded = true;
+        entry.detailLoaded = true;
+      });
+    })().catch((error) => {
+      searchCorpusPromise = null;
+      console.error('Erro ao carregar índice de busca:', error);
+    });
+    return searchCorpusPromise;
+  }
+
+  async function optimizeImageForUpload(file) {
+    if (!file || !/^image\/(png|jpe?g|webp)$/i.test(file.type) || typeof createImageBitmap !== 'function') {
+      return file;
+    }
+
+    let bitmap;
+    try {
+      bitmap = await createImageBitmap(file);
+      const maxDimension = 1920;
+      const scale = Math.min(1, maxDimension / Math.max(bitmap.width, bitmap.height));
+      if (scale === 1 && file.type === 'image/webp' && file.size <= 900 * 1024) return file;
+
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.max(1, Math.round(bitmap.width * scale));
+      canvas.height = Math.max(1, Math.round(bitmap.height * scale));
+      const context = canvas.getContext('2d', { alpha: true });
+      if (!context) return file;
+      context.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+
+      const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/webp', 0.84));
+      if (!blob || (scale === 1 && blob.size >= file.size)) return file;
+      const baseName = file.name.replace(/\.[^.]+$/, '') || 'imagem';
+      return new File([blob], `${baseName}.webp`, { type: 'image/webp', lastModified: file.lastModified });
+    } catch (error) {
+      console.warn('[O Arcano] Não foi possível otimizar a imagem; enviando o arquivo original.', error);
+      return file;
+    } finally {
+      bitmap?.close?.();
+    }
+  }
+
   async function uploadBanner(file, prefix) {
     if (!sb || !file) return { url: '', path: '' };
-    const ext = (file.name.split('.').pop() || 'png').toLowerCase().replace(/[^a-z0-9]/g, '');
+    const uploadFile = await optimizeImageForUpload(file);
+    const ext = (uploadFile.name.split('.').pop() || 'png').toLowerCase().replace(/[^a-z0-9]/g, '');
     const path = `${prefix}-${Date.now()}.${ext || 'png'}`;
-    const { error } = await sb.storage.from(BANNERS_BUCKET).upload(path, file, {
-      contentType: file.type || 'image/png'
+    const { error } = await sb.storage.from(BANNERS_BUCKET).upload(path, uploadFile, {
+      contentType: uploadFile.type || 'image/png',
+      cacheControl: '31536000'
     });
     if (error) throw error;
     const { data } = sb.storage.from(BANNERS_BUCKET).getPublicUrl(path);
@@ -2004,6 +2107,8 @@
 
   /* ── FICHAS DE PERSONAGEM (CRUD) ──────────────── */
   let CHARACTERS = [];
+  let charactersLoaded = false;
+  let charactersLoadPromise = null;
   const characterById = (id) => CHARACTERS.find((c) => c.id === id);
 
   /* O registro do Despertar fica guardado na coluna jsonb `magic`. */
@@ -2121,17 +2226,22 @@
   const CHAR_TABLE_HINT = 'A tabela characters ainda não foi criada. Rode o arquivo supabase-characters.sql no SQL Editor do Supabase.';
 
   async function loadCharacters() {
-    if (!sb || !auth.user) return;
-    const { data, error } = await sb
-      .from('characters')
-      .select('*')
-      .order('created_at', { ascending: false });
-    if (error) {
-      if (characterTableMissing(error)) console.warn('[O Arcano] ' + CHAR_TABLE_HINT);
-      else console.error('Erro ao carregar fichas:', error);
-      return;
-    }
-    CHARACTERS = (data || []).map(rowToCharacter);
+    if (!sb || !auth.user || charactersLoaded) return;
+    if (charactersLoadPromise) return charactersLoadPromise;
+    charactersLoadPromise = (async () => {
+      const { data, error } = await sb
+        .from('characters')
+        .select('*')
+        .order('created_at', { ascending: false });
+      if (error) {
+        if (characterTableMissing(error)) console.warn('[O Arcano] ' + CHAR_TABLE_HINT);
+        else console.error('Erro ao carregar fichas:', error);
+        return;
+      }
+      CHARACTERS = (data || []).map(rowToCharacter);
+      charactersLoaded = true;
+    })().finally(() => { charactersLoadPromise = null; });
+    return charactersLoadPromise;
   }
 
   async function persistCharacter(c) {
@@ -2679,7 +2789,7 @@
     return `
       <a href="#/${e.tab}/${e.id}" class="feat" style="--hue:${theme.hue};--delay:${i * 80}ms">
         <div class="feat__media">
-          ${e.image ? `<img loading="lazy" src="${e.image}" alt="" onerror="this.parentElement.classList.add('is-fallback')">` : ''}
+          ${e.image ? `<img loading="lazy" decoding="async" src="${e.image}" alt="" onerror="this.parentElement.classList.add('is-fallback')">` : ''}
           <div class="feat__fallback">${iconOf(e.tab)}</div>
           <div class="feat__shade"></div>
         </div>
@@ -2891,7 +3001,7 @@
     return `
       <a href="#/${entry.tab}/${entry.id}" class="entry-card entry-card--beast" style="--hue:${theme.hue};--delay:${index * 40}ms">
         <div class="beast-card__media ${entry.image ? '' : 'is-fallback'}">
-          ${entry.image ? `<img loading="lazy" src="${entry.image}" alt="" onerror="this.parentElement.classList.add('is-fallback')">` : ''}
+          ${entry.image ? `<img loading="lazy" decoding="async" src="${entry.image}" alt="" onerror="this.parentElement.classList.add('is-fallback')">` : ''}
           <div class="beast-card__fallback">${iconOf(entry.tab)}</div>
           <div class="beast-card__shade"></div>
           <span class="rarity-chip ${threatCssClass(fields.Perigo)}">${escapeHtml(fields.Perigo || 'Perigo não definido')}</span>
@@ -2929,7 +3039,7 @@
     return `
       <a href="#/${entry.tab}/${entry.id}" class="entry-card entry-card--race" style="--hue:${themeOf(entry.tab).hue};--delay:${index * 45}ms">
         <div class="race-card__media ${entry.image ? '' : 'is-fallback'}">
-          ${entry.image ? `<img loading="lazy" src="${entry.image}" alt="" onerror="this.parentElement.classList.add('is-fallback')">` : ''}
+          ${entry.image ? `<img loading="lazy" decoding="async" src="${entry.image}" alt="" onerror="this.parentElement.classList.add('is-fallback')">` : ''}
           <div class="race-card__fallback" aria-hidden="true">${iconOf('Racas')}</div>
           <div class="race-card__veil"></div>
           <span class="race-card__archive">ARQ · ${String(index + 1).padStart(2, '0')}</span>
@@ -2966,7 +3076,7 @@
     return `
       <a href="#/${e.tab}/${e.id}" class="entry-card" style="--hue:${theme.hue};--delay:${i * 40}ms">
         <div class="entry-card__media">
-          ${e.image ? `<img loading="lazy" src="${e.image}" alt="" onerror="this.parentElement.classList.add('is-fallback')">` : ''}
+          ${e.image ? `<img loading="lazy" decoding="async" src="${e.image}" alt="" onerror="this.parentElement.classList.add('is-fallback')">` : ''}
           <div class="entry-card__fallback">${iconOf(e.tab)}</div>
           <div class="entry-card__shade"></div>
           <div class="entry-card__tags">
@@ -3014,6 +3124,15 @@
     { id: 'pirata-one',          label: 'Pirata',     css: "'Pirata One', Cinzel, serif" },
     { id: 'jetbrains-mono',      label: 'Mono',       css: "'JetBrains Mono', monospace" }
   ];
+
+  function ensureEditorFonts() {
+    if (document.getElementById('arcanoEditorFonts')) return;
+    const link = document.createElement('link');
+    link.id = 'arcanoEditorFonts';
+    link.rel = 'stylesheet';
+    link.href = 'https://fonts.googleapis.com/css2?family=EB+Garamond:wght@400;500;600&family=IM+Fell+English&family=MedievalSharp&family=Pirata+One&family=Spectral:wght@300;400;500&family=Uncial+Antiqua&family=UnifrakturCook:wght@700&display=swap';
+    document.head.appendChild(link);
+  }
   /* Tamanhos absolutos em px para evitar composição em wraps aninhados. */
   const RT_FONT_SIZES = [
     { id: '10px', label: '10' },
@@ -4234,7 +4353,7 @@
         </div>
         <div class="tome-card__medal ${e.image ? 'has-img' : ''}" aria-hidden="true">
           <span class="tome-card__medal-ring"></span>
-          ${e.image ? `<img class="tome-card__img" loading="lazy" src="${e.image}" alt="" onerror="this.closest('.tome-card__medal').classList.add('is-fallback')">` : ''}
+          ${e.image ? `<img class="tome-card__img" loading="lazy" decoding="async" src="${e.image}" alt="" onerror="this.closest('.tome-card__medal').classList.add('is-fallback')">` : ''}
           <span class="tome-card__medal-rune">${runeSvg}</span>
         </div>
         <div class="tome-card__body">
@@ -4814,9 +4933,9 @@
                 <div class="race-anatomy-view">
                   <div class="race-anatomy-figure" data-race-anatomy-parallax aria-hidden="true">
                     <div class="race-anatomy-parallax__sigil"><i></i><i></i><i></i></div>
-                    <div class="race-anatomy-parallax__plane race-anatomy-parallax__plane--mist"><img src="assets/images/race-anatomy-abstract.png" alt=""></div>
-                    <div class="race-anatomy-parallax__plane race-anatomy-parallax__plane--aura"><img src="assets/images/race-anatomy-abstract.png" alt=""></div>
-                    <div class="race-anatomy-parallax__plane race-anatomy-parallax__plane--core"><img src="assets/images/race-anatomy-abstract.png" alt=""></div>
+                    <div class="race-anatomy-parallax__plane race-anatomy-parallax__plane--mist"><img src="assets/images/race-anatomy-abstract.webp" alt=""></div>
+                    <div class="race-anatomy-parallax__plane race-anatomy-parallax__plane--aura"><img src="assets/images/race-anatomy-abstract.webp" alt=""></div>
+                    <div class="race-anatomy-parallax__plane race-anatomy-parallax__plane--core"><img src="assets/images/race-anatomy-abstract.webp" alt=""></div>
                     <div class="race-anatomy-parallax__dust">${Array.from({ length: 9 }, (_, index) => `<i style="--dust-duration:${(5.2 + index * .41).toFixed(2)}s;--dust-delay:${(-index * .67).toFixed(2)}s"></i>`).join('')}</div>
                     <span class="race-anatomy-figure__count">${totalHp ? `${totalHp} HP` : `${anatomy.length} partes`}</span>
                   </div>
@@ -5124,7 +5243,7 @@
     return `
       <a href="#/Persona/${encodeURIComponent(c.id)}" class="entry-card char-card" style="--hue:${theme.hue};--delay:${i * 40}ms">
         <div class="entry-card__media">
-          ${c.image ? `<img loading="lazy" src="${c.image}" alt="" onerror="this.parentElement.classList.add('is-fallback')">` : ''}
+          ${c.image ? `<img loading="lazy" decoding="async" src="${c.image}" alt="" onerror="this.parentElement.classList.add('is-fallback')">` : ''}
           <div class="entry-card__fallback">${iconOf('Persona')}</div>
           <div class="entry-card__shade"></div>
           <div class="entry-card__tags">
@@ -6158,7 +6277,13 @@
 
   /* ── RENDER ───────────────────────────────────── */
   let lastRoute = '';
+  let renderSequence = 0;
   let raceAnatomyParallaxCleanup = null;
+
+  function syncAmbientMode(tabId) {
+    const suspended = !!document.getElementById('authGate') || ((auth.canRead || !sb) && tabId === 'Index');
+    window.dispatchEvent(new CustomEvent('arcano:ambient-mode', { detail: { suspended } }));
+  }
 
   function attachRaceAnatomyParallax() {
     if (raceAnatomyParallaxCleanup) raceAnatomyParallaxCleanup();
@@ -6229,11 +6354,19 @@
     };
   }
 
-  function render(force) {
+  async function render(force) {
     const { tab, entry, action } = parseHash();
     const routeKey = `${tab}|${entry || ''}|${action || ''}`;
     if (!force && routeKey === lastRoute) return;
     lastRoute = routeKey;
+    const sequence = ++renderSequence;
+
+    if (auth.canRead && sb) {
+      if (tab === 'Persona') await loadCharacters();
+      else if (entry) await loadEntryDetails(entryById(entry));
+      else if (tab !== 'Index' && !action && tabById(tab)) await loadTabFields(tab);
+      if (sequence !== renderSequence) return;
+    }
 
     renderSidenav(tab);
 
@@ -6258,7 +6391,9 @@
 
     view.classList.add('is-leaving');
     setTimeout(() => {
+      if (sequence !== renderSequence) return;
       view.innerHTML = html;
+      syncAmbientMode(tab);
       view.classList.remove('is-leaving');
       view.classList.add('is-entering');
       requestAnimationFrame(() => {
@@ -8045,6 +8180,7 @@
     const savedList = document.getElementById('rtSavedColors');
     const saveBtn = document.getElementById('rtSaveColor');
     if (!editor || !toolbar) return null;
+    ensureEditorFonts();
 
     /* Configurar editor: <p> ao pressionar Enter */
     try { document.execCommand('defaultParagraphSeparator', false, 'p'); } catch {}
@@ -9529,6 +9665,7 @@
   }
 
   function attachHomeParallax() {
+    if (sb && !auth.canRead) return;
     const hero = document.querySelector('[data-home-parallax]');
     if (hero) window.ArcanoAuthExperience?.mount(hero);
   }
@@ -9597,12 +9734,17 @@
   }
 
   /* ── GLOBAL SEARCH ────────────────────────────── */
-  function performGlobalSearch(q) {
+  let globalSearchRequest = 0;
+
+  async function performGlobalSearch(q) {
+    const request = ++globalSearchRequest;
     const query = normalize(q);
     if (!query || query.length < 2) {
       searchResults.hidden = true;
       return;
     }
+    if (auth.canRead && sb) await loadSearchCorpus();
+    if (request !== globalSearchRequest) return;
     const matches = ARCHIVE.entries.filter((e) => {
       const tagText = sanitizeTags(e.tags).map((tag) => tag.label).join(' ');
       const hay = [e.title, e.summary, tagText, ...(e.body || []), e.bodyHtml || '', ...fieldSearchValues(e.fields || {})].join(' ');
@@ -9843,7 +9985,7 @@
 
     // Logado: carrega dados e renderiza
     try {
-      await Promise.all([loadIndexCustom(), loadUserEntries(), loadMasterPalette(), loadCharacters()]);
+      await Promise.all([loadIndexCustom(), loadUserEntries()]);
     } catch (err) {
       console.error('Erro ao sincronizar com Supabase:', err);
     }
