@@ -80,11 +80,6 @@ window.ARCANO_ARCHIVE = {
       tone: "Crie e gerencie suas fichas de personagem — raça, atributos e mais."
     },
     {
-      id: "Mesa",
-      title: "Mesa de jogo",
-      tone: "Rolagens compartilhadas e ordem de combate, ao vivo."
-    },
-    {
       id: "Campanhas",
       title: "Campanhas",
       tone: "Arcos em andamento, missões, capítulos e consequências da mesa."
