@@ -12103,3 +12103,72 @@ a.spell-card__name:hover { color: var(--primary-3); }
 /* ── Foco visível global (teclado) ─────────────── */
 a:focus-visible, button:focus-visible, [role="button"]:focus-visible, [tabindex]:focus-visible, summary:focus-visible,
 input:focus-visible, select:focus-visible, textarea:focus-visible { outline: 2px solid var(--primary-3); outline-offset: 2px; }
+
+/* ── Mesa de jogo ──────────────────────────────── */
+.mesa { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr); gap: 24px; align-items: start; }
+.mesa [hidden] { display: none !important; }
+.mesa__panel { display: grid; gap: 18px; padding: 22px; border: 1px solid var(--line-strong); border-radius: var(--radius-lg); background: rgba(12,10,20,.82); }
+.mesa__head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.mesa__head h2 { margin: 0; font: 500 1.35rem 'Cinzel', serif; }
+.mesa__live { padding: 4px 10px; border: 1px solid var(--line-strong); border-radius: 99px; color: var(--muted); font: 500 .75rem 'Inter', sans-serif; }
+.mesa__form { display: grid; gap: 12px; }
+.mesa__form--free { padding-top: 14px; border-top: 1px solid var(--line); }
+.mesa__row { display: flex; align-items: end; flex-wrap: wrap; gap: 10px; }
+.mesa__field { display: grid; gap: 5px; min-width: 0; flex: 1 1 160px; }
+.mesa__field--sm { flex: 0 1 96px; }
+.mesa__field > span { color: var(--muted); font: 500 .78rem 'Inter', sans-serif; }
+.mesa__roll { min-height: 44px; flex: 1 1 150px; justify-content: center; }
+.mesa__rule { margin: 0; color: var(--muted); font: 400 .9rem/1.45 'Cormorant Garamond', serif; }
+.mesa__rule strong { color: var(--text-2); font-weight: 600; }
+.mesa__empty { margin: 0; padding: 18px; border: 1px dashed var(--line-strong); border-radius: var(--radius); color: var(--muted); font: 400 1rem 'Cormorant Garamond', serif; text-align: center; }
+.mesa__feed { display: grid; gap: 8px; max-height: 520px; overflow-y: auto; padding-right: 4px; }
+.mesa-roll { display: grid; grid-template-columns: 62px minmax(0, 1fr); gap: 12px; align-items: center; padding: 10px 12px; border: 1px solid var(--line); border-radius: var(--radius); background: rgba(255,255,255,.02); animation: toast-in 240ms var(--ease); }
+.mesa-roll.is-mine { border-color: rgba(167,139,250,.35); }
+.mesa-roll__total { display: grid; place-items: center; min-height: 52px; border-radius: 10px; background: rgba(139,92,246,.14); color: var(--text); font: 600 1.7rem 'Cinzel', serif; }
+.mesa-roll__body { min-width: 0; }
+.mesa-roll__body header { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 10px; }
+.mesa-roll__body header strong { font: 600 .92rem 'Inter', sans-serif; }
+.mesa-roll__body header span { color: var(--text-2); font: 400 .88rem 'Inter', sans-serif; overflow-wrap: anywhere; }
+.mesa-roll__body header time { margin-left: auto; color: var(--muted); font: 500 .75rem 'Inter', sans-serif; }
+.mesa-roll__body p { margin: 3px 0 0; color: var(--muted); font: 400 .85rem/1.5 'Inter', sans-serif; }
+.mesa-roll__body code { color: var(--primary-3); font-family: 'JetBrains Mono', monospace; font-size: .8rem; }
+.mesa-roll__body b { color: var(--text); }
+.mesa-roll__flag { display: inline-block; margin-top: 4px; padding: 2px 8px; border-radius: 99px; font: 600 .75rem 'Inter', sans-serif; font-style: normal; }
+.mesa-roll__flag.is-high { background: rgba(245,158,11,.16); color: #fcd34d; }
+.mesa-roll__flag.is-low { background: rgba(244,63,94,.16); color: #fda4af; }
+.mesa-round { display: flex; align-items: baseline; gap: 12px; }
+.mesa-round__n { font: 600 1.3rem 'Cinzel', serif; }
+.mesa-round__s { color: var(--muted); font: 500 .85rem 'Inter', sans-serif; }
+.mesa-bar { display: flex; flex-wrap: wrap; gap: 8px; margin: 14px 0; }
+.mesa-bar .btn { min-height: 40px; font-size: .85rem; }
+.mesa-bar .btn:disabled { opacity: .45; cursor: not-allowed; }
+.mesa-add, .mesa-quick { display: flex; align-items: end; flex-wrap: wrap; gap: 10px; margin-bottom: 12px; }
+.mesa-order { display: grid; gap: 8px; margin: 14px 0 0; padding: 0; list-style: none; }
+.mesa-unit { display: grid; grid-template-columns: 56px minmax(0, 1fr) auto; gap: 12px; align-items: center; padding: 10px 12px; border: 1px solid var(--line); border-left: 3px solid #60a5fa; border-radius: var(--radius); background: rgba(255,255,255,.02); }
+.mesa-unit--foe { border-left-color: var(--crimson); }
+.mesa-unit.is-current { border-color: var(--primary-2); background: rgba(139,92,246,.12); box-shadow: 0 0 0 1px var(--primary-2); }
+.mesa-unit.is-down { opacity: .55; }
+.mesa-unit__init { text-align: center; font: 600 1.2rem 'Cinzel', serif; }
+.mesa-unit__init input { width: 56px; padding: 6px; border: 1px solid var(--line-strong); border-radius: 8px; background: transparent; color: var(--text); font: 600 1rem 'Inter', sans-serif; text-align: center; }
+.mesa-unit__top { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 10px; }
+.mesa-unit__top strong { font: 500 1rem 'Cinzel', serif; overflow-wrap: anywhere; }
+.mesa-unit__turn { padding: 2px 8px; border-radius: 99px; background: var(--primary); color: #fff; font: 600 .72rem 'Inter', sans-serif; }
+.mesa-unit__state { margin-left: auto; font: 600 .75rem 'Inter', sans-serif; }
+.mesa-unit__state--ok { color: #6ee7b7; }
+.mesa-unit__state--hurt { color: #fcd34d; }
+.mesa-unit__state--crit { color: #fda4af; }
+.mesa-unit__state--down { color: var(--muted); }
+.mesa-unit__bar { height: 6px; margin: 7px 0; overflow: hidden; border-radius: 99px; background: rgba(255,255,255,.08); }
+.mesa-unit__bar i { display: block; height: 100%; background: #10b981; transition: width 300ms var(--ease), background-color 300ms ease; }
+.mesa-unit:has(.mesa-unit__state--hurt) .mesa-unit__bar i { background: #f59e0b; }
+.mesa-unit:has(.mesa-unit__state--crit) .mesa-unit__bar i, .mesa-unit:has(.mesa-unit__state--down) .mesa-unit__bar i { background: #f43f5e; }
+.mesa-unit__meta { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 8px; color: var(--muted); font: 500 .82rem 'Inter', sans-serif; }
+.mesa-unit__cond { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border: 1px solid var(--line-strong); border-radius: 99px; color: var(--text-2); }
+.mesa-unit__cond button { min-width: 20px; min-height: 20px; color: var(--muted); }
+.mesa-unit__condin { width: 160px; min-height: 32px; padding: 4px 10px; }
+.mesa-unit__ctl { display: flex; align-items: center; flex-wrap: wrap; justify-content: flex-end; gap: 6px; max-width: 320px; }
+.mesa-unit__ctl input { width: 58px; padding: 7px; border: 1px solid var(--line-strong); border-radius: 8px; background: transparent; color: var(--text); font: 500 .9rem 'Inter', sans-serif; }
+.mesa-unit__ctl .btn { min-height: 36px; padding-inline: 10px; font-size: .8rem; }
+.mesa-danger { color: #fda4af; }
+@media (max-width: 1000px) { .mesa { grid-template-columns: 1fr; } }
+@media (max-width: 600px) { .mesa__panel { padding: 16px; } .mesa-unit { grid-template-columns: 48px minmax(0, 1fr); } .mesa-unit__ctl { grid-column: 1 / -1; justify-content: flex-start; max-width: none; } }

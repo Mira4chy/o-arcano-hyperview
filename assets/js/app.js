@@ -1637,6 +1637,7 @@
     Racas:     '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="7" cy="7" r="3"/><circle cx="17" cy="7" r="3"/><circle cx="12" cy="17" r="3"/><path d="M7 10v3M17 10v3M9 15l1.5-1M15 15l-1.5-1"/></svg>',
     Culturas:  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7c2.2-2.7 5-4 8-4s5.8 1.3 8 4v8c-2.2 3.4-5 5-8 6-3-1-5.8-2.6-8-6z"/><path d="M8 9h.01M16 9h.01M8 15c2.7 1.5 5.3 1.5 8 0"/><path d="M12 6v7"/></svg>',
     Faccoes:   '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l8 4v5c0 4.5-3.2 7.7-8 9-4.8-1.3-8-4.5-8-9V7z"/><path d="M8 12h8M12 8v8"/></svg>',
+    Mesa:      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l8 4.5v9L12 20l-8-4.5v-9z"/><path d="M12 2v18M4 6.5l8 4.5 8-4.5"/></svg>',
     Mapa:      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6l6-2 6 2 6-2v14l-6 2-6-2-6 2V6z"/><line x1="9" y1="4" x2="9" y2="18"/><line x1="15" y1="6" x2="15" y2="20"/></svg>',
     Deuses:    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l2.4 6.6L21 9.5l-5 4.3 1.4 6.7L12 17l-5.4 3.5L8 13.8l-5-4.3 6.6-.9L12 2z"/></svg>',
   };
@@ -1653,6 +1654,7 @@
     Eras:      { hue: 45,  label: 'TEMPO' },
     Sistemas:  { hue: 160, label: 'REGRAS' },
     Persona:   { hue: 320, label: 'PESSOAS' },
+    Mesa:      { hue: 38,  label: 'AO VIVO' },
     Campanhas: { hue: 18,  label: 'CAMPANHAS' },
     Historias: { hue: 250, label: 'HISTÓRIAS' },
     Racas:     { hue: 130, label: 'POVOS' },
@@ -1685,7 +1687,7 @@
       id: 'historias',
       title: 'Histórias',
       tone: 'Campanhas, pessoas e memória',
-      tabs: ['Campanhas', 'Persona', 'Eras', 'Historias']
+      tabs: ['Campanhas', 'Persona', 'Mesa', 'Eras', 'Historias']
     }
   ];
 
@@ -2789,7 +2791,7 @@
         <a href="#/${tab.id}" class="sidenav__item ${tab.id === active ? 'is-active' : ''}" data-tab="${tab.id}" style="--hue:${theme.hue}">
           <span class="sidenav__icon">${iconOf(tab.id)}</span>
           <span class="sidenav__label">${escapeHtml(tab.title)}</span>
-          <span class="sidenav__count">${tabCount(tab.id)}</span>
+          <span class="sidenav__count">${tab.id === "Mesa" ? "●" : tabCount(tab.id)}</span>
         </a>`;
     };
 
@@ -2878,7 +2880,7 @@
                   const tab = tabById(tabId);
                   if (!tab) return '';
                   const total = tabCount(tab.id);
-                  return `<a href="#/${tab.id}" class="${total ? '' : 'is-empty'}" ${total ? '' : 'title="Ainda sem entradas"'} style="--hue:${themeOf(tab.id).hue}"><span>${iconOf(tab.id)}</span><strong>${escapeHtml(tab.title)}</strong><small>${total || 'vazio'}</small></a>`;
+                  return `<a href="#/${tab.id}" class="${total || tab.id === 'Mesa' ? '' : 'is-empty'}" ${total || tab.id === 'Mesa' ? '' : 'title="Ainda sem entradas"'} style="--hue:${themeOf(tab.id).hue}"><span>${iconOf(tab.id)}</span><strong>${escapeHtml(tab.title)}</strong><small>${tab.id === 'Mesa' ? 'ao vivo' : (total || 'vazio')}</small></a>`;
                 }).join('')}
               </nav>
               <span class="codex-home__group-line" aria-hidden="true"></span>
@@ -6673,6 +6675,7 @@
     if (!force && routeKey === lastRoute) return;
     lastRoute = routeKey;
     const sequence = ++renderSequence;
+    if (tab !== 'Mesa') mesaTeardown();
     document.body.classList.add('is-routing');
     view.setAttribute('aria-busy', 'true');
     setTimeout(() => { if (sequence === renderSequence) { document.body.classList.remove('is-routing'); view.removeAttribute('aria-busy'); } }, 10000);
@@ -6704,6 +6707,7 @@
       else if (entry) html = viewCharacterSheetFolio(entry);
       else html = viewPersonaRoster();
     }
+    else if (tab === 'Mesa') html = viewMesa();
     else if (!tabById(tab)) html = viewNotFound(tab);
     else if (action === 'criar' && !entry) html = viewCreate(tab);
     else if (action === 'editar' && entry) html = viewCreate(tab, entry);
@@ -6740,6 +6744,7 @@
         attachCharacterSheet();
         attachBeastAbilityCards();
         attachRaceAnatomyParallax();
+        attachMesa();
       });
       window.scrollTo({ top: 0, behavior: 'instant' });
     }, 180);
@@ -10512,6 +10517,425 @@
           e.preventDefault();
           globalSearch.focus();
         }
+      }
+    });
+  }
+
+  /* ══ MESA DE JOGO · rolador compartilhado + rastreador de combate ══ */
+  const MESA_HINT = 'Mesa indisponível: rode supabase-mesa.sql no Supabase > SQL Editor.';
+  const MESA_DIE_SIDES = [4, 6, 8, 10, 12, 20, 100];
+  const mesa = { rolls: [], combat: null, channel: null, poll: null, ready: false, missing: false, saveTimer: 0 };
+
+  const mesaMissing = (error) => !!error && (['42P01', 'PGRST205', 'PGRST204'].includes(error.code) || /table_(rolls|combat)|schema cache/i.test(error.message || ''));
+  const mesaUid = () => Math.random().toString(36).slice(2, 10);
+  const mesaAuthor = () => auth.profile?.display_name || auth.user?.user_metadata?.display_name || String(auth.user?.email || 'Jogador').split('@')[0];
+  const mesaMod = (mod) => (mod ? (mod > 0 ? ` + ${mod}` : ` − ${Math.abs(mod)}`) : '');
+
+  function mesaEmptyCombat() { return { active: false, round: 1, turn: 0, combatants: [] }; }
+  function mesaNormalizeCombat(raw) {
+    const base = mesaEmptyCombat();
+    if (!raw || typeof raw !== 'object') return base;
+    base.active = !!raw.active;
+    base.round = Math.max(1, Number(raw.round) || 1);
+    base.combatants = (Array.isArray(raw.combatants) ? raw.combatants : []).map((c) => ({
+      id: String(c.id || mesaUid()),
+      name: String(c.name || 'Sem nome').slice(0, 60),
+      side: c.side === 'foe' ? 'foe' : 'pc',
+      init: Number.isFinite(Number(c.init)) ? Number(c.init) : 0,
+      hp: Number.isFinite(Number(c.hp)) ? Number(c.hp) : 0,
+      max: Math.max(1, Number(c.max) || 1),
+      conds: (Array.isArray(c.conds) ? c.conds : []).map((x) => String(x).slice(0, 30)).slice(0, 8)
+    }));
+    base.turn = Math.min(Math.max(0, Number(raw.turn) || 0), Math.max(0, base.combatants.length - 1));
+    return base;
+  }
+
+  function viewMesa() {
+    const theme = themeOf('Mesa');
+    return `
+      <section class="cat-hero" style="--hue:${theme.hue}">
+        <div class="cat-hero__icon">${iconOf('Mesa')}</div>
+        <div class="cat-hero__body">
+          <span class="cat-hero__eyebrow">${escapeHtml(theme.label)}</span>
+          <h1 class="cat-hero__title" data-text-reveal>Mesa de jogo</h1>
+          <p class="cat-hero__tone">Rolagens à vista de todos e a ordem do combate, ao vivo para a mesa inteira.</p>
+        </div>
+      </section>
+      <div class="mesa" data-mesa>
+        <section class="mesa__panel mesa__dice" aria-labelledby="mesaDiceTitle">
+          <header class="mesa__head"><h2 id="mesaDiceTitle">Dados</h2><span class="mesa__live" data-mesa-live>conectando…</span></header>
+          <form class="mesa__form" data-mesa-form="pool">
+            <label class="mesa__field"><span>O que está testando?</span><input class="create-form__input" name="label" maxlength="60" placeholder="Ex.: Força para arrombar a porta" autocomplete="off"></label>
+            <label class="mesa__field" data-mesa-char-wrap hidden><span>Personagem</span><select class="create-form__input" name="char"><option value="">—</option></select></label>
+            <div class="mesa__row">
+              <label class="mesa__field mesa__field--sm"><span>Dados (d6)</span><input class="create-form__input" name="n" type="number" min="1" max="12" value="2" inputmode="numeric"></label>
+              <label class="mesa__field mesa__field--sm"><span>Bônus</span><input class="create-form__input" name="mod" type="number" min="-50" max="50" value="0" inputmode="numeric"></label>
+              <button type="submit" class="btn btn-primary mesa__roll">Rolar Nd6 + Destino</button>
+            </div>
+            <p class="mesa__rule">Regra do sistema: <strong>Nd6 + 1d12 de Destino</strong>. Destino 12 e destino 1 ficam marcados.</p>
+          </form>
+          <form class="mesa__form mesa__form--free" data-mesa-form="free">
+            <div class="mesa__row">
+              <label class="mesa__field mesa__field--sm"><span>Qtd.</span><input class="create-form__input" name="count" type="number" min="1" max="20" value="1" inputmode="numeric"></label>
+              <label class="mesa__field mesa__field--sm"><span>Dado</span><select class="create-form__input" name="sides">${MESA_DIE_SIDES.map((n) => `<option value="${n}" ${n === 20 ? 'selected' : ''}>d${n}</option>`).join('')}</select></label>
+              <label class="mesa__field mesa__field--sm"><span>Bônus</span><input class="create-form__input" name="mod" type="number" min="-50" max="50" value="0" inputmode="numeric"></label>
+              <button type="submit" class="btn btn-ghost mesa__roll">Rolar livre</button>
+            </div>
+          </form>
+          <div class="mesa__feed" data-mesa-feed aria-live="polite" aria-label="Histórico de rolagens"></div>
+        </section>
+        <section class="mesa__panel mesa__combat" aria-labelledby="mesaCombatTitle">
+          <header class="mesa__head"><h2 id="mesaCombatTitle">Combate</h2></header>
+          <div data-mesa-combat></div>
+        </section>
+      </div>`;
+  }
+
+  function mesaRollRowHTML(r) {
+    const d = r.detail || {};
+    let breakdown = '';
+    let flag = '';
+    const bonus = d.mod ? ` · bônus <b>${d.mod > 0 ? '+' : ''}${d.mod}</b>` : '';
+    if (Array.isArray(d.d6s)) {
+      breakdown = `d6: ${d.d6s.map((v) => `<b>${Number(v)}</b>`).join(' ')} · Destino <b>${Number(d.destiny)}</b>${bonus}`;
+      if (d.destiny === 12) flag = '<em class="mesa-roll__flag is-high">Destino máximo</em>';
+      else if (d.destiny === 1) flag = '<em class="mesa-roll__flag is-low">Destino 1</em>';
+    } else if (Array.isArray(d.dice)) {
+      breakdown = `${d.dice.map((v) => `<b>${Number(v)}</b>`).join(' ')}${bonus}`;
+      if (d.sides === 20 && d.dice.length === 1) {
+        if (d.dice[0] === 20) flag = '<em class="mesa-roll__flag is-high">20 natural</em>';
+        else if (d.dice[0] === 1) flag = '<em class="mesa-roll__flag is-low">1 natural</em>';
+      }
+    }
+    const when = r.created_at ? new Date(r.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : '';
+    return `
+      <article class="mesa-roll ${r.user_id === auth.user?.id ? 'is-mine' : ''}">
+        <div class="mesa-roll__total" aria-label="Total ${Number(r.total)}">${Number(r.total)}</div>
+        <div class="mesa-roll__body">
+          <header><strong>${escapeHtml(r.author || 'Jogador')}</strong>${r.label ? `<span>${escapeHtml(r.label)}</span>` : ''}<time>${escapeHtml(when)}</time></header>
+          <p><code>${escapeHtml(r.expr)}</code> ${breakdown}</p>
+          ${flag}
+        </div>
+      </article>`;
+  }
+
+  function mesaPaintFeed(root) {
+    const feed = root.querySelector('[data-mesa-feed]');
+    if (!feed) return;
+    feed.innerHTML = mesa.rolls.length
+      ? mesa.rolls.map(mesaRollRowHTML).join('')
+      : '<p class="mesa__empty">Nenhuma rolagem ainda. A primeira é sua.</p>';
+  }
+
+  function mesaAddRoll(root, row) {
+    if (!row || mesa.rolls.some((r) => r.id === row.id)) return;
+    mesa.rolls.unshift(row);
+    mesa.rolls.sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)));
+    mesa.rolls = mesa.rolls.slice(0, 40);
+    mesaPaintFeed(root);
+  }
+
+  function mesaHpState(c) {
+    const ratio = c.max ? c.hp / c.max : 0;
+    if (c.hp <= 0) return { label: 'Caído', tone: 'down' };
+    if (ratio <= 0.25) return { label: 'Crítico', tone: 'crit' };
+    if (ratio <= 0.6) return { label: 'Ferido', tone: 'hurt' };
+    return { label: 'Firme', tone: 'ok' };
+  }
+
+  function mesaCombatHTML() {
+    const cb = mesa.combat || mesaEmptyCombat();
+    const master = auth.isAdmin;
+    if (!cb.combatants.length && !master) return '<p class="mesa__empty">Nenhum combate em andamento.</p>';
+    const bestiary = master ? entriesIn('Bestiario') : [];
+    const chars = master ? CHARACTERS : [];
+    const rows = cb.combatants.map((c, i) => {
+      const hidden = !master && c.side === 'foe';
+      const st = mesaHpState(c);
+      const pct = Math.max(0, Math.min(100, c.max ? (c.hp / c.max) * 100 : 0));
+      const current = cb.active && i === cb.turn;
+      return `
+        <li class="mesa-unit mesa-unit--${c.side} ${current ? 'is-current' : ''} ${c.hp <= 0 ? 'is-down' : ''}" data-unit="${escapeHtml(c.id)}">
+          <div class="mesa-unit__init">${master ? `<input type="number" value="${c.init}" data-unit-init aria-label="Iniciativa de ${escapeHtml(c.name)}">` : `<span>${c.init}</span>`}</div>
+          <div class="mesa-unit__main">
+            <div class="mesa-unit__top"><strong>${escapeHtml(c.name)}</strong>${current ? '<span class="mesa-unit__turn">turno</span>' : ''}<span class="mesa-unit__state mesa-unit__state--${st.tone}">${st.label}</span></div>
+            <div class="mesa-unit__bar" role="img" aria-label="Vida: ${st.label}"><i style="width:${hidden ? (c.hp <= 0 ? 0 : 100) : pct}%"></i></div>
+            <div class="mesa-unit__meta">${hidden ? '<span>PV oculto</span>' : `<span>${c.hp} / ${c.max} PV</span>`}${c.conds.map((x) => `<span class="mesa-unit__cond">${escapeHtml(x)}${master ? `<button type="button" data-cond-del="${escapeHtml(x)}" aria-label="Remover ${escapeHtml(x)}">×</button>` : ''}</span>`).join('')}</div>
+          </div>
+          ${master ? `
+            <div class="mesa-unit__ctl">
+              <input type="number" min="1" value="1" data-unit-amt aria-label="Valor">
+              <button type="button" class="btn btn-ghost" data-unit-dmg>Dano</button>
+              <button type="button" class="btn btn-ghost" data-unit-heal>Cura</button>
+              <button type="button" class="btn btn-ghost" data-unit-cond>+ Condição</button>
+              <button type="button" class="btn btn-ghost mesa-danger" data-unit-del aria-label="Remover ${escapeHtml(c.name)}">Remover</button>
+            </div>` : ''}
+        </li>`;
+    }).join('');
+
+    const masterBar = master ? `
+      <div class="mesa-bar">
+        <button type="button" class="btn ${cb.active ? 'btn-ghost' : 'btn-primary'}" data-combat-toggle>${cb.active ? 'Encerrar combate' : 'Iniciar combate'}</button>
+        <button type="button" class="btn btn-primary" data-combat-next ${cb.active && cb.combatants.length ? '' : 'disabled'}>Próximo turno →</button>
+        <button type="button" class="btn btn-ghost" data-combat-sort>Ordenar por iniciativa</button>
+        <button type="button" class="btn btn-ghost" data-combat-roll>Rolar iniciativa de todos</button>
+        <button type="button" class="btn btn-ghost mesa-danger" data-combat-clear ${cb.combatants.length ? '' : 'disabled'}>Limpar</button>
+      </div>
+      <form class="mesa-add" data-combat-add>
+        <label class="mesa__field"><span>Nome</span><input class="create-form__input" name="name" maxlength="60" required placeholder="Ex.: Mastim de Turfa" autocomplete="off"></label>
+        <label class="mesa__field mesa__field--sm"><span>Lado</span><select class="create-form__input" name="side"><option value="pc">Grupo</option><option value="foe">Inimigo</option></select></label>
+        <label class="mesa__field mesa__field--sm"><span>PV</span><input class="create-form__input" name="max" type="number" min="1" value="20" inputmode="numeric"></label>
+        <label class="mesa__field mesa__field--sm"><span>Inic.</span><input class="create-form__input" name="init" type="number" value="0" inputmode="numeric"></label>
+        <button type="submit" class="btn btn-ghost">Adicionar</button>
+      </form>
+      <div class="mesa-quick">
+        <label class="mesa__field"><span>Do Bestiário</span><select class="create-form__input" data-combat-beast><option value="">Escolher criatura…</option>${bestiary.map((e) => `<option value="${escapeHtml(e.id)}">${escapeHtml(e.title)}</option>`).join('')}</select></label>
+        <label class="mesa__field"><span>Das fichas</span><select class="create-form__input" data-combat-char><option value="">Escolher personagem…</option>${chars.map((c) => `<option value="${escapeHtml(c.id)}">${escapeHtml(c.name || 'Sem nome')}</option>`).join('')}</select></label>
+      </div>` : '';
+
+    return `
+      <div class="mesa-round"><span class="mesa-round__n">Rodada ${cb.round}</span><span class="mesa-round__s">${cb.active ? 'em andamento' : 'parado'}</span></div>
+      ${masterBar}
+      ${cb.combatants.length ? `<ol class="mesa-order">${rows}</ol>` : '<p class="mesa__empty">Adicione combatentes para montar a ordem.</p>'}`;
+  }
+
+  function mesaPaintCombat(root) {
+    const el = root.querySelector('[data-mesa-combat]');
+    if (!el) return;
+    const active = document.activeElement;
+    const focusSel = active && el.contains(active) && active.getAttribute('name') ? `[name="${active.getAttribute('name')}"]` : null;
+    el.innerHTML = mesaCombatHTML();
+    if (focusSel) el.querySelector(focusSel)?.focus();
+  }
+
+  function mesaSaveCombat() {
+    if (!auth.isAdmin || !sb) return;
+    clearTimeout(mesa.saveTimer);
+    mesa.saveTimer = setTimeout(async () => {
+      const { error } = await sb.from('table_combat').upsert({ id: 1, state: mesa.combat, updated_at: new Date().toISOString(), updated_by: auth.user.id });
+      if (error) toast('Erro ao salvar o combate: ' + (error.message || error));
+    }, 250);
+  }
+
+  function mesaCombatChanged(root) {
+    mesaPaintCombat(root);
+    mesaSaveCombat();
+  }
+
+  async function mesaRoll(root, row) {
+    if (!sb || !auth.user) return;
+    const { data, error } = await sb.from('table_rolls').insert(row).select().single();
+    if (error) {
+      toast(mesaMissing(error) ? MESA_HINT : 'Erro ao registrar a rolagem: ' + (error.message || error));
+      return;
+    }
+    mesaAddRoll(root, data);
+  }
+
+  function mesaTeardown() {
+    if (mesa.channel && sb) { try { sb.removeChannel(mesa.channel); } catch (_) { /* canal já fechado */ } }
+    mesa.channel = null;
+    clearInterval(mesa.poll);
+    mesa.poll = null;
+    clearTimeout(mesa.saveTimer);
+    mesa.ready = false;
+  }
+
+  async function mesaLoad() {
+    const [rolls, combat] = await Promise.all([
+      sb.from('table_rolls').select('*').order('created_at', { ascending: false }).limit(40),
+      sb.from('table_combat').select('state,updated_by').eq('id', 1).maybeSingle()
+    ]);
+    const error = rolls.error || combat.error;
+    if (error) {
+      mesa.missing = mesaMissing(error);
+      if (!mesa.missing) toast('Erro ao carregar a mesa: ' + (error.message || error));
+      return false;
+    }
+    mesa.rolls = rolls.data || [];
+    mesa.combat = mesaNormalizeCombat(combat.data?.state);
+    mesa.missing = false;
+    return true;
+  }
+
+  async function attachMesa() {
+    const root = document.querySelector('[data-mesa]');
+    mesaTeardown();
+    if (!root) return;
+    const live = root.querySelector('[data-mesa-live]');
+    if (!sb || !auth.user || !auth.canRead) { if (live) live.textContent = 'offline'; return; }
+
+    await loadCharacters();
+    const own = CHARACTERS.filter((c) => c.userId === auth.user.id);
+    const charSel = root.querySelector('[name="char"]');
+    if (charSel && own.length) {
+      charSel.insertAdjacentHTML('beforeend', own.map((c) => `<option value="${escapeHtml(c.name || '')}">${escapeHtml(c.name || 'Sem nome')}</option>`).join(''));
+      root.querySelector('[data-mesa-char-wrap]').hidden = false;
+    }
+
+    const ok = await mesaLoad();
+    if (!document.body.contains(root)) return;
+    if (!ok) {
+      if (live) live.textContent = mesa.missing ? 'não configurada' : 'erro';
+      const feed = root.querySelector('[data-mesa-feed]');
+      if (feed) feed.innerHTML = `<p class="mesa__empty">${mesa.missing ? escapeHtml(MESA_HINT) : 'Não foi possível carregar a mesa.'}</p>`;
+      return;
+    }
+    mesa.ready = true;
+    mesaPaintFeed(root);
+    mesaPaintCombat(root);
+
+    const applyCombat = (state, by) => {
+      if (by && by === auth.user.id) return;
+      mesa.combat = mesaNormalizeCombat(state);
+      mesaPaintCombat(root);
+    };
+    const refresh = async () => {
+      const r = await sb.from('table_rolls').select('*').order('created_at', { ascending: false }).limit(40);
+      if (!r.error) { mesa.rolls = r.data || []; mesaPaintFeed(root); }
+      if (auth.isAdmin) return;
+      const c = await sb.from('table_combat').select('state,updated_by').eq('id', 1).maybeSingle();
+      if (!c.error && c.data) applyCombat(c.data.state, c.data.updated_by);
+    };
+    try {
+      mesa.channel = sb.channel('mesa-' + mesaUid())
+        .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'table_rolls' }, (p) => mesaAddRoll(root, p.new))
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'table_combat' }, (p) => applyCombat(p.new?.state, p.new?.updated_by))
+        .subscribe((status) => {
+          if (!live) return;
+          if (status === 'SUBSCRIBED') live.textContent = 'ao vivo';
+          else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') live.textContent = 'reconectando…';
+        });
+    } catch (_) { if (live) live.textContent = 'atualizando a cada 6 s'; }
+    // Rede de segurança: se o Realtime não estiver habilitado, a mesa ainda se atualiza.
+    mesa.poll = setInterval(refresh, 6000);
+
+    const poolForm = root.querySelector('[data-mesa-form="pool"]');
+    const contextLabel = () => [poolForm.char?.value, poolForm.label.value.trim()].filter(Boolean).join(' · ');
+    poolForm.addEventListener('submit', (event) => {
+      event.preventDefault();
+      const n = Math.min(12, Math.max(1, parseInt(poolForm.n.value, 10) || 1));
+      const mod = Math.min(50, Math.max(-50, parseInt(poolForm.mod.value, 10) || 0));
+      const pool = rollDicePool(n);
+      mesaRoll(root, {
+        author: mesaAuthor(), label: contextLabel(), expr: `${n}d6 + 1d12${mesaMod(mod)}`,
+        detail: { d6s: pool.d6s, destiny: pool.destiny, mod }, total: pool.total + mod
+      });
+    });
+    root.querySelector('[data-mesa-form="free"]').addEventListener('submit', (event) => {
+      event.preventDefault();
+      const f = event.currentTarget;
+      const count = Math.min(20, Math.max(1, parseInt(f.count.value, 10) || 1));
+      const sides = MESA_DIE_SIDES.includes(Number(f.sides.value)) ? Number(f.sides.value) : 20;
+      const mod = Math.min(50, Math.max(-50, parseInt(f.mod.value, 10) || 0));
+      const dice = Array.from({ length: count }, () => 1 + Math.floor(Math.random() * sides));
+      mesaRoll(root, {
+        author: mesaAuthor(), label: contextLabel(), expr: `${count}d${sides}${mesaMod(mod)}`,
+        detail: { dice, sides, mod }, total: dice.reduce((s, v) => s + v, 0) + mod
+      });
+    });
+
+    if (!auth.isAdmin) return;
+    const combatRoot = root.querySelector('[data-mesa-combat]');
+    const unitOf = (target) => {
+      const li = target.closest('[data-unit]');
+      return li ? mesa.combat.combatants.find((c) => c.id === li.dataset.unit) : null;
+    };
+    const addUnit = (unit) => {
+      mesa.combat.combatants.push({ id: mesaUid(), conds: [], init: 0, side: 'pc', ...unit });
+      mesaCombatChanged(root);
+    };
+    combatRoot.addEventListener('submit', (event) => {
+      if (!event.target.matches('[data-combat-add]')) return;
+      event.preventDefault();
+      const f = event.target;
+      const max = Math.max(1, parseInt(f.max.value, 10) || 1);
+      addUnit({ name: f.name.value.trim() || 'Sem nome', side: f.side.value, max, hp: max, init: parseInt(f.init.value, 10) || 0 });
+    });
+    combatRoot.addEventListener('change', (event) => {
+      const t = event.target;
+      if (t.matches('[data-unit-init]')) {
+        const u = unitOf(t);
+        if (u) { u.init = parseInt(t.value, 10) || 0; mesaCombatChanged(root); }
+      } else if (t.matches('[data-combat-beast]') && t.value) {
+        const e = entryById(t.value);
+        if (e) { const hp = Math.max(1, Math.round(beastHpTotal(e.fields) || 20)); addUnit({ name: e.title, side: 'foe', max: hp, hp }); }
+      } else if (t.matches('[data-combat-char]') && t.value) {
+        const c = characterById(t.value);
+        if (c) addUnit({ name: c.name || 'Sem nome', side: 'pc', max: 20, hp: 20 });
+      }
+    });
+    combatRoot.addEventListener('click', async (event) => {
+      const t = event.target;
+      const cb = mesa.combat;
+      if (t.closest('[data-combat-toggle]')) {
+        cb.active = !cb.active;
+        if (cb.active) { cb.round = 1; cb.turn = 0; }
+        mesaCombatChanged(root);
+      } else if (t.closest('[data-combat-next]')) {
+        if (!cb.combatants.length) return;
+        cb.turn += 1;
+        if (cb.turn >= cb.combatants.length) { cb.turn = 0; cb.round += 1; }
+        mesaCombatChanged(root);
+      } else if (t.closest('[data-combat-sort]')) {
+        const current = cb.combatants[cb.turn]?.id;
+        cb.combatants.sort((a, b) => b.init - a.init);
+        cb.turn = Math.max(0, cb.combatants.findIndex((c) => c.id === current));
+        mesaCombatChanged(root);
+      } else if (t.closest('[data-combat-roll]')) {
+        cb.combatants.forEach((c) => { c.init = rollDicePool(1).total; });
+        cb.combatants.sort((a, b) => b.init - a.init);
+        cb.turn = 0;
+        mesaCombatChanged(root);
+        toast('Iniciativa rolada (1d6 + 1d12) e ordenada.');
+      } else if (t.closest('[data-combat-clear]')) {
+        if (await askConfirm('Remover todos os combatentes e zerar a rodada?', { confirmLabel: 'Limpar', danger: true })) {
+          mesa.combat = mesaEmptyCombat();
+          mesaCombatChanged(root);
+        }
+      } else if (t.closest('[data-unit-dmg], [data-unit-heal]')) {
+        const u = unitOf(t);
+        if (!u) return;
+        const amt = Math.max(1, parseInt(t.closest('[data-unit]').querySelector('[data-unit-amt]').value, 10) || 1);
+        u.hp = t.closest('[data-unit-dmg]') ? Math.max(0, u.hp - amt) : Math.min(u.max, u.hp + amt);
+        mesaCombatChanged(root);
+      } else if (t.closest('[data-unit-cond]')) {
+        const u = unitOf(t);
+        if (!u) return;
+        const meta = t.closest('[data-unit]').querySelector('.mesa-unit__meta');
+        let input = meta.querySelector('[data-cond-input]');
+        if (!input) {
+          input = document.createElement('input');
+          input.className = 'create-form__input mesa-unit__condin';
+          input.dataset.condInput = '1';
+          input.maxLength = 30;
+          input.placeholder = 'Condição + Enter';
+          input.setAttribute('aria-label', 'Nova condição');
+          meta.appendChild(input);
+          input.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') input.remove();
+            if (e.key === 'Enter') {
+              e.preventDefault();
+              const v = input.value.trim();
+              if (v && u.conds.length < 8 && !u.conds.includes(v)) u.conds.push(v);
+              mesaCombatChanged(root);
+            }
+          });
+        }
+        input.focus();
+      } else if (t.closest('[data-cond-del]')) {
+        const u = unitOf(t);
+        if (!u) return;
+        u.conds = u.conds.filter((x) => x !== t.closest('[data-cond-del]').dataset.condDel);
+        mesaCombatChanged(root);
+      } else if (t.closest('[data-unit-del]')) {
+        const u = unitOf(t);
+        if (!u) return;
+        const index = cb.combatants.indexOf(u);
+        cb.combatants.splice(index, 1);
+        if (index < cb.turn) cb.turn -= 1;
+        cb.turn = Math.min(cb.turn, Math.max(0, cb.combatants.length - 1));
+        mesaCombatChanged(root);
       }
     });
   }
