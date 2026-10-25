@@ -2851,7 +2851,7 @@
           </button>
         ` : ''}
         <div class="codex-home__copy">
-          <div class="codex-home__eyebrow"><i></i><span>ARQUIVO VIVO · DARK FANTASY</span></div>
+          <div class="codex-home__eyebrow"><i></i><span>CAMPANHA DE RPG · DARK FANTASY</span></div>
           <p class="codex-home__kicker">Conhecimento preservado contra o fim</p>
           <h1 data-text-reveal>${escapeHtml(idx.title)}</h1>
           <p class="codex-home__subtitle">${escapeHtml(idx.subtitle)}</p>
@@ -2866,7 +2866,7 @@
 
       <section class="codex-home__directory">
         <header class="codex-home__section-head">
-          <div><span>ÍNDICE DO MUNDO</span><h2>Quatro caminhos pelo arquivo</h2></div>
+          <div><span>ÍNDICE</span><h2>Por onde começar</h2></div>
           <p>O mundo, seus povos, suas forças e as histórias deixadas para trás.</p>
         </header>
         <div class="codex-home__groups">
@@ -2886,14 +2886,14 @@
         </div>
       </section>
 
-      ${featured.length ? `<section class="section codex-home__featured"><header class="codex-home__section-head"><div><span>FRAGMENTOS RECUPERADOS</span><h2>Registros em destaque</h2></div><p>Entradas escolhidas entre diferentes partes do Codex.</p></header><div class="featured">${featured.map((e, i) => featuredCardHTML(e, i)).join('')}</div></section>` : ''}
+      ${featured.length ? `<section class="section codex-home__featured"><header class="codex-home__section-head"><div><span>EM DESTAQUE</span><h2>Do Codex</h2></div><p>Algumas entradas para começar a explorar.</p></header><div class="featured">${featured.map((e, i) => featuredCardHTML(e, i)).join('')}</div></section>` : ''}
 
-      ${(idx.pillars || []).length ? `<section class="section"><header class="codex-home__section-head"><div><span>FUNDAMENTOS</span><h2>As leis deste mundo</h2></div></header><div class="pillars">${idx.pillars.map((p, i) => `<article class="pillar" style="--delay:${i * 80}ms"><div class="pillar__num">0${i + 1}</div><h3 class="pillar__title">${escapeHtml(p.title)}</h3><p class="pillar__text">${escapeHtml(p.text)}</p><div class="pillar__glow"></div></article>`).join('')}</div></section>` : ''}
+      ${(idx.pillars || []).length ? `<section class="section"><header class="codex-home__section-head"><div><span>PILARES</span><h2>O que sustenta este mundo</h2></div></header><div class="pillars">${idx.pillars.map((p, i) => `<article class="pillar" style="--delay:${i * 80}ms"><div class="pillar__num">0${i + 1}</div><h3 class="pillar__title">${escapeHtml(p.title)}</h3><p class="pillar__text">${escapeHtml(p.text)}</p><div class="pillar__glow"></div></article>`).join('')}</div></section>` : ''}
 
       ${manifestoMarkup ? `
         <section class="section codex-home__manifesto">
           <div class="manifesto">
-            <span class="section__eyebrow">O MUNDO RESPIRA</span>
+            <span class="section__eyebrow">SOBRE O MUNDO</span>
             ${manifestoMarkup}
           </div>
         </section>
@@ -2968,7 +2968,7 @@
     if (!event) return `
       <div class="chrono-preview__empty">
         <span aria-hidden="true"></span>
-        <p>Selecione um marco</p>
+        <p>Selecione um acontecimento</p>
       </div>`;
     const era = eras.find((item) => item.id === event.fields?.Era);
     const branch = narrativeIsBranch(event);
@@ -2995,7 +2995,7 @@
     if (!eras.length) {
       return `
         <section class="chronoscope chronoscope--empty" data-chronoscope>
-          <header class="chronoscope__head"><div class="chronoscope__identity"><span class="chronoscope__mark" aria-hidden="true"></span><span><small>CRONOSCÓPIO</small><h1>Linha do tempo</h1></span></div>${showCreate ? '<a class="btn btn-primary chrono-action" href="#/Eras/criar">+ Era</a>' : ''}</header>
+          <header class="chronoscope__head"><div class="chronoscope__identity"><span class="chronoscope__mark" aria-hidden="true"></span><span><small>CRONOLOGIA</small><h1>Linha do tempo</h1></span></div>${showCreate ? '<a class="btn btn-primary chrono-action" href="#/Eras/criar">+ Era</a>' : ''}</header>
           <div class="chrono-empty-stage"><div class="chrono-empty-axis" aria-hidden="true"><i></i></div><p>Nenhuma era cadastrada.</p>${showCreate ? '<a href="#/Eras/criar">Criar a primeira era →</a>' : ''}</div>
         </section>`;
     }
@@ -3023,7 +3023,7 @@
 
     return `
       <section class="chronoscope" data-chronoscope>
-        <header class="chronoscope__head"><div class="chronoscope__identity"><span class="chronoscope__mark" aria-hidden="true"></span><span><small>CRONOSCÓPIO</small><h1>Linha do tempo</h1></span></div><div class="chronoscope__actions">${showCreate ? '<a class="btn btn-ghost chrono-action" href="#/Eras/criar">+ Era</a><a class="btn btn-primary chrono-action" href="#/Historias/criar">+ Acontecimento</a>' : ''}${branchCount ? `<button type="button" class="chrono-branch-toggle" data-chrono-branches aria-pressed="true">Ramificações <b>${branchCount}</b></button>` : ''}</div></header>
+        <header class="chronoscope__head"><div class="chronoscope__identity"><span class="chronoscope__mark" aria-hidden="true"></span><span><small>CRONOLOGIA</small><h1>Linha do tempo</h1></span></div><div class="chronoscope__actions">${showCreate ? '<a class="btn btn-ghost chrono-action" href="#/Eras/criar">+ Era</a><a class="btn btn-primary chrono-action" href="#/Historias/criar">+ Acontecimento</a>' : ''}${branchCount ? `<button type="button" class="chrono-branch-toggle" data-chrono-branches aria-pressed="true">Ramificações <b>${branchCount}</b></button>` : ''}</div></header>
         <nav class="chrono-era-nav" style="--era-count:${eras.length}" aria-label="Ir para uma era">${eras.map((era, index) => `<button type="button" data-chrono-era="${index}" class="${index === 0 ? 'is-active' : ''}"><b>${String(index + 1).padStart(2, '0')}</b><span>${escapeHtml(era.title)}</span></button>`).join('')}</nav>
         <div class="chrono-stage" data-chrono-stage>
           <div class="chrono-atmosphere" aria-hidden="true"></div>
