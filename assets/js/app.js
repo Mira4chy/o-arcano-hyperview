@@ -1207,12 +1207,7 @@
 
   /* ── SUPABASE CLIENT ──────────────────────────── */
   const cfg = window.ARCANO_CONFIG || {};
-  const narrativeTestRequested = new URLSearchParams(location.search).has('narrativeTest');
-  const narrativeTestHostAllowed = /^(localhost|127\.0\.0\.1)$/.test(location.hostname)
-    || location.hostname === 'o-arcano-hyperview-git-codex-55c025-jsbjunior21-langs-projects.vercel.app';
-  const narrativeTestMode = narrativeTestRequested && narrativeTestHostAllowed;
   const supabaseConfigured =
-    !narrativeTestMode &&
     cfg.supabaseUrl &&
     cfg.supabaseAnonKey &&
     !cfg.supabaseUrl.startsWith('COLE_') &&
@@ -1831,41 +1826,6 @@
   const TAG_COLOR_RE = /^#[0-9a-f]{6}$/i;
   const DEFAULT_TAG_COLOR = '#f59e0b';
   const categoryState = {};
-  const NARRATIVE_TEST_MODE = narrativeTestMode;
-
-  /* Dados demonstrativos só aparecem na URL de aprovação (?narrativeTest=1).
-     Eles usam o mesmo shape das linhas de stories; nada é gravado no Supabase. */
-  if (NARRATIVE_TEST_MODE) {
-    const demoEras = [
-      ['demo-era-01', 'Era 01', '', 1, 'Início', 'Marco 300', '#7667c7'],
-      ['demo-era-02', 'Era 02', '', 2, 'Marco 301', 'Marco 550', '#b98258'],
-      ['demo-era-03', 'Era 03', '', 3, 'Marco 551', 'Marco 820', '#5c9eaf'],
-      ['demo-era-04', 'Era 04', '', 4, 'Marco 821', 'Marco 1100', '#a55783'],
-      ['demo-era-05', 'Era 05', '', 5, 'Marco 1101', 'Presente', '#bd5555']
-    ].map(([id, title, summary, order, start, end, color]) => ({
-      id, tab: 'Eras', title, summary, image: '', imagePath: '', bodyHtml: '', tags: [], subtype: '',
-      fields: { Ordem: order, Início: start, Fim: end, Cor: color }, createdAt: order,
-      isUserCreated: false, detailLoaded: true, fieldsLoaded: true, isNarrativeDemo: true
-    }));
-    const demoStories = [
-      ['demo-fundacao', 'Fundação', 'Um marco de origem capaz de sustentar qualquer cenário criado pelo Mestre.', 'demo-era-01', 'Marco 080', 18, 'Cânone', '', 'Origem', 'assets/images/hero-arcano.webp'],
-      ['demo-pacto', 'O grande pacto', 'Uma aliança altera o equilíbrio político do mundo.', 'demo-era-01', 'Marco 240', 72, 'Cânone', '', 'Pacto', 'assets/images/login-cosmos-base.webp'],
-      ['demo-expansao', 'Expansão', 'Novas fronteiras surgem e conectam povos antes isolados.', 'demo-era-02', 'Marco 430', 48, 'Cânone', '', 'Ascensão', 'assets/images/race-anatomy-abstract.webp'],
-      ['demo-descoberta', 'A descoberta', 'Uma expedição encontra algo que muda a compreensão do mundo.', 'demo-era-03', 'Marco 630', 28, 'Cânone', '', 'Descoberta', 'assets/images/login-cosmos-nebula.webp'],
-      ['demo-divergencia', 'A escolha impossível', 'Neste ramo, uma decisão oposta cria uma realidade inteiramente nova.', 'demo-era-03', 'Divergência · Marco 710', 76, 'Realidade alternativa', 'demo-expansao', 'Divergência', 'assets/images/login-cosmos-foreground.webp'],
-      ['demo-ruptura', 'A ruptura', 'Um acontecimento divide o mundo entre antes e depois.', 'demo-era-04', 'Marco 940', 42, 'Cânone', '', 'Catástrofe', 'assets/images/hero-arcano.webp'],
-      ['demo-segundo-ramo', 'O mundo preservado', 'Uma segunda possibilidade nasce do ponto de ruptura.', 'demo-era-04', 'Divergência · Marco 1020', 80, 'Realidade alternativa', 'demo-ruptura', 'Divergência', 'assets/images/race-anatomy-abstract.webp'],
-      ['demo-presente', 'O presente', 'O último marco registrado aguarda as próximas escolhas da campanha.', 'demo-era-05', 'Presente', 55, 'Cânone', '', 'Marco atual', 'assets/images/login-cosmos-base.webp']
-    ].map(([id, title, summary, era, date, position, reality, divergence, importance, image], index) => ({
-      id, tab: 'Historias', title, summary, image, imagePath: '', tags: [], subtype: '',
-      bodyHtml: `<p>${summary}</p><blockquote>Todo acontecimento deixa uma cicatriz em quem sobrevive para lembrá-lo.</blockquote><p>Este relato demonstra como texto, imagens e contexto temporal convivem no leitor real do Codex.</p>`,
-      fields: { Era: era, 'Data no mundo': date, 'Posição temporal': position, Realidade: reality, 'Ponto de divergência': divergence, Importância: importance },
-      createdAt: index + 1, isUserCreated: false, detailLoaded: true, fieldsLoaded: true, isNarrativeDemo: true
-    }));
-    [...demoEras, ...demoStories].forEach((entry) => {
-      if (!entryById(entry.id)) ARCHIVE.entries.push(entry);
-    });
-  }
 
   function slugify(str) {
     return normalize(str).replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 80) || 'historia';
@@ -9187,9 +9147,7 @@
       }
 
       if (!sb) {
-        alert(NARRATIVE_TEST_MODE
-          ? 'Modo de demonstração: nada será gravado. Use “Visualizar como leitor” para revisar este rascunho.'
-          : 'Supabase não configurado. Edite assets/js/config.js com sua URL e anon key.');
+        alert('Supabase não configurado. Edite assets/js/config.js com sua URL e anon key.');
         return;
       }
 
@@ -10499,14 +10457,6 @@
 
     if (!sb) {
       // Sem Supabase: roda offline com defaults
-      if (narrativeTestMode) {
-        auth.canRead = true;
-        auth.isAdmin = true;
-        auth.role = 'admin';
-        document.body.classList.remove('is-locked');
-        document.body.classList.add('is-admin');
-        renderRoleBadge();
-      }
       render();
       return;
     }

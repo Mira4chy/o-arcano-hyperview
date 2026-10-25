@@ -137,4 +137,3 @@ O Cronoscópio não inclui um catálogo fixo de eras: nomes, limites, ordem e co
 - O Mestre cria eras em `#/Eras/criar` e acontecimentos em `#/Historias/criar`.
 - O editor rich-text aceita imagens entre parágrafos. No salvamento, imagens locais são otimizadas para WebP quando possível e enviadas ao bucket `banners` antes de o HTML sanitizado ser persistido.
 - Cada história abre no leitor imersivo em `#/Historias/<id>`, com contexto temporal, modo focado e histórias relacionadas da mesma era.
-- A URL local `?narrativeTest=1&skipIntro=1#/Eras` ativa apenas dados demonstrativos em memória e desliga o Supabase em `localhost`, permitindo testar sem gravar nada.
