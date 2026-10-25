@@ -5819,6 +5819,41 @@ body.is-locked > .intro { display: none !important; }
   .chrono-canon-line::after { transition: none !important; }
 }
 
+/* ── Cronoscópio · revisão de design (cortes, escala, hierarquia) ─── */
+.chrono-era-band { overflow: hidden; padding: 24px 22px 24px; }
+.chrono-era-band b { display: block; line-height: .9; }
+.chrono-era-band strong { margin-top: 12px; max-width: 24ch; color: color-mix(in srgb,var(--era-color) 38%,#e9e2f2); font: 500 clamp(.8rem,1vw,1rem)/1.3 'Cinzel',serif; letter-spacing: .06em; text-transform: none; }
+.chrono-era-band em { display: block; margin-top: 8px; color: var(--dim); font: italic .95rem 'Cormorant Garamond',serif; }
+.chrono-era-band small { right: 22px; bottom: 20px; left: 22px; color: var(--muted); font-size: .62rem; }
+.chrono-canon-line { right: 0; left: 0; background: linear-gradient(90deg,rgba(196,181,253,.22),rgba(196,181,253,.22)); }
+.chrono-event span { top: -46px; width: max-content; max-width: 170px; font-size: .62rem; line-height: 1.35; opacity: .72; text-wrap: balance; }
+.chrono-event.is-label-below span { top: 48px; }
+.chrono-event.is-label-below:hover span,.chrono-event.is-label-below:focus-visible span,.chrono-event.is-label-below.is-active span { transform: translate(-50%,3px); }
+.chrono-event.is-edge-start.is-label-below:hover span,.chrono-event.is-edge-start.is-label-below:focus-visible span,.chrono-event.is-edge-start.is-label-below.is-active span,
+.chrono-event.is-edge-end.is-label-below:hover span,.chrono-event.is-edge-end.is-label-below:focus-visible span,.chrono-event.is-edge-end.is-label-below.is-active span { transform: translate(0,3px); }
+.chrono-event:hover span,.chrono-event:focus-visible span,.chrono-event.is-active span { opacity: 1; }
+.chrono-event:hover,.chrono-event:focus-visible,.chrono-event.is-active { z-index: 3; }
+.chrono-preview { width: min(420px,calc(100% - 44px)); grid-template-columns: 124px minmax(0,1fr); }
+.chrono-preview__meta small { font-size: .62rem; }
+.chrono-preview__meta span { font-size: .55rem; }
+.chrono-preview__body h3 { font-size: 1.05rem; }
+.chrono-preview__body p { font-size: .92rem; }
+.chrono-preview__body > a { min-height: 32px; font-size: .62rem; }
+.chrono-preview__media.is-fallback { background: radial-gradient(circle at 50% 60%,rgba(211,164,93,.28),transparent 60%),#0d0a14; }
+.chrono-preview__empty p { font-size: .8rem; }
+.chrono-era-nav button span { font-size: .68rem; }
+.chrono-era-nav button b { font-size: .62rem; }
+.chronoscope__head small { font-size: .6rem; }
+.chrono-legend { font-size: .62rem; }
+.chrono-mobile-event button small { font-size: .62rem; }
+.chrono-mobile-event button strong { font-size: .8rem; }
+.chrono-mobile-era > header b { font-size: .68rem; }
+.chrono-mobile-era > header strong { font-size: .85rem; }
+.chrono-mobile-event > div a { font-size: .66rem; }
+@media (max-width: 1100px) {
+  .chrono-preview { display: grid; }
+}
+
 /* ── Topbar role pill + logout ─────────────────── */
 .role-pill {
   display: inline-flex;

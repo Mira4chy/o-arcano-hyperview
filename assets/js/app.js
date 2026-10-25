@@ -2931,14 +2931,14 @@
 
     const eraBands = eras.map((era, index) => `
       <div class="chrono-era-band" id="chrono-era-${index}" data-era-index="${index}" aria-label="${escapeHtml(era.title)}" style="--era-left:${index * eraWidth}%;--era-width:${eraWidth}%;--era-color:${escapeHtml(era.fields?.Cor || '#a78bfa')}">
-        <b aria-hidden="true">${String(index + 1).padStart(2, '0')}</b><small>${escapeHtml(`${era.fields?.Início || '—'} · ${era.fields?.Fim || '—'}`)}</small>
+        <b aria-hidden="true">${String(index + 1).padStart(2, '0')}</b><strong>${escapeHtml(era.title)}</strong>${events.some((event) => event.fields?.Era === era.id) ? '' : '<em>Nenhum acontecimento</em>'}<small>${escapeHtml(`${era.fields?.Início || '—'} · ${era.fields?.Fim || '—'}`)}</small>
       </div>`).join('');
 
-    const eventNodes = events.map((event) => {
+    const eventNodes = events.map((event, eventIndex) => {
       const eraIndex = Math.max(0, eras.findIndex((era) => era.id === event.fields?.Era));
-      const left = eraIndex * eraWidth + (narrativePosition(event) / 100) * eraWidth;
+      const left = eraIndex * eraWidth + (6 + narrativePosition(event) * 0.88) / 100 * eraWidth;
       const branch = narrativeIsBranch(event);
-      const edgeClass = left < 7 ? ' is-edge-start' : (left > 93 ? ' is-edge-end' : '');
+      const edgeClass = (left < 7 ? ' is-edge-start' : (left > 93 ? ' is-edge-end' : '')) + (eventIndex % 2 ? ' is-label-below' : '');
       return `<button type="button" class="chrono-event ${branch ? 'chrono-event--branch' : ''}${edgeClass}" style="--event-left:${left}%" data-chrono-event="${escapeHtml(event.id)}" data-chrono-era-index="${eraIndex}" aria-pressed="false" aria-label="${escapeHtml(`${event.title}, ${event.fields?.['Data no mundo'] || 'data não definida'}${branch ? ', realidade alternativa' : ''}`)}"><i></i><span>${escapeHtml(event.title)}</span></button>`;
     }).join('');
 
@@ -2956,11 +2956,11 @@
         <nav class="chrono-era-nav" style="--era-count:${eras.length}" aria-label="Ir para uma era">${eras.map((era, index) => `<button type="button" data-chrono-era="${index}" class="${index === 0 ? 'is-active' : ''}"><b>${String(index + 1).padStart(2, '0')}</b><span>${escapeHtml(era.title)}</span></button>`).join('')}</nav>
         <div class="chrono-stage" data-chrono-stage>
           <div class="chrono-atmosphere" aria-hidden="true"></div>
-          <div class="chrono-track-scroll" tabindex="0" aria-label="Linha do tempo. Use Tab ou as setas para percorrer os acontecimentos."><div class="chrono-track"><div class="chrono-era-bands">${eraBands}</div><div class="chrono-canon-line" aria-hidden="true"></div><div class="chrono-branch-line" aria-hidden="true"></div>${eventNodes}</div></div>
+          <div class="chrono-track-scroll" tabindex="0" aria-label="Linha do tempo. Use Tab ou as setas para percorrer os acontecimentos."><div class="chrono-track"><div class="chrono-era-bands">${eraBands}</div><div class="chrono-canon-line" aria-hidden="true"></div>${branchCount ? '<div class="chrono-branch-line" aria-hidden="true"></div>' : ''}${eventNodes}</div></div>
           <aside class="chrono-preview is-revealed" data-chrono-preview aria-live="polite">${narrativePreviewHTML(first, eras)}</aside>
         </div>
         <div class="chrono-mobile">${mobileEras}</div>
-        <footer class="chrono-legend"><span><i></i>Linha principal</span><span><i class="is-branch"></i>Ramificação</span></footer>
+        <footer class="chrono-legend"><span><i></i>Linha principal</span>${branchCount ? '<span><i class="is-branch"></i>Ramificação</span>' : ''}</footer>
       </section>`;
   }
 
