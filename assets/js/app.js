@@ -1207,9 +1207,12 @@
 
   /* ── SUPABASE CLIENT ──────────────────────────── */
   const cfg = window.ARCANO_CONFIG || {};
-  const localNarrativePreview = new URLSearchParams(location.search).has('narrativeTest') && /^(localhost|127\.0\.0\.1)$/.test(location.hostname);
+  const narrativeTestRequested = new URLSearchParams(location.search).has('narrativeTest');
+  const narrativeTestHostAllowed = /^(localhost|127\.0\.0\.1)$/.test(location.hostname)
+    || location.hostname === 'o-arcano-hyperview-git-codex-55c025-jsbjunior21-langs-projects.vercel.app';
+  const narrativeTestMode = narrativeTestRequested && narrativeTestHostAllowed;
   const supabaseConfigured =
-    !localNarrativePreview &&
+    !narrativeTestMode &&
     cfg.supabaseUrl &&
     cfg.supabaseAnonKey &&
     !cfg.supabaseUrl.startsWith('COLE_') &&
@@ -1828,7 +1831,7 @@
   const TAG_COLOR_RE = /^#[0-9a-f]{6}$/i;
   const DEFAULT_TAG_COLOR = '#f59e0b';
   const categoryState = {};
-  const NARRATIVE_TEST_MODE = new URLSearchParams(location.search).has('narrativeTest');
+  const NARRATIVE_TEST_MODE = narrativeTestMode;
 
   /* Dados demonstrativos só aparecem na URL de aprovação (?narrativeTest=1).
      Eles usam o mesmo shape das linhas de stories; nada é gravado no Supabase. */
@@ -9154,7 +9157,9 @@
       }
 
       if (!sb) {
-        alert('Supabase não configurado. Edite assets/js/config.js com sua URL e anon key.');
+        alert(NARRATIVE_TEST_MODE
+          ? 'Modo de demonstração: nada será gravado. Use “Visualizar como leitor” para revisar este rascunho.'
+          : 'Supabase não configurado. Edite assets/js/config.js com sua URL e anon key.');
         return;
       }
 
@@ -10464,7 +10469,7 @@
 
     if (!sb) {
       // Sem Supabase: roda offline com defaults
-      if (localNarrativePreview) {
+      if (narrativeTestMode) {
         auth.canRead = true;
         auth.isAdmin = true;
         auth.role = 'admin';
