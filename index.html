@@ -6,7 +6,9 @@
     <title>O Arcano · Codex</title>
     <meta name="description" content="O Arcano — codex de campanha de RPG dark fantasy. Magia viva, mana morta e sobrevivência.">
     <script>
-      if (window.location.search.includes("skipIntro")) {
+      var introSeen = false;
+      try { introSeen = sessionStorage.getItem("arcano-intro-seen") === "1"; } catch (e) {}
+      if (introSeen || window.location.search.includes("skipIntro")) {
         document.documentElement.classList.add("skip-intro");
       }
     </script>

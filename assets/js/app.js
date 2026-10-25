@@ -1612,7 +1612,7 @@
       logout.setAttribute('aria-label', 'Sair');
       logout.innerHTML = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 17l5-5-5-5M21 12H9M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/></svg>';
       logout.addEventListener('click', async () => {
-        if (!confirm('Sair da sessão?')) return;
+        if (!(await askConfirm('Sair da sessão?', { confirmLabel: 'Sair' }))) return;
         if (sb) await sb.auth.signOut();
         location.reload();
       });
@@ -1703,6 +1703,75 @@
   /* ── HELPERS ──────────────────────────────────── */
   const escapeHtml = (s) => String(s ?? '').replace(/[&<>"']/g, (c) =>
     ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+  /* ── Avisos e confirmações (no lugar de alert/confirm) ── */
+  function toast(message, type) {
+    const kind = type || (/^(erro|não foi possível|nao foi possivel)/i.test(String(message)) ? 'error' : 'info');
+    let region = document.getElementById('toastRegion');
+    if (!region) {
+      region = document.createElement('div');
+      region.id = 'toastRegion';
+      region.className = 'toast-region';
+      region.setAttribute('role', 'status');
+      region.setAttribute('aria-live', 'polite');
+      document.body.appendChild(region);
+    }
+    const item = document.createElement('button');
+    item.type = 'button';
+    item.className = `toast toast--${kind}`;
+    item.textContent = String(message);
+    item.title = 'Fechar';
+    const close = () => {
+      if (!item.isConnected) return;
+      item.classList.add('is-leaving');
+      setTimeout(() => item.remove(), 200);
+    };
+    item.addEventListener('click', close);
+    region.appendChild(item);
+    while (region.children.length > 4) region.firstElementChild.remove();
+    setTimeout(close, kind === 'error' ? 8000 : 4500);
+  }
+
+  function askConfirm(message, options = {}) {
+    const { confirmLabel = 'Confirmar', cancelLabel = 'Cancelar', danger = false, title = '' } = options;
+    return new Promise((resolve) => {
+      const previous = document.activeElement;
+      const overlay = document.createElement('div');
+      overlay.className = 'dlg';
+      overlay.innerHTML = `
+        <div class="dlg__box ${danger ? 'is-danger' : ''}" role="alertdialog" aria-modal="true" aria-labelledby="dlgMsg">
+          ${title ? `<h2 class="dlg__title">${escapeHtml(title)}</h2>` : ''}
+          <p class="dlg__msg" id="dlgMsg">${escapeHtml(message)}</p>
+          <div class="dlg__actions">
+            <button type="button" class="btn btn-ghost" data-dlg="no">${escapeHtml(cancelLabel)}</button>
+            <button type="button" class="btn ${danger ? 'btn-danger' : 'btn-primary'}" data-dlg="yes">${escapeHtml(confirmLabel)}</button>
+          </div>
+        </div>`;
+      const finish = (value) => {
+        document.removeEventListener('keydown', onKey, true);
+        overlay.remove();
+        if (previous && previous.focus) previous.focus();
+        resolve(value);
+      };
+      const onKey = (event) => {
+        if (event.key === 'Escape') { event.preventDefault(); finish(false); }
+        if (event.key === 'Tab') {
+          const buttons = [...overlay.querySelectorAll('button')];
+          const index = buttons.indexOf(document.activeElement);
+          event.preventDefault();
+          buttons[(index + (event.shiftKey ? -1 : 1) + buttons.length) % buttons.length].focus();
+        }
+      };
+      overlay.addEventListener('click', (event) => {
+        if (event.target === overlay) finish(false);
+        const button = event.target.closest('[data-dlg]');
+        if (button) finish(button.dataset.dlg === 'yes');
+      });
+      document.addEventListener('keydown', onKey, true);
+      document.body.appendChild(overlay);
+      overlay.querySelector('[data-dlg="no"]').focus();
+    });
+  }
 
   const normalize = (s) => String(s ?? '').toLowerCase()
     .normalize('NFD').replace(/[̀-ͯ]/g, '');
@@ -2807,7 +2876,9 @@
               <nav aria-label="${escapeHtml(group.title)}">
                 ${group.tabs.map((tabId) => {
                   const tab = tabById(tabId);
-                  return tab ? `<a href="#/${tab.id}" style="--hue:${themeOf(tab.id).hue}"><span>${iconOf(tab.id)}</span><strong>${escapeHtml(tab.title)}</strong><small>${tabCount(tab.id)}</small></a>` : '';
+                  if (!tab) return '';
+                  const total = tabCount(tab.id);
+                  return `<a href="#/${tab.id}" class="${total ? '' : 'is-empty'}" ${total ? '' : 'title="Ainda sem entradas"'} style="--hue:${themeOf(tab.id).hue}"><span>${iconOf(tab.id)}</span><strong>${escapeHtml(tab.title)}</strong><small>${total || 'vazio'}</small></a>`;
                 }).join('')}
               </nav>
               <span class="codex-home__group-line" aria-hidden="true"></span>
@@ -2931,7 +3002,7 @@
 
     const eraBands = eras.map((era, index) => `
       <div class="chrono-era-band" id="chrono-era-${index}" data-era-index="${index}" aria-label="${escapeHtml(era.title)}" style="--era-left:${index * eraWidth}%;--era-width:${eraWidth}%;--era-color:${escapeHtml(era.fields?.Cor || '#a78bfa')}">
-        <b aria-hidden="true">${String(index + 1).padStart(2, '0')}</b><strong>${escapeHtml(era.title)}</strong>${events.some((event) => event.fields?.Era === era.id) ? '' : '<em>Nenhum acontecimento</em>'}<small>${escapeHtml(`${era.fields?.Início || '—'} · ${era.fields?.Fim || '—'}`)}</small>
+        <b aria-hidden="true">${String(index + 1).padStart(2, '0')}</b><strong>${escapeHtml(era.title)}</strong>${events.some((event) => event.fields?.Era === era.id) ? '' : `<em>Nenhum acontecimento</em>${showCreate ? '<a class="chrono-era-band__add" href="#/Historias/criar">+ Acontecimento</a>' : ''}`}<small>${escapeHtml(`${era.fields?.Início || '—'} · ${era.fields?.Fim || '—'}`)}</small>
       </div>`).join('');
 
     const eventNodes = events.map((event, eventIndex) => {
@@ -4036,7 +4107,7 @@
     form.addEventListener('submit', async (e) => {
       e.preventDefault();
       if (!sb) {
-        alert('Supabase não configurado. Edite assets/js/config.js com sua URL e anon key.');
+        toast('Supabase não configurado. Edite assets/js/config.js com sua URL e anon key.');
         return;
       }
 
@@ -4184,7 +4255,7 @@
         }
       } catch (err) {
         console.error(err);
-        alert('Erro ao salvar: ' + (err.message || err));
+        toast('Erro ao salvar: ' + (err.message || err));
         submitBtn.disabled = false;
         submitBtn.innerHTML = originalLabel;
       }
@@ -6602,6 +6673,9 @@
     if (!force && routeKey === lastRoute) return;
     lastRoute = routeKey;
     const sequence = ++renderSequence;
+    document.body.classList.add('is-routing');
+    view.setAttribute('aria-busy', 'true');
+    setTimeout(() => { if (sequence === renderSequence) { document.body.classList.remove('is-routing'); view.removeAttribute('aria-busy'); } }, 10000);
 
     if (auth.canRead && sb) {
       if (tab === 'Persona') await loadCharacters();
@@ -6643,6 +6717,8 @@
     setTimeout(() => {
       if (sequence !== renderSequence) return;
       view.innerHTML = html;
+      document.body.classList.remove('is-routing');
+      view.removeAttribute('aria-busy');
       syncAmbientMode(tab);
       view.classList.remove('is-leaving');
       view.classList.add('is-entering');
@@ -7133,13 +7209,13 @@
       fileInput.value = '';
     });
 
-    function loadBanner(file) {
+    async function loadBanner(file) {
       if (!file.type.startsWith('image/')) {
-        alert('Selecione um arquivo de imagem.');
+        toast('Selecione um arquivo de imagem.');
         return;
       }
       if (file.size > 5 * 1024 * 1024) {
-        if (!confirm('A imagem é grande (' + Math.round(file.size / 1024) + ' KB). Continuar?')) return;
+        if (!(await askConfirm('A imagem é grande (' + Math.round(file.size / 1024) + ' KB). Continuar?', { confirmLabel: 'Continuar' }))) return;
       }
       bannerFile = file;
       const reader = new FileReader();
@@ -7256,7 +7332,7 @@
       if (existing) existing.color = safeTagColor(color);
       else if (tags.length < 8) tags.push({ label, color: safeTagColor(color) });
       else {
-        alert('Use no máximo 8 tags por história.');
+        toast('Use no máximo 8 tags por história.');
         return;
       }
       nameInput.value = '';
@@ -8136,7 +8212,7 @@
 
     function addBeastDrop() {
       if (!entriesIn('Itens').length) {
-        alert('Crie ao menos um item na aba Itens antes de vincular drops.');
+        toast('Crie ao menos um item na aba Itens antes de vincular drops.');
         return;
       }
       const drops = readBeastDropRows();
@@ -8215,7 +8291,7 @@
         return;
       }
       if (items.length >= 12) {
-        alert('Máximo de 12 itens por lista.');
+        toast('Máximo de 12 itens por lista.');
         return;
       }
       items.push(v);
@@ -8581,11 +8657,11 @@
 
     function insertInlineImage(file) {
       if (!file || !/^image\/(?:png|jpe?g|webp)$/i.test(file.type)) {
-        alert('Escolha uma imagem PNG, JPG ou WebP.');
+        toast('Escolha uma imagem PNG, JPG ou WebP.');
         return;
       }
       if (file.size > 5 * 1024 * 1024) {
-        alert('A imagem deve ter no máximo 5 MB.');
+        toast('A imagem deve ter no máximo 5 MB.');
         return;
       }
       const reader = new FileReader();
@@ -8764,7 +8840,7 @@
       const sel = window.getSelection();
       const text = sel && sel.rangeCount ? sel.toString() : '';
       if (!text || !text.trim()) {
-        alert('Selecione o texto que vai virar o link.');
+        toast('Selecione o texto que vai virar o link.');
         editor.focus();
         return;
       }
@@ -8844,7 +8920,7 @@
         renderSavedPalette();
         saveMasterPalette(next).catch((err) => {
           console.error(err);
-          alert('Erro ao remover cor: ' + (err.message || err));
+          toast('Erro ao remover cor: ' + (err.message || err));
           masterPalette.colors = previous;
           renderSavedPalette();
         });
@@ -8860,7 +8936,7 @@
         const color = safeTagColor(colorInput.value);
         if (masterPalette.colors.includes(color)) return;
         if (masterPalette.colors.length >= MAX_PALETTE) {
-          alert(`Máximo de ${MAX_PALETTE} cores salvas. Remova alguma antes de adicionar uma nova.`);
+          toast(`Máximo de ${MAX_PALETTE} cores salvas. Remova alguma antes de adicionar uma nova.`);
           return;
         }
         const next = [...masterPalette.colors, color];
@@ -8869,7 +8945,7 @@
         renderSavedPalette();
         saveMasterPalette(next).catch((err) => {
           console.error(err);
-          alert('Erro ao salvar cor: ' + (err.message || err));
+          toast('Erro ao salvar cor: ' + (err.message || err));
           masterPalette.colors = previous;
           renderSavedPalette();
         });
@@ -9147,7 +9223,7 @@
       }
 
       if (!sb) {
-        alert('Supabase não configurado. Edite assets/js/config.js com sua URL e anon key.');
+        toast('Supabase não configurado. Edite assets/js/config.js com sua URL e anon key.');
         return;
       }
 
@@ -9189,7 +9265,7 @@
           location.hash = `#/${tabId}/${id}`;
         } catch (err) {
           console.error(err);
-          alert('Erro ao salvar: ' + (err.message || err));
+          toast('Erro ao salvar: ' + (err.message || err));
           submitBtn.disabled = false;
           submitBtn.innerHTML = originalLabel;
           if (imagePath) await removeBanner(imagePath);
@@ -9247,7 +9323,7 @@
           render(true);
         } catch (err) {
           console.error(err);
-          alert('Erro ao salvar alterações: ' + (err.message || err));
+          toast('Erro ao salvar alterações: ' + (err.message || err));
           submitBtn.disabled = false;
           submitBtn.innerHTML = originalLabel;
           if (uploadedPath) await removeBanner(uploadedPath);
@@ -9652,7 +9728,7 @@
 
     form.addEventListener('submit', async (e) => {
       e.preventDefault();
-      if (!sb) { alert('Supabase não configurado.'); return; }
+      if (!sb) { toast('Supabase não configurado.'); return; }
 
       const name = nameInput.value.trim();
       if (!name) {
@@ -9663,7 +9739,7 @@
       nameInput.classList.remove('is-invalid');
 
       if (!awakening.resolved) {
-        alert('Conclua o Despertar antes de salvar: role o destino e, se for mago, aceite ou renuncie à Mana.');
+        toast('Conclua o Despertar antes de salvar: role o destino e, se for mago, aceite ou renuncie à Mana.');
         awakeningEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
         return;
       }
@@ -9744,7 +9820,7 @@
         render(true);
       } catch (err) {
         console.error(err);
-        alert('Erro ao salvar ficha: ' + (err.message || err));
+        toast('Erro ao salvar ficha: ' + (err.message || err));
         submitBtn.disabled = false;
         submitBtn.innerHTML = originalLabel;
         if (uploadedPath) await removeBanner(uploadedPath);
@@ -9759,8 +9835,8 @@
       btn.addEventListener('click', async () => {
         const c = characterById(btn.dataset.deleteCharacter);
         if (!c) return;
-        if (!confirm(`Apagar a ficha "${c.name}"? Esta ação não pode ser desfeita.`)) return;
-        if (!sb) { alert('Supabase não configurado.'); return; }
+        if (!(await askConfirm(`Apagar a ficha "${c.name}"? Esta ação não pode ser desfeita.`, { confirmLabel: 'Apagar', danger: true }))) return;
+        if (!sb) { toast('Supabase não configurado.'); return; }
         btn.disabled = true;
         try {
           await deleteCharacter(c);
@@ -9769,7 +9845,7 @@
           location.hash = '#/Persona';
         } catch (err) {
           console.error(err);
-          alert('Erro ao apagar ficha: ' + (err.message || err));
+          toast('Erro ao apagar ficha: ' + (err.message || err));
           btn.disabled = false;
         }
       });
@@ -9838,7 +9914,7 @@
       clearTimeout(saveTimer);
       saveTimer = setTimeout(async () => {
         try { await persistCharacterState(c); }
-        catch (err) { console.error(err); if (!saveErr) { saveErr = true; alert('Não foi possível salvar a ficha: ' + (err.message || err)); } }
+        catch (err) { console.error(err); if (!saveErr) { saveErr = true; toast('Não foi possível salvar a ficha: ' + (err.message || err)); } }
       }, 400);
     };
 
@@ -9982,7 +10058,7 @@
       if (field) setTimeout(() => field.focus(), 200);
     };
 
-    root.addEventListener('click', (e) => {
+    root.addEventListener('click', async (e) => {
       if (e.target.closest('[data-char-effect-add]')) { openEffectEditor(-1); return; }
       const effectEdit = e.target.closest('[data-char-effect-edit]');
       if (effectEdit) { openEffectEditor(Number(effectEdit.dataset.charEffectEdit)); return; }
@@ -10059,7 +10135,7 @@
         const cost = Math.max(0, parseInt(spellCast.dataset.spellCost, 10) || 0);
         const mana = ensureVitals(c).mana;
         if (!mana || !cost) return;
-        if (mana.cur < cost && !confirm(`Mana insuficiente (${mana.cur}/${mana.max}). Gastar mesmo assim e cair a 0?`)) return;
+        if (mana.cur < cost && !(await askConfirm(`Mana insuficiente (${mana.cur}/${mana.max}). Gastar mesmo assim e cair a 0?`, { confirmLabel: 'Gastar mesmo assim', danger: true }))) return;
         mana.cur = Math.max(0, mana.cur - cost);
         if ($('charMana')) $('charMana').innerHTML = charManaInner(c, true);
         if (syncArcaneCollapse(c) && $('charStatus')) $('charStatus').innerHTML = charStatusInner(c, true);
@@ -10111,7 +10187,7 @@
     form.addEventListener('submit', async (e) => {
       e.preventDefault();
       if (!sb) {
-        alert('Supabase não configurado. Edite assets/js/config.js com sua URL e anon key.');
+        toast('Supabase não configurado. Edite assets/js/config.js com sua URL e anon key.');
         return;
       }
 
@@ -10142,7 +10218,7 @@
         }
       } catch (err) {
         console.error(err);
-        alert('Erro ao salvar apresentação: ' + (err.message || err));
+        toast('Erro ao salvar apresentação: ' + (err.message || err));
         submitBtn.disabled = false;
         submitBtn.innerHTML = originalLabel;
       }
@@ -10208,9 +10284,9 @@
         const id = btn.dataset.deleteEntry;
         const e = entryById(id);
         if (!e) return;
-        if (!confirm(`Apagar "${e.title}"? Esta ação não pode ser desfeita.`)) return;
+        if (!(await askConfirm(`Apagar "${e.title}"? Esta ação não pode ser desfeita.`, { confirmLabel: 'Apagar', danger: true }))) return;
         if (!sb) {
-          alert('Supabase não configurado.');
+          toast('Supabase não configurado.');
           return;
         }
         btn.disabled = true;
@@ -10221,7 +10297,7 @@
           location.hash = `#/${e.tab}`;
         } catch (err) {
           console.error(err);
-          alert('Erro ao apagar: ' + (err.message || err));
+          toast('Erro ao apagar: ' + (err.message || err));
           btn.disabled = false;
         }
       });
@@ -10450,6 +10526,7 @@
     }, { passive: true });
 
     if (intro && !document.documentElement.classList.contains('skip-intro')) {
+      try { sessionStorage.setItem('arcano-intro-seen', '1'); } catch (_) { /* sem storage */ }
       setTimeout(() => intro.classList.add('is-gone'), 2200);
     } else if (intro) {
       intro.style.display = 'none';
