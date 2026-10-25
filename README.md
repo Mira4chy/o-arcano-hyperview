@@ -137,3 +137,32 @@ O Cronoscópio não inclui um catálogo fixo de eras: nomes, limites, ordem e co
 - O Mestre cria eras em `#/Eras/criar` e acontecimentos em `#/Historias/criar`.
 - O editor rich-text aceita imagens entre parágrafos. No salvamento, imagens locais são otimizadas para WebP quando possível e enviadas ao bucket `banners` antes de o HTML sanitizado ser persistido.
 - Cada história abre no leitor imersivo em `#/Historias/<id>`, com contexto temporal, modo focado e histórias relacionadas da mesma era.
+
+
+## Backup, testes e segurança
+
+### Backup do Codex (Mestre)
+Na home, o Mestre tem dois botões: **Backup (JSON)** baixa tudo (entradas, apresentação e fichas) em um
+arquivo restaurável, e **Exportar (Markdown)** baixa o texto do Codex, agrupado por categoria, para leitura
+ou versionamento. Faça um backup antes de mudanças grandes no banco.
+
+### Testes de ponta a ponta (Playwright)
+```bash
+npm install
+npm test
+```
+- Sem credenciais, roda o portão de acesso: carregamento sem erros de JavaScript, alternância entre
+  entrar e solicitar acesso, conteúdo protegido fechado, ausência de rolagem horizontal (celular, tablet
+  e desktop) e abertura animada uma vez por sessão.
+- Com `E2E_EMAIL` e `E2E_PASSWORD` (conta de **teste** aprovada, nunca a do Mestre), também percorre as
+  categorias, a linha do tempo e o diálogo de saída. Os testes só leem dados.
+- Usa o Edge instalado (`E2E_CHANNEL=chrome` para usar o Chrome); nada é baixado.
+
+### Erros inesperados
+Erros de JavaScript e promessas rejeitadas viram um aviso discreto na tela (no máximo um por minuto) e
+ficam completos no console do navegador. Não há serviço externo de monitoramento.
+
+### Segurança do Supabase (revisão de 25/10/2026)
+- RLS ligado em todas as tabelas públicas; leitura só para contas aprovadas; escrita de conteúdo só do Mestre.
+- Pendências no painel do Supabase (Authentication): ativar **Leaked Password Protection**.
+- `current_arcano_role()` é executável por usuários logados de propósito: as políticas de RLS dependem dela.

@@ -12153,3 +12153,8 @@ body *:not(.topbar):not(.sidebar):not(.dlg):not(.search-results):not(.mobile-sea
 .cat-hero { background: linear-gradient(180deg, hsla(var(--hue), 35%, 16%, .5), rgba(12, 10, 20, .7)); border-color: hsla(var(--hue), 40%, 60%, .22); }
 .cat-hero::before, .cat-hero::after { opacity: 0; }
 .cat-hero__icon { background: hsla(var(--hue), 40%, 30%, .25); border-color: hsla(var(--hue), 50%, 65%, .35); }
+
+/* ── Ferramentas do Mestre na home ─────────────── */
+.hero__tools { position: absolute; z-index: 2; top: 18px; right: 18px; display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; max-width: calc(100% - 36px); }
+.hero__tools .hero__edit--tool { position: static; min-height: 40px; white-space: nowrap; }
+.hero__tools .hero__edit--tool:disabled { opacity: .5; cursor: progress; }

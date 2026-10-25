@@ -1,2 +1,7 @@
 # Cópia local, offline e descartável do site para experimentação visual.
 laboratorio/
+
+# Testes e dependencias
+node_modules/
+test-results/
+playwright-report/

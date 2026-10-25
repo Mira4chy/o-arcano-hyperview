@@ -2845,10 +2845,10 @@
         <span class="arc-trace arc-trace--top" aria-hidden="true"></span>
         <span class="arc-trace arc-trace--bottom" aria-hidden="true"></span>
         ${auth.isAdmin ? `
-          <button type="button" class="hero__edit" data-edit-index aria-label="Editar apresentação">
+<div class="hero__tools">          <button type="button" class="hero__edit hero__edit--tool" data-edit-index aria-label="Editar apresentação">
             <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 113 3L7 19l-4 1 1-4 12.5-12.5z"/></svg>
             <span>Editar apresentação</span>
-          </button>
+          </button><button type="button" class="hero__edit hero__edit--tool" data-backup="json" title="Baixar tudo em JSON (restaurável)"><span>Backup (JSON)</span></button><button type="button" class="hero__edit hero__edit--tool" data-backup="markdown" title="Baixar o texto do Codex em Markdown (leitura)"><span>Exportar (Markdown)</span></button></div>
         ` : ''}
         <div class="codex-home__copy">
           <div class="codex-home__eyebrow"><i></i><span>CAMPANHA DE RPG · DARK FANTASY</span></div>
@@ -6733,6 +6733,7 @@
         attachCharacterForm();
         attachEditIndexForm();
         attachIndexEditButton();
+        attachBackupButtons();
         attachHomeParallax();
         attachSpellPageTurns();
         attachDeleteHandlers();
@@ -10515,6 +10516,129 @@
       }
     });
   }
+
+  /* ── BACKUP DO CODEX (somente Mestre) ─────────── */
+  async function fetchAllRows(table, orderBy) {
+    const rows = [];
+    const size = 500;
+    for (let from = 0; ; from += size) {
+      const { data, error } = await sb.from(table).select('*').order(orderBy, { ascending: true }).range(from, from + size - 1);
+      if (error) throw error;
+      rows.push(...(data || []));
+      if (!data || data.length < size) break;
+    }
+    return rows;
+  }
+
+  function markdownFromHtml(html) {
+    if (!html) return '';
+    const doc = new DOMParser().parseFromString(String(html), 'text/html');
+    const walk = (node) => {
+      if (node.nodeType === 3) return node.textContent.replace(/\s+/g, ' ');
+      if (node.nodeType !== 1) return '';
+      const inner = () => [...node.childNodes].map(walk).join('');
+      switch (node.tagName.toLowerCase()) {
+        case 'h1': case 'h2': return `\n\n#### ${inner().trim()}\n\n`;
+        case 'h3': case 'h4': return `\n\n##### ${inner().trim()}\n\n`;
+        case 'p': case 'div': return `\n\n${inner().trim()}\n\n`;
+        case 'br': return '\n';
+        case 'strong': case 'b': return `**${inner().trim()}**`;
+        case 'em': case 'i': return `*${inner().trim()}*`;
+        case 's': case 'strike': case 'del': return `~~${inner().trim()}~~`;
+        case 'code': return `\`${inner()}\``;
+        case 'hr': return '\n\n---\n\n';
+        case 'blockquote': return `\n\n${inner().trim().split('\n').map((line) => `> ${line}`).join('\n')}\n\n`;
+        case 'ul': return `\n\n${[...node.children].map((li) => `- ${walk(li).trim()}`).join('\n')}\n\n`;
+        case 'ol': return `\n\n${[...node.children].map((li, i) => `${i + 1}. ${walk(li).trim()}`).join('\n')}\n\n`;
+        case 'a': return `[${inner().trim()}](${node.getAttribute('href') || ''})`;
+        case 'img': return `![${node.getAttribute('alt') || ''}](${node.getAttribute('src') || ''})`;
+        case 'script': case 'style': return '';
+        default: return inner();
+      }
+    };
+    return walk(doc.body).replace(/\n{3,}/g, '\n\n').trim();
+  }
+
+  function downloadText(filename, text, mime) {
+    const blob = new Blob([text], { type: `${mime};charset=utf-8` });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 2000);
+  }
+
+  async function exportBackup(kind) {
+    if (!sb || !auth.isAdmin) return;
+    toast('Preparando o backup…', 'info');
+    try {
+      const [stories, index, characters] = await Promise.all([
+        fetchAllRows('stories', 'created_at'),
+        fetchAllRows('index_config', 'id'),
+        fetchAllRows('characters', 'created_at')
+      ]);
+      const stamp = new Date().toISOString().slice(0, 10);
+      if (kind === 'markdown') {
+        const byTab = new Map();
+        stories.forEach((row) => {
+          if (!byTab.has(row.tab)) byTab.set(row.tab, []);
+          byTab.get(row.tab).push(row);
+        });
+        const parts = [`# O Arcano — Codex\n\nExportado em ${new Date().toLocaleString('pt-BR')} · ${stories.length} entradas · ${characters.length} fichas`];
+        [...byTab.entries()].sort(([a], [b]) => a.localeCompare(b, 'pt-BR')).forEach(([tab, rows]) => {
+          parts.push(`\n\n---\n\n## ${tab}`);
+          rows.forEach((row) => {
+            const tags = Array.isArray(row.tags) ? row.tags.map((t) => (typeof t === 'string' ? t : t?.label)).filter(Boolean) : [];
+            const fields = row.fields && typeof row.fields === 'object' ? Object.entries(row.fields).filter(([, v]) => v !== '' && v != null && typeof v !== 'object') : [];
+            parts.push(`\n\n### ${row.title || row.id}`);
+            if (tags.length) parts.push(`\n*Tags: ${tags.join(', ')}*`);
+            if (row.summary) parts.push(`\n\n> ${String(row.summary).replace(/\n/g, ' ')}`);
+            if (fields.length) parts.push('\n\n' + fields.map(([k, v]) => `- **${k}:** ${String(v).replace(/\n/g, ' ')}`).join('\n'));
+            const body = markdownFromHtml(row.body_html);
+            if (body) parts.push(`\n\n${body}`);
+          });
+        });
+        downloadText(`arcano-codex-${stamp}.md`, parts.join('\n') + '\n', 'text/markdown');
+      } else {
+        const payload = { app: 'o-arcano', version: 1, exportedAt: new Date().toISOString(), counts: { stories: stories.length, characters: characters.length }, stories, index_config: index, characters };
+        downloadText(`arcano-backup-${stamp}.json`, JSON.stringify(payload, null, 2), 'application/json');
+      }
+      toast(`Backup salvo: ${stories.length} entradas e ${characters.length} fichas.`, 'info');
+    } catch (err) {
+      console.error(err);
+      toast('Erro ao gerar o backup: ' + (err.message || err));
+    }
+  }
+
+  function attachBackupButtons() {
+    document.querySelectorAll('[data-backup]').forEach((btn) => {
+      if (btn.dataset.bound) return;
+      btn.dataset.bound = '1';
+      btn.addEventListener('click', async () => {
+        btn.disabled = true;
+        await exportBackup(btn.dataset.backup);
+        btn.disabled = false;
+      });
+    });
+  }
+
+  /* ── ERROS INESPERADOS ────────────────────────── */
+  let lastCrashToast = 0;
+  function reportUnexpected(error) {
+    console.error('[O Arcano] erro inesperado:', error);
+    const now = Date.now();
+    if (now - lastCrashToast < 60000) return;
+    lastCrashToast = now;
+    toast('Algo deu errado nesta tela. Se continuar, recarregue a página.', 'error');
+  }
+  window.addEventListener('error', (event) => {
+    if (event.target && event.target !== window) return; // falha de imagem/script: já tratada nos próprios elementos
+    reportUnexpected(event.error || event.message);
+  });
+  window.addEventListener('unhandledrejection', (event) => reportUnexpected(event.reason));
 
   /* ── INIT ─────────────────────────────────────── */
   async function init() {
