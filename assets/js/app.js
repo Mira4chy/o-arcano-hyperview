@@ -1207,7 +1207,9 @@
 
   /* ── SUPABASE CLIENT ──────────────────────────── */
   const cfg = window.ARCANO_CONFIG || {};
+  const localNarrativePreview = new URLSearchParams(location.search).has('narrativeTest') && /^(localhost|127\.0\.0\.1)$/.test(location.hostname);
   const supabaseConfigured =
+    !localNarrativePreview &&
     cfg.supabaseUrl &&
     cfg.supabaseAnonKey &&
     !cfg.supabaseUrl.startsWith('COLE_') &&
@@ -1826,6 +1828,41 @@
   const TAG_COLOR_RE = /^#[0-9a-f]{6}$/i;
   const DEFAULT_TAG_COLOR = '#f59e0b';
   const categoryState = {};
+  const NARRATIVE_TEST_MODE = new URLSearchParams(location.search).has('narrativeTest');
+
+  /* Dados demonstrativos só aparecem na URL de aprovação (?narrativeTest=1).
+     Eles usam o mesmo shape das linhas de stories; nada é gravado no Supabase. */
+  if (NARRATIVE_TEST_MODE) {
+    const demoEras = [
+      ['demo-era-azul', 'Azul do Velho Mundo', 'O princípio sem nome', 1, 'Antes do calendário', 'Ano 300', '#7667c7'],
+      ['demo-era-media', 'Terra Média', 'Reinos sob cinzas', 2, 'Ano 301', 'Ano 550', '#b98258'],
+      ['demo-era-moderna', 'Tempos Modernos', 'A fome das máquinas', 3, 'Ano 551', 'Ano 820', '#5c9eaf'],
+      ['demo-era-pos', 'Pós-Modernismo', 'O mundo fragmentado', 4, 'Ano 821', 'Décimo inverno', '#a55783'],
+      ['demo-era-apocalipse', 'Apocalipse', 'Depois da última luz', 5, 'Depois da contagem', '—', '#bd5555']
+    ].map(([id, title, summary, order, start, end, color]) => ({
+      id, tab: 'Eras', title, summary, image: '', imagePath: '', bodyHtml: '', tags: [], subtype: '',
+      fields: { Ordem: order, Início: start, Fim: end, Cor: color }, createdAt: order,
+      isUserCreated: false, detailLoaded: true, fieldsLoaded: true, isNarrativeDemo: true
+    }));
+    const demoStories = [
+      ['demo-primeiro-nome', 'Antes do Primeiro Nome', 'Quando o mundo ainda não possuía nomes, uma escolha transformou memória em matéria.', 'demo-era-azul', 'Antes do calendário', 12, 'Cânone', '', 'Origem', 'assets/images/hero-arcano.webp'],
+      ['demo-pacto-azul', 'O Pacto Azul', 'As primeiras vozes juraram que nenhum nome seria apagado novamente.', 'demo-era-azul', 'Ano I da Memória', 64, 'Cânone', '', 'Pacto', 'assets/images/login-cosmos-base.webp'],
+      ['demo-coroa-cinzas', 'A Coroa das Cinzas', 'Sete casas queimaram seus brasões para erguer um único reino.', 'demo-era-media', 'Terceiro século', 35, 'Cânone', '', 'Ascensão', 'assets/images/race-anatomy-abstract.webp'],
+      ['demo-sob-gelo', 'Sob o Gelo', 'Uma expedição descobre um povo oculto nas águas profundas.', 'demo-era-moderna', 'Ano 638', 30, 'Cânone', '', 'Descoberta', 'assets/images/login-cosmos-nebula.webp'],
+      ['demo-ritual', 'O Ritual Funcionou', 'A muralha arcana jamais caiu — e cada habitante se tornou parte do encantamento.', 'demo-era-moderna', 'Divergência · Ano 412', 72, 'Realidade alternativa', 'demo-coroa-cinzas', 'Divergência', 'assets/images/login-cosmos-foreground.webp'],
+      ['demo-luz', 'Onde a Luz Não Alcança', 'Numa cidade sem amanhecer, a escuridão aprendeu a observá-los.', 'demo-era-pos', 'Décimo inverno sem sol', 42, 'Cânone', '', 'Catástrofe', 'assets/images/hero-arcano.webp'],
+      ['demo-sem-nome', 'O Mundo sem Primeiro Nome', 'Sem nomes, o próprio mundo começou a dissolver suas fronteiras.', 'demo-era-pos', 'Divergência · Décimo inverno', 78, 'Realidade alternativa', 'demo-primeiro-nome', 'Divergência', 'assets/images/race-anatomy-abstract.webp'],
+      ['demo-silencio', 'O Silêncio Depois dos Deuses', 'O último altar se partiu e o silêncio confirmou que os deuses haviam partido.', 'demo-era-apocalipse', 'Depois da contagem', 48, 'Cânone', '', 'Fim', 'assets/images/login-cosmos-base.webp']
+    ].map(([id, title, summary, era, date, position, reality, divergence, importance, image], index) => ({
+      id, tab: 'Historias', title, summary, image, imagePath: '', tags: [], subtype: '',
+      bodyHtml: `<p>${summary}</p><blockquote>Todo acontecimento deixa uma cicatriz em quem sobrevive para lembrá-lo.</blockquote><p>Este relato demonstra como texto, imagens e contexto temporal convivem no leitor real do Codex.</p>`,
+      fields: { Era: era, 'Data no mundo': date, 'Posição temporal': position, Realidade: reality, 'Ponto de divergência': divergence, Importância: importance },
+      createdAt: index + 1, isUserCreated: false, detailLoaded: true, fieldsLoaded: true, isNarrativeDemo: true
+    }));
+    [...demoEras, ...demoStories].forEach((entry) => {
+      if (!entryById(entry.id)) ARCHIVE.entries.push(entry);
+    });
+  }
 
   function slugify(str) {
     return normalize(str).replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 80) || 'historia';
@@ -2043,6 +2080,25 @@
     } catch (err) {
       console.warn('Falha ao remover imagem do storage:', err);
     }
+  }
+
+  async function prepareInlineImages(editor, entryId) {
+    const uploadedPaths = [];
+    if (!editor) return { html: '', uploadedPaths };
+    const images = [...editor.querySelectorAll('img.rt-inline-image')].filter((image) => INLINE_DATA_IMAGE_RE.test(image.src));
+    for (let index = 0; index < images.length; index += 1) {
+      const image = images[index];
+      const response = await fetch(image.src);
+      const blob = await response.blob();
+      const extension = blob.type.includes('png') ? 'png' : (blob.type.includes('webp') ? 'webp' : 'jpg');
+      const file = new File([blob], `inline-${index + 1}.${extension}`, { type: blob.type || 'image/jpeg' });
+      const upload = await uploadBanner(file, `stories/${entryId}/inline`);
+      image.src = upload.url;
+      image.loading = 'lazy';
+      image.decoding = 'async';
+      uploadedPaths.push(upload.path);
+    }
+    return { html: sanitizeHtml(editor.innerHTML).trim(), uploadedPaths };
   }
 
   async function persistUserEntry(entry) {
@@ -2514,9 +2570,12 @@
 
   /* ── HTML SANITIZATION (rich text) ────────────── */
   /* Permite apenas tags e atributos básicos de formatação. */
-  const ALLOWED_TAGS = new Set(['B','STRONG','I','EM','U','S','STRIKE','BR','HR','P','DIV','SPAN','UL','OL','LI','H1','H2','H3','H4','BLOCKQUOTE','CODE','PRE','A']);
+  const ALLOWED_TAGS = new Set(['B','STRONG','I','EM','U','S','STRIKE','BR','HR','P','DIV','SPAN','UL','OL','LI','H1','H2','H3','H4','BLOCKQUOTE','CODE','PRE','A','FIGURE','FIGCAPTION','IMG']);
   const ALLOWED_ATTRS_BY_TAG = {
     A: new Set(['href','data-arcano-link','data-link-tab','data-link-entry','class']),
+    FIGURE: new Set(['class']),
+    FIGCAPTION: new Set(['class']),
+    IMG: new Set(['src','alt','class','loading','decoding']),
     DEFAULT: new Set(['style'])
   };
   const COLOR_VALUE_RE = /^(#[0-9a-f]{3,8}|rgba?\([^)]+\)|hsla?\([^)]+\)|[a-z]+)$/i;
@@ -2548,6 +2607,20 @@
   };
   /* Apenas links internos (rota hash) sao aceitos. Bloqueia javascript:, data:, http externo, etc. */
   const INTERNAL_HREF_RE = /^#\/[A-Za-z0-9_\-%/.]+$/;
+  const INLINE_DATA_IMAGE_RE = /^data:image\/(?:png|jpe?g|webp);base64,[a-z0-9+/=]+$/i;
+
+  function safeInlineImageSource(value) {
+    const src = String(value || '').trim();
+    if (INLINE_DATA_IMAGE_RE.test(src)) return true;
+    if (/^assets\/images\/[A-Za-z0-9_./%-]+$/i.test(src)) return true;
+    try {
+      const url = new URL(src, location.href);
+      const storagePrefix = cfg.supabaseUrl ? `${cfg.supabaseUrl.replace(/\/$/, '')}/storage/v1/object/public/${BANNERS_BUCKET}/` : '';
+      return !!storagePrefix && url.href.startsWith(storagePrefix);
+    } catch {
+      return false;
+    }
+  }
 
   function sanitizeHtml(html) {
     const tpl = document.createElement('template');
@@ -2599,9 +2672,19 @@
                 child = null;
                 break;
               }
+            } else if (name === 'src') {
+              if (!safeInlineImageSource(attr.value)) child.removeAttribute('src');
             } else if (name === 'class') {
-              // Permite somente a classe usada por links internos
-              const allowed = attr.value.split(/\s+/).filter((c) => c === 'rt-internal-link').join(' ');
+              const allowedClasses = child.tagName === 'A'
+                ? new Set(['rt-internal-link'])
+                : child.tagName === 'FIGURE'
+                  ? new Set(['rt-figure', 'rt-figure--wide', 'rt-figure--full'])
+                  : child.tagName === 'IMG'
+                    ? new Set(['rt-inline-image'])
+                    : child.tagName === 'FIGCAPTION'
+                      ? new Set(['rt-figure__caption'])
+                      : new Set();
+              const allowed = attr.value.split(/\s+/).filter((c) => allowedClasses.has(c)).join(' ');
               if (allowed) child.setAttribute('class', allowed);
               else child.removeAttribute('class');
             }
@@ -2821,8 +2904,119 @@
     return result.slice(0, n);
   }
 
+  /* ── CRONOSCÓPIO (aba Eras) ─────────────────── */
+  function narrativeEraOrder(entry) {
+    const value = Number(entry?.fields?.Ordem);
+    return Number.isFinite(value) ? value : 9999;
+  }
+
+  function narrativePosition(entry) {
+    const value = Number(entry?.fields?.['Posição temporal']);
+    return Number.isFinite(value) ? Math.max(0, Math.min(100, value)) : 50;
+  }
+
+  function narrativeIsBranch(entry) {
+    return normalize(entry?.fields?.Realidade || 'Cânone') !== 'canone';
+  }
+
+  function narrativeEraEntries() {
+    return entriesIn('Eras').slice().sort((a, b) => narrativeEraOrder(a) - narrativeEraOrder(b) || a.title.localeCompare(b.title, 'pt-BR'));
+  }
+
+  function narrativeEvents() {
+    return entriesIn('Historias')
+      .filter((entry) => entry.fields?.Era)
+      .slice()
+      .sort((a, b) => narrativePosition(a) - narrativePosition(b) || (a.createdAt || 0) - (b.createdAt || 0));
+  }
+
+  function narrativePreviewHTML(event, eras) {
+    if (!event) return `
+      <div class="chrono-preview__empty">
+        <span aria-hidden="true">⌁</span>
+        <h3>Nenhum acontecimento posicionado</h3>
+        <p>As histórias ganham forma aqui quando recebem uma era e uma posição temporal.</p>
+      </div>`;
+    const era = eras.find((item) => item.id === event.fields?.Era);
+    const branch = narrativeIsBranch(event);
+    return `
+      <div class="chrono-preview__media ${event.image ? '' : 'is-fallback'}">
+        ${event.image ? `<img src="${escapeHtml(event.image)}" alt="" loading="lazy" decoding="async">` : ''}
+        <span>${branch ? 'REALIDADE ALTERNATIVA' : 'CÂNONE'}</span>
+      </div>
+      <div class="chrono-preview__body">
+        <small>${escapeHtml(event.fields?.['Data no mundo'] || 'Data não definida')}</small>
+        <h3>${escapeHtml(event.title)}</h3>
+        <p>${escapeHtml(event.summary || 'Sem resumo cadastrado.')}</p>
+        <dl>
+          <div><dt>Era</dt><dd>${escapeHtml(era?.title || 'Não classificada')}</dd></div>
+          <div><dt>Natureza</dt><dd>${escapeHtml(event.fields?.Importância || 'Acontecimento')}</dd></div>
+        </dl>
+        <a class="btn btn-primary" href="#/Historias/${encodeURIComponent(event.id)}">Ler acontecimento <span aria-hidden="true">→</span></a>
+      </div>`;
+  }
+
+  function viewChronoscope() {
+    const eras = narrativeEraEntries();
+    const events = narrativeEvents();
+    const first = events.find((entry) => !narrativeIsBranch(entry)) || events[0];
+    const branchCount = events.filter(narrativeIsBranch).length;
+    const eraWidth = eras.length ? 100 / eras.length : 100;
+    const showCreate = auth.isAdmin;
+
+    if (!eras.length) {
+      return `
+        <section class="cat-hero chrono-hero" style="--hue:${themeOf('Eras').hue}">
+          <div class="cat-hero__icon">${iconOf('Eras')}</div>
+          <div class="cat-hero__body"><span class="cat-hero__eyebrow">ARQUIVO TEMPORAL</span><h1 class="cat-hero__title">As eras deixam cicatrizes.</h1><p class="cat-hero__tone">Cadastre a primeira era para começar a cronologia do mundo.</p></div>
+        </section>
+        <section class="chrono-empty">
+          <span>${iconOf('Eras')}</span><h2>O tempo ainda não foi nomeado</h2><p>Crie eras; depois, posicione histórias dentro delas e abra realidades alternativas.</p>
+          ${showCreate ? '<a class="btn btn-primary" href="#/Eras/criar">Criar primeira era</a>' : ''}
+        </section>`;
+    }
+
+    const eraBands = eras.map((era, index) => `
+      <div class="chrono-era-band" id="chrono-era-${index}" style="--era-left:${index * eraWidth}%;--era-width:${eraWidth}%;--era-color:${escapeHtml(era.fields?.Cor || '#a78bfa')}">
+        <strong>${escapeHtml(era.title)}</strong><small>${escapeHtml(era.summary || `${era.fields?.Início || '—'} — ${era.fields?.Fim || '—'}`)}</small>
+      </div>`).join('');
+
+    const eventNodes = events.map((event) => {
+      const eraIndex = Math.max(0, eras.findIndex((era) => era.id === event.fields?.Era));
+      const left = eraIndex * eraWidth + (narrativePosition(event) / 100) * eraWidth;
+      const branch = narrativeIsBranch(event);
+      const edgeClass = left < 7 ? ' is-edge-start' : (left > 93 ? ' is-edge-end' : '');
+      return `<button type="button" class="chrono-event ${branch ? 'chrono-event--branch' : ''}${edgeClass}" style="--event-left:${left}%" data-chrono-event="${escapeHtml(event.id)}" aria-label="${escapeHtml(`${event.title}, ${event.fields?.['Data no mundo'] || 'data não definida'}${branch ? ', realidade alternativa' : ''}`)}"><i></i><span>${escapeHtml(event.title)}</span></button>`;
+    }).join('');
+
+    const mobileEras = eras.map((era, eraIndex) => {
+      const eraEvents = events.filter((event) => event.fields?.Era === era.id);
+      return `<section class="chrono-mobile-era">
+        <header><b>${String(eraIndex + 1).padStart(2, '0')}</b><span><strong>${escapeHtml(era.title)}</strong><small>${escapeHtml(era.summary || '')}</small></span></header>
+        <div>${eraEvents.length ? eraEvents.map((event) => `<article class="chrono-mobile-event ${narrativeIsBranch(event) ? 'chrono-event--branch' : ''}"><button type="button" data-chrono-event="${escapeHtml(event.id)}" aria-expanded="false"><small>${escapeHtml(event.fields?.['Data no mundo'] || 'Sem data')}</small><strong>${escapeHtml(event.title)}</strong><span>${escapeHtml(event.fields?.Realidade || 'Cânone')}</span></button><div hidden><p>${escapeHtml(event.summary || '')}</p><a href="#/Historias/${encodeURIComponent(event.id)}">Ler acontecimento →</a></div></article>`).join('') : '<p class="chrono-mobile-empty">Nenhum acontecimento nesta era.</p>'}</div>
+      </section>`;
+    }).join('');
+
+    return `
+      <section class="chrono-hero" style="--hue:${themeOf('Eras').hue}">
+        <div><span class="section__eyebrow">ARQUIVO TEMPORAL · CÂNONE VIVO</span><h1>As eras não passam.<br><em>Elas deixam cicatrizes.</em></h1><p>Percorra a história do mundo, revele acontecimentos e acompanhe as realidades abertas por cada ponto de divergência.</p></div>
+        <dl><div><dt>Eras</dt><dd>${String(eras.length).padStart(2, '0')}</dd></div><div><dt>Acontecimentos</dt><dd>${String(events.length).padStart(2, '0')}</dd></div><div><dt>Realidades</dt><dd>${String(branchCount).padStart(2, '0')}</dd></div></dl>
+      </section>
+      <section class="chronoscope" data-chronoscope>
+        <header class="chronoscope__head"><div><span class="chrono-ordinal">I</span><span><small>CRONOSCÓPIO</small><h2>Linha canônica</h2></span></div><div class="chronoscope__actions">${showCreate ? '<a class="btn btn-ghost" href="#/Eras/criar">Nova era</a><a class="btn btn-primary" href="#/Historias/criar">Novo acontecimento</a>' : ''}<button type="button" class="chrono-branch-toggle" data-chrono-branches aria-pressed="true">Ramificações <b>${branchCount}</b></button></div></header>
+        <nav class="chrono-era-nav" style="--era-count:${eras.length}" aria-label="Ir para uma era">${eras.map((era, index) => `<button type="button" data-chrono-era="${index}" class="${index === 0 ? 'is-active' : ''}"><b>${String(index + 1).padStart(2, '0')}</b><span>${escapeHtml(era.title)}</span></button>`).join('')}</nav>
+        <div class="chronoscope__layout">
+          <div class="chrono-track-scroll" tabindex="0" aria-label="Linha do tempo. Use Tab ou as setas para percorrer os acontecimentos."><div class="chrono-track"><div class="chrono-era-bands">${eraBands}</div><div class="chrono-canon-line" aria-hidden="true"></div><div class="chrono-branch-line" aria-hidden="true"></div>${eventNodes}</div></div>
+          <aside class="chrono-preview" data-chrono-preview aria-live="polite">${narrativePreviewHTML(first, eras)}</aside>
+        </div>
+        <div class="chrono-mobile">${mobileEras}</div>
+        <footer class="chrono-legend"><span><i></i>Cânone</span><span><i class="is-branch"></i>Realidade alternativa</span><p>Passe o mouse, use Tab ou toque para revelar a história.</p></footer>
+      </section>`;
+  }
+
   /* ── CATEGORY VIEW ────────────────────────────── */
   function viewCategory(tabId, query, selectedTag, spellFilters) {
+    if (tabId === 'Eras') return viewChronoscope();
     const tab = tabById(tabId);
     if (!tab) return viewNotFound(tabId);
     const theme = themeOf(tabId);
@@ -3195,6 +3389,9 @@
           <button type="button" class="rt-btn" data-rt-action="link" title="Link para outra história">
             <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg>
           </button>
+          <button type="button" class="rt-btn rt-btn--image" data-rt-action="image" title="Inserir imagem entre os parágrafos" aria-label="Inserir imagem entre os parágrafos">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="9" cy="10" r="2"/><path d="M21 16l-5-5-8 8"/></svg><span>Imagem</span>
+          </button>
           <span class="rt-hr" id="rtHrWrap">
             <button type="button" class="rt-btn" data-rt-action="hr" title="Linha separadora (clique para escolher cor)">
               <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 12h18M6 6l-2 2M18 6l2 2M6 18l-2-2M18 18l2-2"/></svg>
@@ -3238,6 +3435,7 @@
             <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 5l14 14M5 19l8-8M11 5h8l-3 8"/></svg>
           </button>
         </div>
+        <input type="file" id="rtImageInput" accept="image/png,image/jpeg,image/webp" hidden>
         <div class="rt-editor" id="rtEditor" contenteditable="true" role="textbox" aria-multiline="true" data-placeholder="Conte sua história...">${initialHtml ? sanitizeHtml(initialHtml) : ''}</div>
       </div>
     `;
@@ -3262,6 +3460,8 @@
     const isItens = tabId === 'Itens';
     const isRacas = tabId === 'Racas';
     const isBestiario = tabId === 'Bestiario';
+    const isStories = tabId === 'Historias';
+    const isEras = tabId === 'Eras';
     const isSectioned = isSectionedTab(tabId);
 
     const banner = bannerLabelFor(tabId);
@@ -3269,11 +3469,17 @@
     const titleLabel = (isItens || isSectioned) ? 'Nome' : 'Título';
     const titlePlaceholder = isItens ? 'Nome do item' : (isRacas ? 'Nome da raça' : (isBestiario ? 'Nome da criatura' : 'Dê um nome à sua história'));
     const summaryPlaceholder = `Uma frase curta que descreve ${isItens ? 'o item' : (isRacas ? 'a raça' : (isBestiario ? 'a criatura' : 'a história'))}`;
-    const descLabel = (isItens || isSectioned) ? 'Descrição' : 'Texto';
+    const descLabel = isStories
+      ? 'Relato'
+      : (isEras ? 'Descrição da era' : ((isItens || isSectioned) ? 'Descrição' : 'Texto'));
 
     const saveLabel = editing
       ? 'Salvar alterações'
-      : (isItens ? 'Salvar item' : (isRacas ? 'Salvar raça' : (isBestiario ? 'Salvar criatura' : 'Salvar história')));
+      : (isStories
+          ? 'Salvar acontecimento'
+          : (isEras
+              ? 'Salvar era'
+              : (isItens ? 'Salvar item' : (isRacas ? 'Salvar raça' : (isBestiario ? 'Salvar criatura' : 'Salvar história')))));
     const heroSubtitle = editing
       ? 'Atualize os campos e salve para sobrescrever esta entrada.'
       : (isItens
@@ -3282,10 +3488,18 @@
             ? 'Construa identidade, fisiologia, regras, anatomia, aptidões e vínculos com o mundo.'
             : isBestiario
               ? 'Anexe uma imagem 3:4 e organize natureza, vitalidade, instruções, espólios e habilidades.'
-              : 'Preencha o banner, o título e o relato. Use a barra de ferramentas para formatar e colorir o texto.');
+              : isStories
+                ? 'Posicione o acontecimento no tempo e construa o relato com texto, imagens e ritmo.'
+                : isEras
+                  ? 'Defina a identidade, os limites e a ordem desta era no Cronoscópio.'
+                  : 'Preencha o banner, o título e o relato. Use a barra de ferramentas para formatar e colorir o texto.');
     const heroH1 = editing
-      ? `Editar ${isItens ? 'item' : (isRacas ? 'raça' : (isBestiario ? 'criatura' : 'história'))} · `
-      : (isItens ? 'Novo item em ' : (isRacas ? 'Nova raça em ' : (isBestiario ? 'Nova criatura em ' : 'Nova história em ')));
+      ? `Editar ${isStories ? 'acontecimento' : (isEras ? 'era' : (isItens ? 'item' : (isRacas ? 'raça' : (isBestiario ? 'criatura' : 'história'))))} · `
+      : (isStories
+          ? 'Novo acontecimento · '
+          : (isEras
+              ? 'Nova era · '
+              : (isItens ? 'Novo item em ' : (isRacas ? 'Nova raça em ' : (isBestiario ? 'Nova criatura em ' : 'Nova história em ')))));
     const heroEyebrow = editing ? `EDITAR · ${theme.label}` : `CRIAR · ${theme.label}`;
     const cancelHref = editing ? `#/${tabId}/${entryId}` : `#/${tabId}`;
 
@@ -3315,7 +3529,7 @@
         </div>
       </section>
 
-      <form class="create-form ${portrait ? 'create-form--portrait' : ''} ${isRacas ? 'race-creator' : ''}" id="createForm"
+      <form class="create-form ${portrait ? 'create-form--portrait' : ''} ${isRacas ? 'race-creator' : ''} ${(isStories || isEras) ? 'narrative-creator' : ''}" id="createForm"
             data-tab="${escapeHtml(tabId)}"
             ${editing ? `data-edit-id="${escapeHtml(entryId)}"` : ''}
             style="--hue:${theme.hue}" novalidate>
@@ -3388,6 +3602,30 @@
           <input type="text" id="summaryInput" class="create-form__input" placeholder="${escapeHtml(summaryPlaceholder)}" maxlength="200" value="${editing ? escapeHtml(initial.summary) : ''}">
         </div>
 
+        ${isStories ? `
+        <section class="narrative-context" aria-labelledby="narrativeContextTitle">
+          <header><span>II</span><div><small>CONTEXTO TEMPORAL</small><h2 id="narrativeContextTitle">Onde o destino toca a história</h2><p>Esses campos posicionam o acontecimento no Cronoscópio.</p></div></header>
+          <div class="narrative-context__grid">
+            <label class="create-form__field" for="narrativeEra"><span class="create-form__label">Era</span><select class="create-form__input" id="narrativeEra" required><option value="">Selecione uma era</option>${narrativeEraEntries().map((era) => `<option value="${escapeHtml(era.id)}" ${editing && initial.fields.Era === era.id ? 'selected' : ''}>${escapeHtml(era.title)}</option>`).join('')}</select></label>
+            <label class="create-form__field" for="narrativeDate"><span class="create-form__label">Data no mundo</span><input class="create-form__input" id="narrativeDate" value="${editing ? escapeHtml(initial.fields['Data no mundo'] || '') : ''}" placeholder="Ex.: Ano 638 ou Décimo inverno"></label>
+            <label class="create-form__field" for="narrativePosition"><span class="create-form__label">Posição dentro da era <b data-narrative-position-label>${editing ? escapeHtml(initial.fields['Posição temporal'] ?? 50) : '50'}%</b></span><input id="narrativePosition" type="range" min="0" max="100" value="${editing ? escapeHtml(initial.fields['Posição temporal'] ?? 50) : '50'}"></label>
+            <label class="create-form__field" for="narrativeReality"><span class="create-form__label">Realidade</span><select class="create-form__input" id="narrativeReality"><option ${!editing || initial.fields.Realidade !== 'Realidade alternativa' ? 'selected' : ''}>Cânone</option><option ${editing && initial.fields.Realidade === 'Realidade alternativa' ? 'selected' : ''}>Realidade alternativa</option></select></label>
+            <label class="create-form__field" for="narrativeImportance"><span class="create-form__label">Natureza</span><select class="create-form__input" id="narrativeImportance">${['Vestígio','Descoberta','Pacto','Ascensão','Guerra','Catástrofe','Ruptura de era','Fim'].map((value) => `<option ${editing && initial.fields.Importância === value ? 'selected' : ''}>${value}</option>`).join('')}</select></label>
+            <label class="create-form__field" for="narrativeDivergence"><span class="create-form__label">Ponto de divergência</span><select class="create-form__input" id="narrativeDivergence"><option value="">Nenhum — linha principal</option>${narrativeEvents().filter((entry) => entry.id !== entryId && !narrativeIsBranch(entry)).map((entry) => `<option value="${escapeHtml(entry.id)}" ${editing && initial.fields['Ponto de divergência'] === entry.id ? 'selected' : ''}>${escapeHtml(entry.title)}</option>`).join('')}</select></label>
+          </div>
+        </section>` : ''}
+
+        ${isEras ? `
+        <section class="narrative-context" aria-labelledby="eraContextTitle">
+          <header><span>II</span><div><small>LIMITES DA ERA</small><h2 id="eraContextTitle">Um capítulo do mundo</h2><p>Ordem e limites organizam a leitura sem prender o calendário a números absolutos.</p></div></header>
+          <div class="narrative-context__grid">
+            <label class="create-form__field" for="eraOrder"><span class="create-form__label">Ordem</span><input class="create-form__input" id="eraOrder" type="number" min="1" value="${editing ? escapeHtml(initial.fields.Ordem || '') : narrativeEraEntries().length + 1}" required></label>
+            <label class="create-form__field" for="eraStart"><span class="create-form__label">Início</span><input class="create-form__input" id="eraStart" value="${editing ? escapeHtml(initial.fields.Início || '') : ''}" placeholder="Ex.: Antes do calendário"></label>
+            <label class="create-form__field" for="eraEnd"><span class="create-form__label">Fim</span><input class="create-form__input" id="eraEnd" value="${editing ? escapeHtml(initial.fields.Fim || '') : ''}" placeholder="Ex.: Ano 300"></label>
+            <label class="create-form__field" for="eraColor"><span class="create-form__label">Cor no Cronoscópio</span><input class="narrative-color" id="eraColor" type="color" value="${editing ? escapeHtml(initial.fields.Cor || '#a78bfa') : '#a78bfa'}"></label>
+          </div>
+        </section>` : ''}
+
         ${isRacas ? '</section>' : ''}
 
         ${isItens ? `
@@ -3454,6 +3692,7 @@
 
         <div class="create-form__actions ${isRacas ? 'race-creator__final-actions' : ''}" ${isRacas ? 'data-race-wizard-page="5" hidden' : ''}>
           <a href="${cancelHref}" class="btn btn-ghost">Cancelar</a>
+          ${isStories ? '<button type="button" class="btn btn-ghost" data-story-preview>Visualizar como leitor</button>' : ''}
           <button type="submit" class="btn btn-primary" id="createSave">
             <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>
             <span>${escapeHtml(saveLabel)}</span>
@@ -4414,10 +4653,59 @@
   }
 
   /* ── ENTRY DETAIL VIEW ────────────────────────── */
+  function storyReaderView(entry, { draft = false } = {}) {
+    const fields = entry.fields || {};
+    const era = entryById(fields.Era);
+    const tags = sanitizeTags(entry.tags);
+    const branch = narrativeIsBranch(entry);
+    const related = entriesIn('Historias').filter((item) => item.id !== entry.id && item.fields?.Era === fields.Era).slice(0, 3);
+    const body = entry.bodyHtml
+      ? sanitizeHtml(entry.bodyHtml)
+      : (entry.body || []).map((paragraph) => `<p>${escapeHtml(paragraph)}</p>`).join('');
+    const edit = (!draft && entry.isUserCreated && auth.isAdmin) ? `<a class="btn btn-ghost" href="#/Historias/${encodeURIComponent(entry.id)}/editar">Editar história</a>` : '';
+    const remove = (!draft && entry.isUserCreated && auth.isAdmin) ? `<button type="button" class="btn btn-ghost story-reader__delete" data-delete-entry="${escapeHtml(entry.id)}">Apagar</button>` : '';
+    return `
+      <article class="story-reader ${draft ? 'story-reader--draft' : ''}" data-story-reader>
+        <div class="story-reader__progress"><i data-reading-progress></i></div>
+        <header class="story-reader__hero ${entry.image ? '' : 'is-fallback'}">
+          ${entry.image ? `<img src="${escapeHtml(entry.image)}" alt="" decoding="async">` : ''}
+          <div class="story-reader__shade"></div>
+          <div class="story-reader__nav"><a href="#/Eras">← Linha do tempo</a><button type="button" data-reader-focus aria-pressed="false">Modo focado</button></div>
+          <div class="story-reader__heading">
+            <span class="section__eyebrow">${escapeHtml(era?.title || 'ERA NÃO CLASSIFICADA')} · ${escapeHtml(fields['Data no mundo'] || 'SEM DATA')}</span>
+            <h1>${escapeHtml(entry.title || 'História sem título')}</h1>
+            ${entry.summary ? `<p>${escapeHtml(entry.summary)}</p>` : ''}
+            <div>${draft ? '<span>PRÉVIA DO RASCUNHO</span>' : ''}<span>${branch ? 'REALIDADE ALTERNATIVA' : 'CÂNONE'}</span>${fields.Importância ? `<span>${escapeHtml(fields.Importância)}</span>` : ''}</div>
+          </div>
+        </header>
+        <div class="story-reader__layout">
+          <aside class="story-reader__context">
+            <span class="section__eyebrow">POSIÇÃO NO TEMPO</span>
+            <h2>${escapeHtml(era?.title || 'Não classificada')}</h2>
+            <p>${escapeHtml(fields['Data no mundo'] || 'Data não definida')}</p>
+            <div class="story-reader__mini-time"><i style="--position:${narrativePosition(entry)}%"></i></div>
+            <a href="#/Eras">Ver no Cronoscópio</a>
+            ${tags.length ? `<div>${tags.map((tag) => tagChipHTML(tag, 'story-tag')).join('')}</div>` : ''}
+          </aside>
+          <main class="story-reader__prose entry__body--rich">
+            <span class="section__eyebrow">${draft ? 'CRÔNICA EM REVISÃO' : 'RELATO PRESERVADO'}</span>
+            <div class="rt-content">${body || '<p>Esta história ainda não recebeu seu relato.</p>'}</div>
+            <footer><span>FIM DO REGISTRO</span><h2>A história termina aqui — por enquanto.</h2></footer>
+          </main>
+          <aside class="story-reader__relations">
+            <span class="section__eyebrow">OUTRAS CICATRIZES</span>
+            ${related.map((item) => `<a href="#/Historias/${encodeURIComponent(item.id)}"><strong>${escapeHtml(item.title)}</strong><small>${escapeHtml(item.fields?.['Data no mundo'] || '')}</small></a>`).join('') || '<p>Nenhuma história relacionada nesta era.</p>'}
+          </aside>
+        </div>
+        <footer class="story-reader__actions">${edit}${remove}<a class="btn btn-ghost" href="#/Historias">Voltar às histórias</a></footer>
+      </article>`;
+  }
+
   function viewEntry(tabId, entryId) {
     const e = entryById(entryId);
     if (!e || e.tab !== tabId) return viewNotFound(entryId);
     if (isMagiasTab(tabId)) return spellEntryView(tabId, e);
+    if (tabId === 'Historias') return storyReaderView(e);
     const theme = themeOf(tabId);
     const tab = tabById(tabId);
     const fields = Object.entries(e.fields || {});
@@ -6363,7 +6651,15 @@
 
     if (auth.canRead && sb) {
       if (tab === 'Persona') await loadCharacters();
+      else if (action && (tab === 'Historias' || tab === 'Eras')) {
+        await Promise.all([
+          entry ? loadEntryDetails(entryById(entry)) : Promise.resolve(),
+          loadTabFields('Eras'),
+          loadTabFields('Historias')
+        ]);
+      }
       else if (entry) await loadEntryDetails(entryById(entry));
+      else if (tab === 'Eras' && !action) await Promise.all([loadTabFields('Eras'), loadTabFields('Historias')]);
       else if (tab !== 'Index' && !action && tabById(tab)) await loadTabFields(tab);
       if (sequence !== renderSequence) return;
     }
@@ -6400,6 +6696,8 @@
         view.classList.remove('is-entering');
         animateView();
         attachCategoryFilter();
+        attachChronoscope();
+        attachStoryReader();
         attachCreateForm();
         attachSpellForm();
         attachCharacterForm();
@@ -6521,6 +6819,90 @@
   }
 
   /* ── CATEGORY FILTER ──────────────────────────── */
+  function attachChronoscope() {
+    const root = document.querySelector('[data-chronoscope]');
+    if (!root || root.dataset.bound) return;
+    root.dataset.bound = '1';
+    const eras = narrativeEraEntries();
+    const events = narrativeEvents();
+    const preview = root.querySelector('[data-chrono-preview]');
+    const eventButtons = [...root.querySelectorAll('[data-chrono-event]')];
+    const selectEvent = (id, focus = false) => {
+      const entry = entryById(id);
+      if (!entry) return;
+      root.querySelectorAll('[data-chrono-event]').forEach((button) => button.classList.toggle('is-active', button.dataset.chronoEvent === id));
+      if (preview) preview.innerHTML = narrativePreviewHTML(entry, eras);
+      if (focus) root.querySelector(`.chrono-event[data-chrono-event="${CSS.escape(id)}"]`)?.focus();
+    };
+    eventButtons.forEach((button) => {
+      if (button.closest('.chrono-mobile-event')) {
+        button.addEventListener('click', () => {
+          const article = button.closest('.chrono-mobile-event');
+          const details = article.querySelector('div');
+          const opening = button.getAttribute('aria-expanded') !== 'true';
+          root.querySelectorAll('.chrono-mobile-event').forEach((item) => {
+            item.querySelector('button').setAttribute('aria-expanded', 'false');
+            item.querySelector('div').hidden = true;
+            item.classList.remove('is-expanded');
+          });
+          button.setAttribute('aria-expanded', String(opening));
+          details.hidden = !opening;
+          article.classList.toggle('is-expanded', opening);
+        });
+        return;
+      }
+      button.addEventListener('pointerenter', () => selectEvent(button.dataset.chronoEvent));
+      button.addEventListener('focus', () => selectEvent(button.dataset.chronoEvent));
+      button.addEventListener('click', () => selectEvent(button.dataset.chronoEvent));
+      button.addEventListener('keydown', (event) => {
+        if (!['ArrowLeft', 'ArrowRight'].includes(event.key)) return;
+        event.preventDefault();
+        const visible = eventButtons.filter((item) => !item.closest('.chrono-mobile-event') && !item.hidden);
+        const index = visible.indexOf(button);
+        const next = visible[(index + (event.key === 'ArrowRight' ? 1 : -1) + visible.length) % visible.length];
+        if (next) selectEvent(next.dataset.chronoEvent, true);
+      });
+    });
+    const branchToggle = root.querySelector('[data-chrono-branches]');
+    branchToggle?.addEventListener('click', () => {
+      const visible = branchToggle.getAttribute('aria-pressed') !== 'true';
+      branchToggle.setAttribute('aria-pressed', String(visible));
+      root.classList.toggle('branches-hidden', !visible);
+      root.querySelectorAll('.chrono-event--branch').forEach((item) => { item.hidden = !visible; });
+    });
+    root.querySelectorAll('[data-chrono-era]').forEach((button) => button.addEventListener('click', () => {
+      const index = Number(button.dataset.chronoEra);
+      root.querySelectorAll('[data-chrono-era]').forEach((item) => item.classList.toggle('is-active', item === button));
+      const track = root.querySelector('.chrono-track-scroll');
+      const target = root.querySelector(`#chrono-era-${index}`);
+      if (track && target) track.scrollTo({ left: Math.max(0, target.offsetLeft - 24), behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
+    }));
+    const first = events.find((entry) => !narrativeIsBranch(entry)) || events[0];
+    if (first) selectEvent(first.id);
+  }
+
+  function attachStoryReader(scope = document) {
+    const reader = scope.querySelector('[data-story-reader]');
+    if (!reader || reader.dataset.bound) return;
+    reader.dataset.bound = '1';
+    const focusButton = reader.querySelector('[data-reader-focus]');
+    focusButton?.addEventListener('click', () => {
+      const active = !reader.classList.contains('is-focused');
+      reader.classList.toggle('is-focused', active);
+      focusButton.setAttribute('aria-pressed', String(active));
+      focusButton.textContent = active ? 'Sair do foco' : 'Modo focado';
+    });
+    const progress = reader.querySelector('[data-reading-progress]');
+    const update = () => {
+      if (!progress || !reader.isConnected) return;
+      const start = reader.offsetTop;
+      const total = Math.max(1, reader.offsetHeight - innerHeight);
+      progress.style.width = `${Math.max(0, Math.min(100, ((scrollY - start) / total) * 100))}%`;
+    };
+    addEventListener('scroll', update, { passive: true });
+    update();
+  }
+
   function attachCategoryFilter() {
     const input = document.getElementById('catSearch');
     const tagButtons = document.querySelectorAll('[data-tag-filter]');
@@ -8179,6 +8561,7 @@
     const colorSwatch = document.getElementById('rtColorSwatch');
     const savedList = document.getElementById('rtSavedColors');
     const saveBtn = document.getElementById('rtSaveColor');
+    const imageInput = document.getElementById('rtImageInput');
     if (!editor || !toolbar) return null;
     ensureEditorFonts();
 
@@ -8202,6 +8585,51 @@
     editor.addEventListener('keyup', captureSelection);
     editor.addEventListener('mouseup', captureSelection);
     editor.addEventListener('blur', captureSelection);
+
+    function insertInlineImage(file) {
+      if (!file || !/^image\/(?:png|jpe?g|webp)$/i.test(file.type)) {
+        alert('Escolha uma imagem PNG, JPG ou WebP.');
+        return;
+      }
+      if (file.size > 5 * 1024 * 1024) {
+        alert('A imagem deve ter no máximo 5 MB.');
+        return;
+      }
+      const reader = new FileReader();
+      reader.onload = () => {
+        const figure = document.createElement('figure');
+        figure.className = 'rt-figure rt-figure--wide';
+        figure.contentEditable = 'false';
+        const image = document.createElement('img');
+        image.className = 'rt-inline-image';
+        image.src = String(reader.result || '');
+        image.alt = file.name.replace(/\.[^.]+$/, '').replace(/[-_]+/g, ' ');
+        const caption = document.createElement('figcaption');
+        caption.className = 'rt-figure__caption';
+        caption.contentEditable = 'true';
+        caption.textContent = 'Escreva uma legenda para esta imagem.';
+        figure.append(image, caption);
+        editor.focus();
+        if (restoreSelection()) {
+          const selection = window.getSelection();
+          const range = selection?.rangeCount ? selection.getRangeAt(0) : null;
+          if (range) {
+            range.collapse(false);
+            range.insertNode(figure);
+            range.setStartAfter(figure);
+            range.collapse(true);
+            selection.removeAllRanges();
+            selection.addRange(range);
+          }
+        } else editor.appendChild(figure);
+        const paragraph = document.createElement('p');
+        paragraph.innerHTML = '<br>';
+        figure.after(paragraph);
+        imageInput.value = '';
+      };
+      reader.readAsDataURL(file);
+    }
+    imageInput?.addEventListener('change', () => insertInlineImage(imageInput.files?.[0]));
 
     function applyColor(color) {
       restoreSelection();
@@ -8458,6 +8886,7 @@
       if (actionBtn) {
         const action = actionBtn.dataset.rtAction;
         if (action === 'link') openLinkPicker();
+        else if (action === 'image') { captureSelection(); imageInput?.click(); }
         else if (action === 'hr') { captureSelection(); toggleHrPopover(); }
         else if (action === 'code') { editor.focus(); restoreSelection(); toggleInlineWrap('CODE'); captureSelection(); }
         return;
@@ -8617,7 +9046,34 @@
     });
     const editor = bindEditor();
     let dossier;
-    if (tabId === 'Itens') {
+    if (tabId === 'Historias') {
+      const position = document.getElementById('narrativePosition');
+      const positionLabel = form.querySelector('[data-narrative-position-label]');
+      const syncPosition = () => { if (positionLabel && position) positionLabel.textContent = `${position.value}%`; };
+      position?.addEventListener('input', syncPosition);
+      syncPosition();
+      dossier = {
+        getSubtype: () => null,
+        getFields: () => ({
+          Era: document.getElementById('narrativeEra')?.value || '',
+          'Data no mundo': document.getElementById('narrativeDate')?.value.trim() || '',
+          'Posição temporal': Number(document.getElementById('narrativePosition')?.value || 50),
+          Realidade: document.getElementById('narrativeReality')?.value || 'Cânone',
+          Importância: document.getElementById('narrativeImportance')?.value || 'Vestígio',
+          'Ponto de divergência': document.getElementById('narrativeDivergence')?.value || ''
+        })
+      };
+    } else if (tabId === 'Eras') {
+      dossier = {
+        getSubtype: () => null,
+        getFields: () => ({
+          Ordem: Number(document.getElementById('eraOrder')?.value || 1),
+          Início: document.getElementById('eraStart')?.value.trim() || '',
+          Fim: document.getElementById('eraEnd')?.value.trim() || '',
+          Cor: document.getElementById('eraColor')?.value || '#a78bfa'
+        })
+      };
+    } else if (tabId === 'Itens') {
       dossier = bindDossierFields({
         subtype: existing?.subtype || '',
         fields: existing?.fields || {}
@@ -8630,17 +9086,41 @@
     }
     const raceCreator = bindRaceCreator(form);
 
+    form.querySelector('[data-story-preview]')?.addEventListener('click', () => {
+      const title = titleInput.value.trim();
+      if (!title) {
+        titleInput.classList.add('is-invalid');
+        titleInput.focus();
+        return;
+      }
+      const overlay = document.createElement('div');
+      overlay.className = 'story-preview-modal';
+      overlay.innerHTML = `<button type="button" class="story-preview-modal__close" aria-label="Fechar prévia">×</button><div class="story-preview-modal__scroll">${storyReaderView({
+        id: 'draft-preview', tab: 'Historias', title,
+        summary: summaryInput.value.trim(), image: banner.getDataUrl(),
+        bodyHtml: editor.innerHTML, tags: tagBuilder.getTags(), fields: dossier.getFields(),
+        isUserCreated: false
+      }, { draft: true })}</div>`;
+      document.body.appendChild(overlay);
+      document.body.classList.add('is-modal-open');
+      const close = () => {
+        overlay.remove();
+        document.body.classList.remove('is-modal-open');
+        document.removeEventListener('keydown', onKey);
+      };
+      const onKey = (event) => { if (event.key === 'Escape') close(); };
+      overlay.querySelector('.story-preview-modal__close').addEventListener('click', close);
+      document.addEventListener('keydown', onKey);
+      attachStoryReader(overlay);
+      overlay.querySelector('.story-preview-modal__close').focus();
+    });
+
     form.addEventListener('submit', async (e) => {
       e.preventDefault();
       if (raceCreator && !raceCreator.isFinal()) {
         raceCreator.next();
         return;
       }
-      if (!sb) {
-        alert('Supabase não configurado. Edite assets/js/config.js com sua URL e anon key.');
-        return;
-      }
-
       const title = titleInput.value.trim();
       if (!title) {
         titleInput.focus();
@@ -8655,6 +9135,13 @@
       const subtype = dossier.getSubtype();
       const fields = dossier.getFields();
 
+      if (tabId === 'Historias' && !fields.Era) {
+        const eraSelect = document.getElementById('narrativeEra');
+        eraSelect?.classList.add('is-invalid');
+        eraSelect?.focus();
+        return;
+      }
+
       if (tabId === 'Bestiario' && !fields['DA Base']) {
         const daSelect = form.querySelector('[data-dossier-field="DA Base"]');
         const section = daSelect && daSelect.closest('details');
@@ -8663,6 +9150,11 @@
           daSelect.classList.add('is-invalid');
           daSelect.focus();
         }
+        return;
+      }
+
+      if (!sb) {
+        alert('Supabase não configurado. Edite assets/js/config.js com sua URL e anon key.');
         return;
       }
 
@@ -8679,8 +9171,12 @@
       async function handleCreateSubmit(payload) {
         let imageUrl = '';
         let imagePath = '';
+        let inlinePaths = [];
         const id = uniqueId(slugify(payload.title));
         try {
+          const inline = await prepareInlineImages(editor, id);
+          payload.bodyHtml = inline.html;
+          inlinePaths = inline.uploadedPaths;
           const file = banner.getFile();
           if (file) {
             const up = await uploadBanner(file, `stories/${id}`);
@@ -8704,6 +9200,7 @@
           submitBtn.disabled = false;
           submitBtn.innerHTML = originalLabel;
           if (imagePath) await removeBanner(imagePath);
+          for (const path of inlinePaths) await removeBanner(path);
         }
       }
 
@@ -8713,9 +9210,13 @@
         let nextImage = payload.existing.image || '';
         let nextImagePath = payload.existing.imagePath || '';
         let uploadedPath = '';
+        let inlinePaths = [];
         const oldPathToRemove = [];
 
         try {
+          const inline = await prepareInlineImages(editor, payload.existing.id);
+          payload.bodyHtml = inline.html;
+          inlinePaths = inline.uploadedPaths;
           if (file) {
             // nova imagem foi carregada — substitui
             const up = await uploadBanner(file, `stories/${payload.existing.id}`);
@@ -8757,6 +9258,7 @@
           submitBtn.disabled = false;
           submitBtn.innerHTML = originalLabel;
           if (uploadedPath) await removeBanner(uploadedPath);
+          for (const path of inlinePaths) await removeBanner(path);
         }
       }
     });
@@ -9962,6 +10464,14 @@
 
     if (!sb) {
       // Sem Supabase: roda offline com defaults
+      if (localNarrativePreview) {
+        auth.canRead = true;
+        auth.isAdmin = true;
+        auth.role = 'admin';
+        document.body.classList.remove('is-locked');
+        document.body.classList.add('is-admin');
+        renderRoleBadge();
+      }
       render();
       return;
     }

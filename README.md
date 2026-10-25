@@ -125,3 +125,14 @@ Em qualquer categoria criavel (Cenarios, Eras, Sistemas, Mapa, Deuses, Historias
 - **Link interno**: selecione um trecho de texto e clique no icone de corrente. Um modal mostra todas as historias do site para escolher o destino — o leitor podera clicar e ir direto.
 - **Tags reaproveitaveis**: as tags ja usadas em outras entradas da MESMA categoria aparecem como sugestao logo abaixo do campo. Clicar em uma sugestao reaproveita label e cor.
 - **Editar uma entrada existente**: na pagina de detalhe, o botao "Editar" leva ao mesmo formulario com tudo pre-preenchido. Salvar sobrescreve a entrada (a opcao de deletar continua disponivel).
+
+## Sistema narrativo: eras, acontecimentos e leitor
+
+A aba **Linha do Tempo** (`#/Eras`) usa os registros reais de `stories` para montar o Cronoscópio. Não existe uma segunda base de dados: metadados narrativos ficam no JSON `fields`, que já faz parte da arquitetura do Codex.
+
+- Registros em `Eras` usam `Ordem`, `Início`, `Fim` e `Cor`.
+- Registros em `Historias` usam `Era`, `Data no mundo`, `Posição temporal`, `Realidade`, `Ponto de divergência` e `Importância`.
+- O Mestre cria eras em `#/Eras/criar` e acontecimentos em `#/Historias/criar`.
+- O editor rich-text aceita imagens entre parágrafos. No salvamento, imagens locais são otimizadas para WebP quando possível e enviadas ao bucket `banners` antes de o HTML sanitizado ser persistido.
+- Cada história abre no leitor imersivo em `#/Historias/<id>`, com contexto temporal, modo focado e histórias relacionadas da mesma era.
+- A URL local `?narrativeTest=1&skipIntro=1#/Eras` ativa apenas dados demonstrativos em memória e desliga o Supabase em `localhost`, permitindo testar sem gravar nada.
