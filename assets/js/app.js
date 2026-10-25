@@ -1837,25 +1837,25 @@
      Eles usam o mesmo shape das linhas de stories; nada é gravado no Supabase. */
   if (NARRATIVE_TEST_MODE) {
     const demoEras = [
-      ['demo-era-azul', 'Azul do Velho Mundo', 'O princípio sem nome', 1, 'Antes do calendário', 'Ano 300', '#7667c7'],
-      ['demo-era-media', 'Terra Média', 'Reinos sob cinzas', 2, 'Ano 301', 'Ano 550', '#b98258'],
-      ['demo-era-moderna', 'Tempos Modernos', 'A fome das máquinas', 3, 'Ano 551', 'Ano 820', '#5c9eaf'],
-      ['demo-era-pos', 'Pós-Modernismo', 'O mundo fragmentado', 4, 'Ano 821', 'Décimo inverno', '#a55783'],
-      ['demo-era-apocalipse', 'Apocalipse', 'Depois da última luz', 5, 'Depois da contagem', '—', '#bd5555']
+      ['demo-era-01', 'Era 01', '', 1, 'Início', 'Marco 300', '#7667c7'],
+      ['demo-era-02', 'Era 02', '', 2, 'Marco 301', 'Marco 550', '#b98258'],
+      ['demo-era-03', 'Era 03', '', 3, 'Marco 551', 'Marco 820', '#5c9eaf'],
+      ['demo-era-04', 'Era 04', '', 4, 'Marco 821', 'Marco 1100', '#a55783'],
+      ['demo-era-05', 'Era 05', '', 5, 'Marco 1101', 'Presente', '#bd5555']
     ].map(([id, title, summary, order, start, end, color]) => ({
       id, tab: 'Eras', title, summary, image: '', imagePath: '', bodyHtml: '', tags: [], subtype: '',
       fields: { Ordem: order, Início: start, Fim: end, Cor: color }, createdAt: order,
       isUserCreated: false, detailLoaded: true, fieldsLoaded: true, isNarrativeDemo: true
     }));
     const demoStories = [
-      ['demo-primeiro-nome', 'Antes do Primeiro Nome', 'Quando o mundo ainda não possuía nomes, uma escolha transformou memória em matéria.', 'demo-era-azul', 'Antes do calendário', 12, 'Cânone', '', 'Origem', 'assets/images/hero-arcano.webp'],
-      ['demo-pacto-azul', 'O Pacto Azul', 'As primeiras vozes juraram que nenhum nome seria apagado novamente.', 'demo-era-azul', 'Ano I da Memória', 64, 'Cânone', '', 'Pacto', 'assets/images/login-cosmos-base.webp'],
-      ['demo-coroa-cinzas', 'A Coroa das Cinzas', 'Sete casas queimaram seus brasões para erguer um único reino.', 'demo-era-media', 'Terceiro século', 35, 'Cânone', '', 'Ascensão', 'assets/images/race-anatomy-abstract.webp'],
-      ['demo-sob-gelo', 'Sob o Gelo', 'Uma expedição descobre um povo oculto nas águas profundas.', 'demo-era-moderna', 'Ano 638', 30, 'Cânone', '', 'Descoberta', 'assets/images/login-cosmos-nebula.webp'],
-      ['demo-ritual', 'O Ritual Funcionou', 'A muralha arcana jamais caiu — e cada habitante se tornou parte do encantamento.', 'demo-era-moderna', 'Divergência · Ano 412', 72, 'Realidade alternativa', 'demo-coroa-cinzas', 'Divergência', 'assets/images/login-cosmos-foreground.webp'],
-      ['demo-luz', 'Onde a Luz Não Alcança', 'Numa cidade sem amanhecer, a escuridão aprendeu a observá-los.', 'demo-era-pos', 'Décimo inverno sem sol', 42, 'Cânone', '', 'Catástrofe', 'assets/images/hero-arcano.webp'],
-      ['demo-sem-nome', 'O Mundo sem Primeiro Nome', 'Sem nomes, o próprio mundo começou a dissolver suas fronteiras.', 'demo-era-pos', 'Divergência · Décimo inverno', 78, 'Realidade alternativa', 'demo-primeiro-nome', 'Divergência', 'assets/images/race-anatomy-abstract.webp'],
-      ['demo-silencio', 'O Silêncio Depois dos Deuses', 'O último altar se partiu e o silêncio confirmou que os deuses haviam partido.', 'demo-era-apocalipse', 'Depois da contagem', 48, 'Cânone', '', 'Fim', 'assets/images/login-cosmos-base.webp']
+      ['demo-fundacao', 'Fundação', 'Um marco de origem capaz de sustentar qualquer cenário criado pelo Mestre.', 'demo-era-01', 'Marco 080', 18, 'Cânone', '', 'Origem', 'assets/images/hero-arcano.webp'],
+      ['demo-pacto', 'O grande pacto', 'Uma aliança altera o equilíbrio político do mundo.', 'demo-era-01', 'Marco 240', 72, 'Cânone', '', 'Pacto', 'assets/images/login-cosmos-base.webp'],
+      ['demo-expansao', 'Expansão', 'Novas fronteiras surgem e conectam povos antes isolados.', 'demo-era-02', 'Marco 430', 48, 'Cânone', '', 'Ascensão', 'assets/images/race-anatomy-abstract.webp'],
+      ['demo-descoberta', 'A descoberta', 'Uma expedição encontra algo que muda a compreensão do mundo.', 'demo-era-03', 'Marco 630', 28, 'Cânone', '', 'Descoberta', 'assets/images/login-cosmos-nebula.webp'],
+      ['demo-divergencia', 'A escolha impossível', 'Neste ramo, uma decisão oposta cria uma realidade inteiramente nova.', 'demo-era-03', 'Divergência · Marco 710', 76, 'Realidade alternativa', 'demo-expansao', 'Divergência', 'assets/images/login-cosmos-foreground.webp'],
+      ['demo-ruptura', 'A ruptura', 'Um acontecimento divide o mundo entre antes e depois.', 'demo-era-04', 'Marco 940', 42, 'Cânone', '', 'Catástrofe', 'assets/images/hero-arcano.webp'],
+      ['demo-segundo-ramo', 'O mundo preservado', 'Uma segunda possibilidade nasce do ponto de ruptura.', 'demo-era-04', 'Divergência · Marco 1020', 80, 'Realidade alternativa', 'demo-ruptura', 'Divergência', 'assets/images/race-anatomy-abstract.webp'],
+      ['demo-presente', 'O presente', 'O último marco registrado aguarda as próximas escolhas da campanha.', 'demo-era-05', 'Presente', 55, 'Cânone', '', 'Marco atual', 'assets/images/login-cosmos-base.webp']
     ].map(([id, title, summary, era, date, position, reality, divergence, importance, image], index) => ({
       id, tab: 'Historias', title, summary, image, imagePath: '', tags: [], subtype: '',
       bodyHtml: `<p>${summary}</p><blockquote>Todo acontecimento deixa uma cicatriz em quem sobrevive para lembrá-lo.</blockquote><p>Este relato demonstra como texto, imagens e contexto temporal convivem no leitor real do Codex.</p>`,
@@ -2936,26 +2936,20 @@
   function narrativePreviewHTML(event, eras) {
     if (!event) return `
       <div class="chrono-preview__empty">
-        <span aria-hidden="true">⌁</span>
-        <h3>Nenhum acontecimento posicionado</h3>
-        <p>As histórias ganham forma aqui quando recebem uma era e uma posição temporal.</p>
+        <span aria-hidden="true"></span>
+        <p>Selecione um marco</p>
       </div>`;
     const era = eras.find((item) => item.id === event.fields?.Era);
     const branch = narrativeIsBranch(event);
     return `
       <div class="chrono-preview__media ${event.image ? '' : 'is-fallback'}">
         ${event.image ? `<img src="${escapeHtml(event.image)}" alt="" loading="lazy" decoding="async">` : ''}
-        <span>${branch ? 'REALIDADE ALTERNATIVA' : 'CÂNONE'}</span>
       </div>
       <div class="chrono-preview__body">
-        <small>${escapeHtml(event.fields?.['Data no mundo'] || 'Data não definida')}</small>
+        <div class="chrono-preview__meta"><small>${escapeHtml(event.fields?.['Data no mundo'] || era?.title || 'Sem data')}</small><span>${branch ? 'RAMIFICAÇÃO' : 'LINHA PRINCIPAL'}</span></div>
         <h3>${escapeHtml(event.title)}</h3>
-        <p>${escapeHtml(event.summary || 'Sem resumo cadastrado.')}</p>
-        <dl>
-          <div><dt>Era</dt><dd>${escapeHtml(era?.title || 'Não classificada')}</dd></div>
-          <div><dt>Natureza</dt><dd>${escapeHtml(event.fields?.Importância || 'Acontecimento')}</dd></div>
-        </dl>
-        <a class="btn btn-primary" href="#/Historias/${encodeURIComponent(event.id)}">Ler acontecimento <span aria-hidden="true">→</span></a>
+        ${event.summary ? `<p>${escapeHtml(event.summary)}</p>` : ''}
+        <a href="#/Historias/${encodeURIComponent(event.id)}" aria-label="Ler ${escapeHtml(event.title)}">Abrir <span aria-hidden="true">→</span></a>
       </div>`;
   }
 
@@ -2969,19 +2963,15 @@
 
     if (!eras.length) {
       return `
-        <section class="cat-hero chrono-hero" style="--hue:${themeOf('Eras').hue}">
-          <div class="cat-hero__icon">${iconOf('Eras')}</div>
-          <div class="cat-hero__body"><span class="cat-hero__eyebrow">ARQUIVO TEMPORAL</span><h1 class="cat-hero__title">As eras deixam cicatrizes.</h1><p class="cat-hero__tone">Cadastre a primeira era para começar a cronologia do mundo.</p></div>
-        </section>
-        <section class="chrono-empty">
-          <span>${iconOf('Eras')}</span><h2>O tempo ainda não foi nomeado</h2><p>Crie eras; depois, posicione histórias dentro delas e abra realidades alternativas.</p>
-          ${showCreate ? '<a class="btn btn-primary" href="#/Eras/criar">Criar primeira era</a>' : ''}
+        <section class="chronoscope chronoscope--empty" data-chronoscope>
+          <header class="chronoscope__head"><div class="chronoscope__identity"><span class="chronoscope__mark" aria-hidden="true"></span><span><small>CRONOSCÓPIO</small><h1>Linha do tempo</h1></span></div>${showCreate ? '<a class="btn btn-primary chrono-action" href="#/Eras/criar">+ Era</a>' : ''}</header>
+          <div class="chrono-empty-stage"><div class="chrono-empty-axis" aria-hidden="true"><i></i></div><p>Nenhuma era cadastrada.</p>${showCreate ? '<a href="#/Eras/criar">Criar a primeira era →</a>' : ''}</div>
         </section>`;
     }
 
     const eraBands = eras.map((era, index) => `
-      <div class="chrono-era-band" id="chrono-era-${index}" style="--era-left:${index * eraWidth}%;--era-width:${eraWidth}%;--era-color:${escapeHtml(era.fields?.Cor || '#a78bfa')}">
-        <strong>${escapeHtml(era.title)}</strong><small>${escapeHtml(era.summary || `${era.fields?.Início || '—'} — ${era.fields?.Fim || '—'}`)}</small>
+      <div class="chrono-era-band" id="chrono-era-${index}" data-era-index="${index}" aria-label="${escapeHtml(era.title)}" style="--era-left:${index * eraWidth}%;--era-width:${eraWidth}%;--era-color:${escapeHtml(era.fields?.Cor || '#a78bfa')}">
+        <b aria-hidden="true">${String(index + 1).padStart(2, '0')}</b><small>${escapeHtml(`${era.fields?.Início || '—'} · ${era.fields?.Fim || '—'}`)}</small>
       </div>`).join('');
 
     const eventNodes = events.map((event) => {
@@ -2989,7 +2979,7 @@
       const left = eraIndex * eraWidth + (narrativePosition(event) / 100) * eraWidth;
       const branch = narrativeIsBranch(event);
       const edgeClass = left < 7 ? ' is-edge-start' : (left > 93 ? ' is-edge-end' : '');
-      return `<button type="button" class="chrono-event ${branch ? 'chrono-event--branch' : ''}${edgeClass}" style="--event-left:${left}%" data-chrono-event="${escapeHtml(event.id)}" aria-label="${escapeHtml(`${event.title}, ${event.fields?.['Data no mundo'] || 'data não definida'}${branch ? ', realidade alternativa' : ''}`)}"><i></i><span>${escapeHtml(event.title)}</span></button>`;
+      return `<button type="button" class="chrono-event ${branch ? 'chrono-event--branch' : ''}${edgeClass}" style="--event-left:${left}%" data-chrono-event="${escapeHtml(event.id)}" data-chrono-era-index="${eraIndex}" aria-pressed="false" aria-label="${escapeHtml(`${event.title}, ${event.fields?.['Data no mundo'] || 'data não definida'}${branch ? ', realidade alternativa' : ''}`)}"><i></i><span>${escapeHtml(event.title)}</span></button>`;
     }).join('');
 
     const mobileEras = eras.map((era, eraIndex) => {
@@ -3001,19 +2991,16 @@
     }).join('');
 
     return `
-      <section class="chrono-hero" style="--hue:${themeOf('Eras').hue}">
-        <div><span class="section__eyebrow">ARQUIVO TEMPORAL · CÂNONE VIVO</span><h1>As eras não passam.<br><em>Elas deixam cicatrizes.</em></h1><p>Percorra a história do mundo, revele acontecimentos e acompanhe as realidades abertas por cada ponto de divergência.</p></div>
-        <dl><div><dt>Eras</dt><dd>${String(eras.length).padStart(2, '0')}</dd></div><div><dt>Acontecimentos</dt><dd>${String(events.length).padStart(2, '0')}</dd></div><div><dt>Realidades</dt><dd>${String(branchCount).padStart(2, '0')}</dd></div></dl>
-      </section>
       <section class="chronoscope" data-chronoscope>
-        <header class="chronoscope__head"><div><span class="chrono-ordinal">I</span><span><small>CRONOSCÓPIO</small><h2>Linha canônica</h2></span></div><div class="chronoscope__actions">${showCreate ? '<a class="btn btn-ghost" href="#/Eras/criar">Nova era</a><a class="btn btn-primary" href="#/Historias/criar">Novo acontecimento</a>' : ''}<button type="button" class="chrono-branch-toggle" data-chrono-branches aria-pressed="true">Ramificações <b>${branchCount}</b></button></div></header>
+        <header class="chronoscope__head"><div class="chronoscope__identity"><span class="chronoscope__mark" aria-hidden="true"></span><span><small>CRONOSCÓPIO</small><h1>Linha do tempo</h1></span></div><div class="chronoscope__actions">${showCreate ? '<a class="btn btn-ghost chrono-action" href="#/Eras/criar">+ Era</a><a class="btn btn-primary chrono-action" href="#/Historias/criar">+ Acontecimento</a>' : ''}${branchCount ? `<button type="button" class="chrono-branch-toggle" data-chrono-branches aria-pressed="true">Ramificações <b>${branchCount}</b></button>` : ''}</div></header>
         <nav class="chrono-era-nav" style="--era-count:${eras.length}" aria-label="Ir para uma era">${eras.map((era, index) => `<button type="button" data-chrono-era="${index}" class="${index === 0 ? 'is-active' : ''}"><b>${String(index + 1).padStart(2, '0')}</b><span>${escapeHtml(era.title)}</span></button>`).join('')}</nav>
-        <div class="chronoscope__layout">
+        <div class="chrono-stage" data-chrono-stage>
+          <div class="chrono-atmosphere" aria-hidden="true"></div>
           <div class="chrono-track-scroll" tabindex="0" aria-label="Linha do tempo. Use Tab ou as setas para percorrer os acontecimentos."><div class="chrono-track"><div class="chrono-era-bands">${eraBands}</div><div class="chrono-canon-line" aria-hidden="true"></div><div class="chrono-branch-line" aria-hidden="true"></div>${eventNodes}</div></div>
-          <aside class="chrono-preview" data-chrono-preview aria-live="polite">${narrativePreviewHTML(first, eras)}</aside>
+          <aside class="chrono-preview is-revealed" data-chrono-preview aria-live="polite">${narrativePreviewHTML(first, eras)}</aside>
         </div>
         <div class="chrono-mobile">${mobileEras}</div>
-        <footer class="chrono-legend"><span><i></i>Cânone</span><span><i class="is-branch"></i>Realidade alternativa</span><p>Passe o mouse, use Tab ou toque para revelar a história.</p></footer>
+        <footer class="chrono-legend"><span><i></i>Linha principal</span><span><i class="is-branch"></i>Ramificação</span></footer>
       </section>`;
   }
 
@@ -3469,9 +3456,13 @@
 
     const banner = bannerLabelFor(tabId);
     const bannerStyle = bannerStyleFor(tabId);
-    const titleLabel = (isItens || isSectioned) ? 'Nome' : 'Título';
-    const titlePlaceholder = isItens ? 'Nome do item' : (isRacas ? 'Nome da raça' : (isBestiario ? 'Nome da criatura' : 'Dê um nome à sua história'));
-    const summaryPlaceholder = `Uma frase curta que descreve ${isItens ? 'o item' : (isRacas ? 'a raça' : (isBestiario ? 'a criatura' : 'a história'))}`;
+    const titleLabel = isEras ? 'Nome da era' : ((isItens || isSectioned) ? 'Nome' : 'Título');
+    const titlePlaceholder = isEras
+      ? 'Nome definido pelo Mestre'
+      : (isItens ? 'Nome do item' : (isRacas ? 'Nome da raça' : (isBestiario ? 'Nome da criatura' : 'Dê um nome à sua história')));
+    const summaryPlaceholder = isEras
+      ? 'Descrição breve desta era'
+      : `Uma frase curta que descreve ${isItens ? 'o item' : (isRacas ? 'a raça' : (isBestiario ? 'a criatura' : 'a história'))}`;
     const descLabel = isStories
       ? 'Relato'
       : (isEras ? 'Descrição da era' : ((isItens || isSectioned) ? 'Descrição' : 'Texto'));
@@ -3612,7 +3603,7 @@
             <label class="create-form__field" for="narrativeEra"><span class="create-form__label">Era</span><select class="create-form__input" id="narrativeEra" required><option value="">Selecione uma era</option>${narrativeEraEntries().map((era) => `<option value="${escapeHtml(era.id)}" ${editing && initial.fields.Era === era.id ? 'selected' : ''}>${escapeHtml(era.title)}</option>`).join('')}</select></label>
             <label class="create-form__field" for="narrativeDate"><span class="create-form__label">Data no mundo</span><input class="create-form__input" id="narrativeDate" value="${editing ? escapeHtml(initial.fields['Data no mundo'] || '') : ''}" placeholder="Ex.: Ano 638 ou Décimo inverno"></label>
             <label class="create-form__field" for="narrativePosition"><span class="create-form__label">Posição dentro da era <b data-narrative-position-label>${editing ? escapeHtml(initial.fields['Posição temporal'] ?? 50) : '50'}%</b></span><input id="narrativePosition" type="range" min="0" max="100" value="${editing ? escapeHtml(initial.fields['Posição temporal'] ?? 50) : '50'}"></label>
-            <label class="create-form__field" for="narrativeReality"><span class="create-form__label">Realidade</span><select class="create-form__input" id="narrativeReality"><option ${!editing || initial.fields.Realidade !== 'Realidade alternativa' ? 'selected' : ''}>Cânone</option><option ${editing && initial.fields.Realidade === 'Realidade alternativa' ? 'selected' : ''}>Realidade alternativa</option></select></label>
+            <label class="create-form__field" for="narrativeReality"><span class="create-form__label">Realidade</span><select class="create-form__input" id="narrativeReality"><option value="Cânone" ${!editing || initial.fields.Realidade !== 'Realidade alternativa' ? 'selected' : ''}>Linha principal</option><option ${editing && initial.fields.Realidade === 'Realidade alternativa' ? 'selected' : ''}>Realidade alternativa</option></select></label>
             <label class="create-form__field" for="narrativeImportance"><span class="create-form__label">Natureza</span><select class="create-form__input" id="narrativeImportance">${['Vestígio','Descoberta','Pacto','Ascensão','Guerra','Catástrofe','Ruptura de era','Fim'].map((value) => `<option ${editing && initial.fields.Importância === value ? 'selected' : ''}>${value}</option>`).join('')}</select></label>
             <label class="create-form__field" for="narrativeDivergence"><span class="create-form__label">Ponto de divergência</span><select class="create-form__input" id="narrativeDivergence"><option value="">Nenhum — linha principal</option>${narrativeEvents().filter((entry) => entry.id !== entryId && !narrativeIsBranch(entry)).map((entry) => `<option value="${escapeHtml(entry.id)}" ${editing && initial.fields['Ponto de divergência'] === entry.id ? 'selected' : ''}>${escapeHtml(entry.title)}</option>`).join('')}</select></label>
           </div>
@@ -6833,9 +6824,23 @@
     const selectEvent = (id, focus = false) => {
       const entry = entryById(id);
       if (!entry) return;
-      root.querySelectorAll('[data-chrono-event]').forEach((button) => button.classList.toggle('is-active', button.dataset.chronoEvent === id));
-      if (preview) preview.innerHTML = narrativePreviewHTML(entry, eras);
-      if (focus) root.querySelector(`.chrono-event[data-chrono-event="${CSS.escape(id)}"]`)?.focus();
+      let selectedButton = null;
+      root.querySelectorAll('[data-chrono-event]').forEach((button) => {
+        const selected = button.dataset.chronoEvent === id;
+        button.classList.toggle('is-active', selected);
+        if (button.matches('.chrono-event')) button.setAttribute('aria-pressed', String(selected));
+        if (selected && button.matches('.chrono-event')) selectedButton = button;
+      });
+      const eraIndex = selectedButton?.dataset.chronoEraIndex;
+      root.querySelectorAll('[data-chrono-era]').forEach((button) => button.classList.toggle('is-active', button.dataset.chronoEra === eraIndex));
+      root.querySelectorAll('.chrono-era-band').forEach((band) => band.classList.toggle('is-active', band.dataset.eraIndex === eraIndex));
+      if (selectedButton) root.style.setProperty('--active-x', selectedButton.style.getPropertyValue('--event-left'));
+      if (preview) {
+        preview.classList.remove('is-revealed');
+        preview.innerHTML = narrativePreviewHTML(entry, eras);
+        requestAnimationFrame(() => preview.classList.add('is-revealed'));
+      }
+      if (focus) selectedButton?.focus();
     };
     eventButtons.forEach((button) => {
       if (button.closest('.chrono-mobile-event')) {
@@ -6880,6 +6885,31 @@
       const target = root.querySelector(`#chrono-era-${index}`);
       if (track && target) track.scrollTo({ left: Math.max(0, target.offsetLeft - 24), behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
     }));
+    const stage = root.querySelector('[data-chrono-stage]');
+    if (stage && !matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      let frame = 0;
+      let pointerX = 50;
+      let pointerY = 50;
+      let pointerBounds = null;
+      const paintPointer = () => {
+        frame = 0;
+        stage.style.setProperty('--pointer-x', `${pointerX}%`);
+        stage.style.setProperty('--pointer-y', `${pointerY}%`);
+      };
+      stage.addEventListener('pointerenter', () => { pointerBounds = stage.getBoundingClientRect(); });
+      stage.addEventListener('pointermove', (event) => {
+        const rect = pointerBounds || stage.getBoundingClientRect();
+        pointerX = ((event.clientX - rect.left) / rect.width) * 100;
+        pointerY = ((event.clientY - rect.top) / rect.height) * 100;
+        if (!frame) frame = requestAnimationFrame(paintPointer);
+      });
+      stage.addEventListener('pointerleave', () => {
+        pointerBounds = null;
+        pointerX = 50;
+        pointerY = 48;
+        if (!frame) frame = requestAnimationFrame(paintPointer);
+      });
+    }
     const first = events.find((entry) => !narrativeIsBranch(entry)) || events[0];
     if (first) selectEvent(first.id);
   }

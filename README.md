@@ -130,6 +130,8 @@ Em qualquer categoria criavel (Cenarios, Eras, Sistemas, Mapa, Deuses, Historias
 
 A aba **Linha do Tempo** (`#/Eras`) usa os registros reais de `stories` para montar o Cronoscópio. Não existe uma segunda base de dados: metadados narrativos ficam no JSON `fields`, que já faz parte da arquitetura do Codex.
 
+O Cronoscópio não inclui um catálogo fixo de eras: nomes, limites, ordem e cor vêm exclusivamente das eras cadastradas pelo Mestre. A interface permanece modular para qualquer campanha ou cenário.
+
 - Registros em `Eras` usam `Ordem`, `Início`, `Fim` e `Cor`.
 - Registros em `Historias` usam `Era`, `Data no mundo`, `Posição temporal`, `Realidade`, `Ponto de divergência` e `Importância`.
 - O Mestre cria eras em `#/Eras/criar` e acontecimentos em `#/Historias/criar`.
