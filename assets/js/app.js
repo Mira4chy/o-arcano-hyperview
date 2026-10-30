@@ -3005,11 +3005,15 @@
         <b aria-hidden="true">${String(index + 1).padStart(2, '0')}</b><strong>${escapeHtml(era.title)}</strong>${events.some((event) => event.fields?.Era === era.id) ? '' : `<em>Nenhum acontecimento</em>${showCreate ? '<a class="chrono-era-band__add" href="#/Historias/criar">+ Acontecimento</a>' : ''}`}<small>${escapeHtml(`${era.fields?.Início || '—'} · ${era.fields?.Fim || '—'}`)}</small>
       </div>`).join('');
 
+    const lastLabelLeft = [-Infinity, -Infinity];
     const eventNodes = events.map((event, eventIndex) => {
       const eraIndex = Math.max(0, eras.findIndex((era) => era.id === event.fields?.Era));
       const left = eraIndex * eraWidth + (6 + narrativePosition(event) * 0.88) / 100 * eraWidth;
       const branch = narrativeIsBranch(event);
-      const edgeClass = (left < 7 ? ' is-edge-start' : (left > 93 ? ' is-edge-end' : '')) + (eventIndex % 2 ? ' is-label-below' : '');
+      const labelSide = eventIndex % 2;
+      const labelQuiet = left - lastLabelLeft[labelSide] < 11;
+      if (!labelQuiet) lastLabelLeft[labelSide] = left;
+      const edgeClass = (left < 7 ? ' is-edge-start' : (left > 93 ? ' is-edge-end' : '')) + (labelSide ? ' is-label-below' : '') + (labelQuiet ? ' is-label-quiet' : '');
       return `<button type="button" class="chrono-event ${branch ? 'chrono-event--branch' : ''}${edgeClass}" style="--event-left:${left}%" data-chrono-event="${escapeHtml(event.id)}" data-chrono-era-index="${eraIndex}" aria-pressed="false" aria-label="${escapeHtml(`${event.title}, ${event.fields?.['Data no mundo'] || 'data não definida'}${branch ? ', realidade alternativa' : ''}`)}"><i></i><span>${escapeHtml(event.title)}</span></button>`;
     }).join('');
 

@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(node --check assets/js/app.js)",
+      "Bash(node --check assets/js/content.js)",
+      "Bash(node -e \"const c=require\\('fs'\\).readFileSync\\('assets/css/styles.css','utf8'\\);const o=\\(c.match\\(/{/g\\)||[]\\).length,cl=\\(c.match\\(/}/g\\)||[]\\).length;console.log\\('CSS braces:',o,'open',cl,'close',o===cl?'BALANCED':'MISMATCH'\\)\")",
+      "Bash(git commit -m ' *)",
+      "Bash(gh api *)",
+      "Bash(gh run *)",
+      "Bash(git revert *)"
+    ]
+  }
+}

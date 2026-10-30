@@ -5740,6 +5740,8 @@ body.is-locked > .intro { display: none !important; }
 .chrono-event.is-active::after { animation: chrono-pulse 2.2s ease-out infinite; }
 .chrono-event span { top: -39px; padding: 5px 7px; border: 1px solid transparent; background: rgba(7,6,12,.72); backdrop-filter: blur(8px); }
 .chrono-event:hover span,.chrono-event:focus-visible span,.chrono-event.is-active span { border-color: rgba(196,181,253,.14); }
+.chrono-event.is-label-quiet:not(:hover):not(:focus-visible):not(.is-active) span { opacity: 0; }
+.chrono-event:hover,.chrono-event:focus-visible,.chrono-event.is-active { z-index: 4; }
 .chrono-event--branch { top: calc(61% - 22px); }
 .chrono-event--branch i { box-shadow: 0 0 0 5px rgba(236,72,153,.06),0 0 18px rgba(236,72,153,.34); }
 .chronoscope.branches-hidden .chrono-branch-line { animation: none; }
