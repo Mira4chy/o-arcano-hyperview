@@ -13024,3 +13024,16 @@ a.platform-system:hover { border-color: hsla(var(--hue), 70%, 65%, .5); transfor
   .chat-roll__reading b { font-size: .78rem; }
   .chat-roll__reading { flex-basis: auto; }
 }
+
+/* ── Senha da mesa ── */
+.mesa-password { display: grid; grid-template-columns: minmax(0, 1fr) minmax(140px, 220px) auto auto; gap: 10px; align-items: center; margin-bottom: 20px; padding: 14px 16px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface-1); }
+.mesa-password > div { display: grid; gap: 2px; }
+.mesa-password > div span { color: var(--muted); font-size: .85rem; }
+.mesa-password input, .mesa-lock input { min-height: 42px; padding: 9px 12px; border: 1px solid var(--line-strong); border-radius: var(--radius-sm); background: rgba(8, 7, 15, .6); color: var(--text); font: inherit; }
+.mesa-lock { display: grid; justify-items: center; gap: 12px; max-width: 360px; margin: 40px auto; padding: 28px 24px; border: 1px solid rgba(230, 223, 209, .12); border-radius: 6px; background: #12100e; color: #e6dfd1; text-align: center; }
+.mesa-lock__icon { display: grid; place-items: center; width: 44px; height: 44px; border: 1px solid rgba(200, 162, 90, .5); border-radius: 50%; color: #c8a25a; }
+.mesa-lock h2 { margin: 0; font-family: 'Cinzel', Georgia, serif; font-size: 1.15rem; font-weight: 600; }
+.mesa-lock input { width: 100%; text-align: center; font-size: 16px; }
+.mesa-lock__error { min-height: 1.2em; margin: 0; color: #d79a9a; font-size: .86rem; }
+.mesa-lock__actions { display: flex; gap: 10px; }
+@media (max-width: 760px) { .mesa-password { grid-template-columns: 1fr; } }

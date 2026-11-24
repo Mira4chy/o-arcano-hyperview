@@ -1092,8 +1092,10 @@
   };
 
   /* Dados de atributo já com bônus do Despertar aplicado. */
+  /* Dados = metade do que passa da base (arredondado para baixo), mínimo 1d6.
+     10–13 = 1d6 · 14–15 = 2d6 · 16–17 = 3d6 · 18–19 = 4d6. A raça soma depois. */
   function attrDiceForScore(score, raceMod = 0) {
-    const baseDice = Math.floor((Number(score || CHAR_ATTR_BASE) - CHAR_ATTR_BASE) / 2) + 1;
+    const baseDice = Math.max(1, Math.floor((Number(score || CHAR_ATTR_BASE) - CHAR_ATTR_BASE) / 2));
     return Math.max(1, baseDice + Number(raceMod || 0));
   }
   const fmtDice = (n) => `${Math.max(1, Number(n) || 1)}d6`;
@@ -5520,6 +5522,7 @@
       system: row.system || 'arcano',
       ownerId: row.owner_id,
       inviteCode: row.invite_code || '',
+      hasPassword: !!row.has_password,
       role: role || (auth.user && row.owner_id === auth.user.id ? 'mestre' : 'jogador'),
       createdAt: row.created_at ? new Date(row.created_at).getTime() : Date.now()
     };
@@ -5646,8 +5649,12 @@
     return mesa;
   }
 
-  async function joinMesa(code) {
-    const { data, error } = await sb.rpc('join_mesa', { p_code: code });
+  /* Mesa com senha: o banco responde MESA_SENHA_NECESSARIA / MESA_SENHA_INCORRETA. */
+  let mesaJoinPrompt = null;
+  const isPasswordError = (err, kind) => String(err && err.message || '').includes(kind);
+
+  async function joinMesa(code, password) {
+    const { data, error } = await sb.rpc('join_mesa', { p_code: code, p_password: password || null });
     if (error) throw mesaTableMissing(error) ? new Error(MESA_TABLE_HINT) : error;
     await loadMesas(true);
     return data;
@@ -5721,8 +5728,13 @@
     if (route.view === 'join' && route.code) {
       try {
         const mesaId = await joinMesa(route.code);
+        mesaJoinPrompt = null;
         location.replace(`#/Mesas/${encodeURIComponent(mesaId)}`);
       } catch (err) {
+        if (isPasswordError(err, 'MESA_SENHA_NECESSARIA')) {
+          mesaJoinPrompt = { code: route.code };
+          return true;
+        }
         console.error(err);
         toast('Não foi possível entrar na mesa: ' + (err.message || err));
         location.replace('#/Mesas');
@@ -5740,7 +5752,7 @@
   function viewMesaRoute(route) {
     if (route.view === 'list') return viewMesasList();
     if (route.view === 'create') return viewMesaCreate();
-    if (route.view === 'join') return viewMesaJoining();
+    if (route.view === 'join') return viewMesaJoining(route);
     const mesa = mesaById(route.mesaId);
     if (!mesa) return viewMesaMissing();
     if (route.view === 'character-form') {
@@ -5882,7 +5894,7 @@
         <div class="entry-card__body">
           <h3 class="entry-card__title">${escapeHtml(m.name)}</h3>
           <p class="entry-card__summary">${escapeHtml(m.description || 'Sem descrição.')}</p>
-          <div class="entry-card__chips"><span class="chip">Sistema ${escapeHtml(sys.name)}</span></div>
+          <div class="entry-card__chips"><span class="chip">Sistema ${escapeHtml(sys.name)}</span>${m.hasPassword ? '<span class="chip">Com senha</span>' : ''}</div>
         </div>
       </a>`;
   }
@@ -5964,8 +5976,19 @@
       </form>`;
   }
 
-  function viewMesaJoining() {
-    return `<p class="mesa-notice">Entrando na mesa…</p>`;
+  function viewMesaJoining(route) {
+    if (!mesaJoinPrompt || mesaJoinPrompt.code !== route.code) return `<p class="mesa-notice">Entrando na mesa…</p>`;
+    return `
+      <form class="mesa-lock" id="mesaPasswordForm" data-code="${escapeHtml(route.code)}">
+        <span class="mesa-lock__icon" aria-hidden="true">${TOOL_ICON('<rect x="5" y="11" width="14" height="10" rx="1"/><path d="M8 11V7a4 4 0 018 0v4"/>')}</span>
+        <h2>Mesa com senha</h2>
+        <input type="password" name="password" autocomplete="off" maxlength="72" required aria-label="Senha da mesa" placeholder="Senha">
+        <p class="mesa-lock__error" data-lock-error aria-live="polite"></p>
+        <div class="mesa-lock__actions">
+          <a href="#/Mesas" class="btn btn-ghost">Cancelar</a>
+          <button type="submit" class="btn btn-primary"><span>Entrar</span></button>
+        </div>
+      </form>`;
   }
 
   function viewMesaMissing() {
@@ -7795,6 +7818,13 @@
           <code>${escapeHtml(inviteUrl)}</code>
           <button type="button" class="btn btn-primary" data-mesa-copy="${escapeHtml(inviteUrl)}"><span>Copiar link</span></button>
         </section>` : ''}
+      ${mesa.ownerId === auth.user?.id ? `
+        <form class="mesa-password" id="mesaSetPasswordForm" data-mesa-id="${escapeHtml(mesa.id)}">
+          <div><strong>Senha</strong><span>${mesa.hasPassword ? 'Ativa. Quem abrir o convite precisa dela.' : 'Sem senha.'}</span></div>
+          <input type="password" name="password" autocomplete="new-password" minlength="4" maxlength="72" placeholder="${mesa.hasPassword ? 'Nova senha' : 'Definir senha'}" aria-label="Senha da mesa">
+          <button type="submit" class="btn btn-primary"><span>${mesa.hasPassword ? 'Trocar' : 'Definir'}</span></button>
+          ${mesa.hasPassword ? '<button type="button" class="btn btn-ghost" data-mesa-password-remove>Remover</button>' : ''}
+        </form>` : ''}
       <ul class="mesa-members">
         ${members.map((m) => `
           <li>
@@ -7938,6 +7968,53 @@
           toast('Erro ao criar mesa: ' + (err.message || err));
           button.disabled = false;
         }
+      });
+    }
+
+    const passwordForm = document.getElementById('mesaPasswordForm');
+    if (passwordForm && !passwordForm.dataset.bound) {
+      passwordForm.dataset.bound = '1';
+      passwordForm.querySelector('input').focus();
+      passwordForm.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        const input = passwordForm.querySelector('input');
+        const errorEl = passwordForm.querySelector('[data-lock-error]');
+        const button = passwordForm.querySelector('[type="submit"]');
+        button.disabled = true;
+        errorEl.textContent = '';
+        try {
+          const mesaId = await joinMesa(passwordForm.dataset.code, input.value);
+          mesaJoinPrompt = null;
+          location.replace(`#/Mesas/${encodeURIComponent(mesaId)}`);
+        } catch (err) {
+          errorEl.textContent = isPasswordError(err, 'MESA_SENHA_INCORRETA') ? 'Senha incorreta.' : ('Não foi possível entrar: ' + (err.message || err));
+          input.select();
+          button.disabled = false;
+        }
+      });
+    }
+
+    const setPasswordForm = document.getElementById('mesaSetPasswordForm');
+    if (setPasswordForm && !setPasswordForm.dataset.bound) {
+      setPasswordForm.dataset.bound = '1';
+      const mesaId = setPasswordForm.dataset.mesaId;
+      const savePassword = async (password) => {
+        const { error } = await sb.rpc('set_mesa_password', { p_mesa: mesaId, p_password: password });
+        if (error) { toast('Senha não salva: ' + error.message); return; }
+        const mesa = mesaById(mesaId);
+        if (mesa) mesa.hasPassword = !!password;
+        toast(password ? 'Senha definida.' : 'Senha removida.');
+        render(true);
+      };
+      setPasswordForm.addEventListener('submit', (event) => {
+        event.preventDefault();
+        const value = setPasswordForm.querySelector('input').value;
+        if (value.length < 4) { setPasswordForm.querySelector('input').focus(); return; }
+        savePassword(value);
+      });
+      setPasswordForm.querySelector('[data-mesa-password-remove]')?.addEventListener('click', async () => {
+        if (!(await askConfirm('Remover a senha da mesa? Qualquer pessoa com o convite poderá entrar.', { confirmLabel: 'Remover' }))) return;
+        savePassword(null);
       });
     }
 
@@ -9106,7 +9183,7 @@
           <div class="attr-buy" id="attrBuy"
                data-base="${CHAR_ATTR_BASE}" data-pool="livre" data-min="1" data-max="${masterMode ? 99 : CHAR_ATTR_MAX}">
             <div class="attr-buy__head">
-                    <span>Base ${CHAR_ATTR_BASE}. A cada 2 pontos acima da base, +1d6 nos testes; a raça soma nos dados.</span>
+                    <span>Base ${CHAR_ATTR_BASE}. Dados = metade do que passa de ${CHAR_ATTR_BASE}, mínimo 1d6 (14 = 2d6, 16 = 3d6); a raça soma nos dados.</span>
             </div>
             <div class="attr-buy__grid">
               ${CHAR_ATTRIBUTES.map((a) => {

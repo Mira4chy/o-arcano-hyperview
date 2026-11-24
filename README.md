@@ -60,8 +60,9 @@ personagem dos jogadores**. Cada ficha fica vinculada ao usuario (coluna `user_i
 - Qualquer conta aprovada cria/edita as **proprias** fichas (varias por conta); o **Mestre**
   (admin) ve as fichas de todos os jogadores.
 - A ficha tem: **raca** (puxa HP por parte do corpo e Mana do dossie da raca, editaveis),
-  **atributos** (todos comecam em 10 + 6 pontos para distribuir; a cada 2 pontos acima da
-  base, +1d6 nos testes; o `Modificador` da raca soma dados), **DA** configuravel por
+  **atributos** (todos comecam em 10, sem pontos fixos para distribuir; dados = metade do que
+  passa de 10, arredondado para baixo, minimo 1d6: 14 = 2d6, 16 = 3d6; o `Modificador` da
+  raca soma dados), **DA** configuravel por
   atributo, **O Despertar** (ver abaixo), **pericias/talentos** e **identidade narrativa**
   (papel, desejo, ferida e historia em rich-text).
 
