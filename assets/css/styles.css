@@ -12963,3 +12963,17 @@ a.platform-system:hover { border-color: hsla(var(--hue), 70%, 65%, .5); transfor
   .level-attrs { grid-template-columns: 1fr; }
 }
 .level-attr > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ── Mesa no celular: teclado sem pulos e sem efeitos pesados ── */
+@media (max-width: 980px) {
+  /* A altura acompanha a tela (e o teclado, no Android) sem JavaScript a cada quadro. */
+  body.is-mesa-chat .chat { height: calc(100dvh - var(--chat-top, 120px)); min-height: 240px; }
+  /* Fundo animado, granulado e desfoque pesam no celular; o chat já tem fundo próprio. */
+  body.is-mesa-chat #cosmos,
+  body.is-mesa-chat .grain,
+  body.is-mesa-chat .vignette { display: none; }
+  body.is-mesa-chat .topbar { background: #0b0a0e; backdrop-filter: none; -webkit-backdrop-filter: none; }
+  body.is-mesa-chat .view { transition: none; }
+  /* Digitando: a barra de ferramentas também sai, sobrando espaço para as mensagens. */
+  .chat-side.is-typing { display: none; }
+}

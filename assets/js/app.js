@@ -6952,17 +6952,21 @@
   /* ── Handlers do chat ────────────────────────── */
   let chatResizeBound = false;
   const isCompactChat = () => window.matchMedia('(max-width: 980px)').matches;
+  /* Celular: a altura vem do CSS (100dvh menos o topo), e o navegador ajusta
+     sozinho quando o teclado abre. Aqui só medimos onde o chat começa. */
   function fitChatHeight() {
     const chat = document.querySelector('.chat');
     if (!chat) return;
-    const vv = window.visualViewport;
-    const viewport = vv ? vv.height + vv.offsetTop : window.innerHeight;
-    const compact = isCompactChat();
-    const top = chat.getBoundingClientRect().top;
-    const height = Math.round(viewport - Math.max(0, top) - (compact ? 0 : 14));
-    chat.style.setProperty('--chat-h', `${Math.max(compact ? 280 : 420, height)}px`);
+    const top = Math.max(0, chat.getBoundingClientRect().top + window.scrollY);
+    if (isCompactChat()) chat.style.setProperty('--chat-top', `${Math.round(top)}px`);
+    else chat.style.setProperty('--chat-h', `${Math.max(420, Math.round(window.innerHeight - top - 14))}px`);
     const log = chat.querySelector('.chat__log');
     if (log && log.dataset.stick !== '0') log.scrollTop = log.scrollHeight;
+  }
+  let chatFitFrame = 0;
+  function scheduleChatFit() {
+    cancelAnimationFrame(chatFitFrame);
+    chatFitFrame = requestAnimationFrame(fitChatHeight);
   }
 
   async function loadMesaNotes(mesaId, kind) {
@@ -7014,8 +7018,7 @@
     fitChatHeight();
     if (!chatResizeBound) {
       chatResizeBound = true;
-      window.addEventListener('resize', fitChatHeight);
-      window.visualViewport?.addEventListener('resize', fitChatHeight);
+      window.addEventListener('resize', scheduleChatFit);
     }
     const log = chatLogEl(mesaId);
     if (log) {
@@ -7644,14 +7647,18 @@
       if (event.target.closest('[data-chat-avulso-add]')) addAvulso();
     });
 
+    // Tocar em Enviar não tira o foco: o teclado continua aberto entre mensagens.
+    form.querySelector('.chat-icon-button--send')?.addEventListener('pointerdown', (event) => {
+      if (document.activeElement === textarea) event.preventDefault();
+    });
+
+    // Digitando no celular: ferramentas saem de cena para sobrar espaço ao chat.
     textarea.addEventListener('focus', () => {
       if (isCompactChat()) side?.classList.add('is-typing');
-      setTimeout(fitChatHeight, 250);
     });
     textarea.addEventListener('blur', () => {
       setTimeout(() => {
-        if (!root.contains(document.activeElement) || !document.activeElement.closest('.chat__composer')) side?.classList.remove('is-typing');
-        fitChatHeight();
+        if (!document.activeElement || !document.activeElement.closest('.chat__composer')) side?.classList.remove('is-typing');
       }, 150);
     });
 
@@ -9208,7 +9215,7 @@
   let raceAnatomyParallaxCleanup = null;
 
   function syncAmbientMode(tabId) {
-    const suspended = !!document.getElementById('authGate') || ((auth.canRead || !sb) && (tabId === 'Index' || tabId === 'Arcano'));
+    const suspended = !!document.getElementById('authGate') || ((auth.canRead || !sb) && (tabId === 'Index' || tabId === 'Arcano' || tabId === 'Mesas'));
     window.dispatchEvent(new CustomEvent('arcano:ambient-mode', { detail: { suspended } }));
   }
 
