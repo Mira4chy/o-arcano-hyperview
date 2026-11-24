@@ -12977,3 +12977,50 @@ a.platform-system:hover { border-color: hsla(var(--hue), 70%, 65%, .5); transfor
   /* Digitando: a barra de ferramentas também sai, sobrando espaço para as mensagens. */
   .chat-side.is-typing { display: none; }
 }
+
+/* ── Chat no celular: mensagens compactas ── */
+@media (max-width: 980px) {
+  .chat__log { gap: 0; padding: 8px 10px 4px; }
+  .chat-line { line-height: 1.4; }
+  .chat-time { font-size: .64rem; }
+
+  .chat-msg--fala { grid-template-columns: 26px minmax(0, 1fr); gap: 8px; margin-top: 6px; }
+  .chat-msg--fala.is-grouped { margin-top: 0; }
+  .chat-avatar { width: 26px; height: 26px; font-size: .74rem; border-radius: 3px; }
+  .chat-msg__head { gap: 6px; }
+  .chat-msg__head .chat-who { font-size: .76rem; }
+  .chat-msg--fala .chat-line { font-size: .94rem; }
+
+  .chat-msg--narracao { margin: 8px 0 6px; padding-left: 10px; }
+  .chat-msg--narracao .chat-line { font-size: 1rem; line-height: 1.4; }
+  .chat-msg--acao { margin-top: 6px; }
+  .chat-msg--acao .chat-line { font-size: .94rem; }
+  .chat-msg--fora { margin-top: 4px; font-size: .8rem; }
+  .chat-tone--grita .chat-line { font-size: 1.04rem; }
+  .chat-tone--baixo .chat-line { font-size: .86rem; }
+
+  .chat-msg--roll, .chat-msg--image { margin-top: 6px; }
+  .chat-roll { gap: 4px 6px; }
+  .chat-roll__label { font-size: .8rem; }
+  .chat-die { min-width: 22px; height: 22px; font-size: .72rem; }
+  .chat-roll__total { font-size: 1rem; }
+  .chat-roll__reading { font-size: .78rem; }
+
+  .chat-scene { margin: 14px 0 8px; }
+  .chat-scene__image { max-height: 110px; margin-bottom: 8px; }
+  .chat-scene__title { font-size: 1.02rem; }
+  .chat-scene__text { font-size: .94rem; }
+
+  .chat-image { margin: 4px 0 0; }
+  .chat-image img { max-height: 200px; }
+  .chat-whisper { font-size: .66rem; }
+}
+@media (max-width: 980px) {
+  /* Horário em linha própria só ao tocar na mensagem. */
+  .chat-msg:not(.chat-msg--fala) > .chat-time { display: none; }
+  .chat-msg.is-touched > .chat-time { display: inline; margin-left: 0; }
+  /* Teste do Arcano: só a leitura do Destino (Custo, Limpo...), sem a frase longa. */
+  .chat-roll__reading { font-size: 0; }
+  .chat-roll__reading b { font-size: .78rem; }
+  .chat-roll__reading { flex-basis: auto; }
+}

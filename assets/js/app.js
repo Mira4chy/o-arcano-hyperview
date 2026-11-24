@@ -7615,19 +7615,18 @@
         root.querySelector('[data-cena-body]')?.focus();
         return;
       }
-      textarea.disabled = true;
+      // A caixa nunca é desativada: desativar tira o foco e fecha o teclado do celular.
+      // O texto sai na hora e volta só se o envio falhar.
+      textarea.value = '';
+      textarea.style.height = '';
+      commands.hidden = true;
       try {
         if (parsed.roll) await sendChatRoll(mesa, parsed.roll, { secret: parsed.secret });
         else await sendChatMessage(mesaId, parsed.message);
-        textarea.value = '';
-        textarea.style.height = '';
-        commands.hidden = true;
       } catch (err) {
         console.error(err);
         toast('Mensagem não enviada: ' + (err.message || err));
-      } finally {
-        textarea.disabled = false;
-        textarea.focus();
+        if (!textarea.value) textarea.value = raw;
       }
     });
 
