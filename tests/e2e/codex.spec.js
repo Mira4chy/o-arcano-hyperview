@@ -18,16 +18,22 @@ test.beforeEach(async ({ page }) => {
   await expect(page.locator('#authGate')).toHaveCount(0, { timeout: 20_000 });
 });
 
-test('a home mostra o índice e nenhum erro de JavaScript', async ({ page }) => {
+test('a home da plataforma mostra mesas e sistemas, sem erro de JavaScript', async ({ page }) => {
   const errors = [];
   page.on('pageerror', (error) => errors.push(error.message));
   page.on('console', (msg) => { if (msg.type() === 'error' && isOwnError(msg.text())) errors.push(msg.text()); });
   await page.goto('/index.html?skipIntro#/');
-  await expect(page.locator('.codex-home__group')).toHaveCount(4);
+  await expect(page.locator('a.platform-system[href="#/Arcano"]')).toHaveCount(1);
+  await expect(page.locator('a[href="#/Mesas/criar"]').first()).toBeVisible();
   expect(errors, errors.join('\n')).toEqual([]);
 });
 
-for (const tab of ['Bestiario', 'Magias', 'Itens', 'Racas', 'Sistemas', 'Persona', 'Eras']) {
+test('o livro do Arcano mostra o índice do sistema', async ({ page }) => {
+  await page.goto('/index.html?skipIntro#/Arcano');
+  await expect(page.locator('.codex-home__group')).toHaveCount(4);
+});
+
+for (const tab of ['Mesas', 'Mesas/criar', 'Bestiario', 'Magias', 'Itens', 'Racas', 'Sistemas', 'Eras']) {
   test(`#/${tab} abre sem quebrar`, async ({ page }) => {
     const errors = [];
     page.on('pageerror', (error) => errors.push(error.message));

@@ -1230,9 +1230,22 @@
     requestedRole: null,
     approvedRole: null,
     canRead: false,
+    tier: null,
+    // isAdmin = pode editar o Livro do Arcano (Ouro e Platina).
     isAdmin: false,
+    isPlatina: false,
     isPlayer: false
   };
+
+  /* Niveis de conta. Mestre e Jogador existem so dentro de cada mesa. */
+  const TIERS = {
+    bronze:  { label: 'Bronze',  tone: 'Usuário comum' },
+    prata:   { label: 'Prata',   tone: 'VIP' },
+    ouro:    { label: 'Ouro',    tone: 'Moderador · edita o Livro do Arcano' },
+    platina: { label: 'Platina', tone: 'Administrador · livro, todas as mesas e painel' }
+  };
+  /* Por enquanto so estes dois sao oferecidos no painel. */
+  const TIERS_ACTIVE = ['bronze', 'platina'];
 
   function setAuthState(session) {
     if (session && session.user) {
@@ -1243,7 +1256,9 @@
       auth.requestedRole = session.user.user_metadata?.requested_role || null;
       auth.approvedRole = null;
       auth.canRead = false;
+      auth.tier = null;
       auth.isAdmin = false;
+      auth.isPlatina = false;
       auth.isPlayer = false;
     } else {
       auth.user = null;
@@ -1253,7 +1268,9 @@
       auth.requestedRole = null;
       auth.approvedRole = null;
       auth.canRead = false;
+      auth.tier = null;
       auth.isAdmin = false;
+      auth.isPlatina = false;
       auth.isPlayer = false;
     }
     document.body.classList.toggle('is-locked', !auth.canRead);
@@ -1261,24 +1278,24 @@
     document.body.classList.toggle('is-player', auth.isPlayer);
   }
 
-  function roleLabel(role) {
-    return role === 'admin' ? 'Mestre' : 'Jogador';
+  function tierLabel(tier) {
+    return (TIERS[tier] || TIERS.bronze).label;
   }
 
   function applyAccessProfile(profile) {
     auth.profile = profile || null;
 
-    const requestedRole = profile?.requested_role || auth.user?.user_metadata?.requested_role || 'player';
-    const status = profile?.status || 'pending';
-    const approvedRole = status === 'approved' ? profile?.approved_role : null;
-
-    auth.status = status;
-    auth.requestedRole = requestedRole;
-    auth.approvedRole = approvedRole;
-    auth.role = approvedRole || status;
-    auth.isAdmin = approvedRole === 'admin';
-    auth.isPlayer = approvedRole === 'player';
-    auth.canRead = auth.isAdmin || auth.isPlayer;
+    // Sem aprovacao: toda conta com perfil entra. O nivel define o resto.
+    const tier = profile ? (TIERS[profile.tier] ? profile.tier : 'bronze') : null;
+    auth.tier = tier;
+    auth.status = tier ? 'approved' : 'pending';
+    auth.requestedRole = null;
+    auth.approvedRole = profile?.approved_role || null;
+    auth.role = tier || 'pending';
+    auth.isAdmin = tier === 'ouro' || tier === 'platina';
+    auth.isPlatina = tier === 'platina';
+    auth.isPlayer = !!tier && !auth.isAdmin;
+    auth.canRead = !!tier;
 
     document.body.classList.toggle('is-locked', !auth.canRead);
     document.body.classList.toggle('is-admin', auth.isAdmin);
@@ -1289,7 +1306,7 @@
     if (!sb || !auth.user) return null;
     const { data, error } = await sb
       .from('access_requests')
-      .select('user_id,email,display_name,requested_role,approved_role,status')
+      .select('user_id,email,display_name,approved_role,status,tier')
       .eq('user_id', auth.user.id)
       .maybeSingle();
 
@@ -1370,30 +1387,17 @@
               <span>Crie sua chave</span>
               <span class="auth-gate__control"><input type="password" id="requestPassword" placeholder="Mínimo de 6 caracteres" autocomplete="new-password" minlength="6" required></span>
             </label>
-            <div class="auth-gate__role-picker">
-              <span class="auth-gate__role-title">Acesso desejado</span>
-              <div class="auth-gate__roles" role="group" aria-label="Acesso desejado">
-                <button type="button" class="auth-role is-active" data-role="player" aria-pressed="true">
-                  <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 4-7 8-7s8 3 8 7"/></svg>
-                  <span>Jogador</span>
-                </button>
-                <button type="button" class="auth-role" data-role="admin" aria-pressed="false">
-                  <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l9 4v6c0 5-4 9-9 10-5-1-9-5-9-10V6l9-4z"/><path d="M9 12l2 2 4-4"/></svg>
-                  <span>Mestre</span>
-                </button>
-              </div>
-            </div>
             <button type="submit" class="auth-gate__submit" id="requestSubmit">
-              <span>Enviar solicitação</span><span aria-hidden="true">→</span>
+              <span>Criar conta</span><span aria-hidden="true">→</span>
             </button>
             <p class="auth-gate__feedback auth-gate__error" data-auth-error role="alert"></p>
             <p class="auth-gate__feedback auth-gate__message" data-auth-message aria-live="polite"></p>
           </form>
 
           <div class="auth-gate__meta">
-            <button type="button" data-auth-switch="request">Solicitar acesso ao arquivo</button>
+            <button type="button" data-auth-switch="request">Criar uma conta</button>
             <button type="button" data-auth-switch="login" hidden>Voltar ao login</button>
-            <span data-auth-note>Acesso restrito aos participantes aprovados</span>
+            <span data-auth-note>Mesas de RPG e o Livro do Arcano</span>
           </div>
         </div>
       </section>
@@ -1412,13 +1416,13 @@
       gate.dataset.mode = requestMode ? 'request' : 'login';
       panels.forEach((panel) => { panel.hidden = panel.dataset.authPanel !== gate.dataset.mode; });
       switchers.forEach((button) => { button.hidden = button.dataset.authSwitch === gate.dataset.mode; });
-      title.textContent = requestMode ? 'Solicitar acesso' : 'Abrir o Codex';
+      title.textContent = requestMode ? 'Criar conta' : 'Abrir o Codex';
       subtitle.textContent = requestMode
-        ? 'Todo novo nome precisa ser reconhecido pelo arquivo.'
+        ? 'Crie sua conta e entre na hora. Toda conta começa como Bronze.'
         : 'Conhecimento algum é consultado sem deixar vestígios.';
       note.textContent = requestMode
-        ? 'O pedido ficará pendente até a aprovação do administrador'
-        : 'Acesso restrito aos participantes aprovados';
+        ? 'Sem aprovação: sua conta fica pronta assim que for criada'
+        : 'Mesas de RPG e o Livro do Arcano';
       gate.querySelectorAll('[data-auth-error], [data-auth-message]').forEach((element) => { element.textContent = ''; });
       const focusTarget = requestMode ? gate.querySelector('#requestName') : gate.querySelector('#authEmail');
       setTimeout(() => focusTarget?.focus(), 80);
@@ -1429,16 +1433,6 @@
     });
 
     const requestForm = gate.querySelector('#authRequestForm');
-    const roles = requestForm.querySelectorAll('.auth-role');
-    roles.forEach((b) => {
-      b.addEventListener('click', () => {
-        roles.forEach((x) => {
-          const active = x === b;
-          x.classList.toggle('is-active', active);
-          x.setAttribute('aria-pressed', String(active));
-        });
-      });
-    });
 
     const loginForm = gate.querySelector('#authLoginForm');
     const emailInput = gate.querySelector('#authEmail');
@@ -1503,7 +1497,6 @@
       const displayName = requestName.value.trim();
       const email = requestEmail.value.trim();
       const password = requestPassword.value;
-      const requestedRole = requestForm.querySelector('.auth-role.is-active').dataset.role;
 
       if (!displayName || !email || password.length < 6) {
         requestErr.textContent = 'Preencha nome, e-mail e uma chave com pelo menos 6 caracteres.';
@@ -1518,30 +1511,24 @@
           password,
           options: {
             data: {
-              display_name: displayName,
-              requested_role: requestedRole
+              display_name: displayName
             }
           }
         });
         if (error) throw error;
 
-        requestMsg.textContent = `Solicitação enviada como ${roleLabel(requestedRole)}. Confirme seu e-mail, se solicitado, e aguarde a aprovação.`;
+        requestMsg.textContent = 'Conta criada. Se pedirmos, confirme seu e-mail e depois entre pelo login.';
         requestForm.reset();
-        roles.forEach((x) => {
-          const active = x.dataset.role === 'player';
-          x.classList.toggle('is-active', active);
-          x.setAttribute('aria-pressed', String(active));
-        });
 
         if (data.session) await finishLogin(data.session);
       } catch (err) {
         console.error(err);
         requestErr.textContent = err.message?.includes('already registered')
           ? 'Esse e-mail já existe. Volte ao login para entrar.'
-          : 'Não foi possível enviar a solicitação agora.';
+          : 'Não foi possível criar a conta agora.';
       } finally {
         requestBtn.disabled = false;
-        requestBtn.querySelector('span').textContent = 'Enviar solicitação';
+        requestBtn.querySelector('span').textContent = 'Criar conta';
       }
     });
 
@@ -1551,13 +1538,9 @@
 
   function renderPendingGate(gate) {
     const card = gate.querySelector('.auth-gate__console');
-    const status = auth.status || 'pending';
-    const requested = roleLabel(auth.requestedRole || 'player');
-    const title = status === 'rejected' ? 'Acesso recusado' : 'Aguardando aprovação';
-    const text = status === 'rejected'
-      ? 'Sua solicitação foi recusada. Fale com o administrador da campanha.'
-      : `Sua conta está registrada e aguarda aprovação como ${requested}.`;
-    const statusLabel = status === 'rejected' ? 'recusado' : 'pendente';
+    const title = 'Conta em preparo';
+    const text = 'Sua conta existe, mas o perfil ainda não carregou. Saia e entre de novo em alguns instantes.';
+    const statusLabel = 'preparando';
 
     gate.dataset.mode = 'pending';
     card.innerHTML = `
@@ -1570,7 +1553,7 @@
       <div class="auth-pending">
         <span class="auth-pending__status">${escapeHtml(statusLabel)}</span>
         <div>
-          <h2>Solicitação registrada</h2>
+          <h2>Quase lá</h2>
           <p>${escapeHtml(text)}</p>
         </div>
         <button type="button" class="auth-gate__submit" data-pending-logout>Sair</button>
@@ -1598,10 +1581,9 @@
       pill.className = 'role-pill';
       right.insertBefore(pill, right.firstChild);
     }
-    pill.dataset.role = auth.role;
-    pill.innerHTML = auth.isAdmin
-      ? '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l9 4v6c0 5-4 9-9 10-5-1-9-5-9-10V6l9-4z"/></svg><strong>MESTRE</strong>'
-      : '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 4-7 8-7s8 3 8 7"/></svg><strong>JOGADOR</strong>';
+    pill.dataset.role = auth.tier;
+    pill.title = (TIERS[auth.tier] || TIERS.bronze).tone;
+    pill.innerHTML = `<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l9 4v6c0 5-4 9-9 10-5-1-9-5-9-10V6l9-4z"/></svg><strong>${escapeHtml(tierLabel(auth.tier).toUpperCase())}</strong>`;
 
     if (!logout) {
       logout = document.createElement('button');
@@ -1622,6 +1604,9 @@
 
   /* ── ICONS (inline SVG, lucide-style) ─────────── */
   const ICONS = {
+    Painel:    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l9 4v6c0 5-4 9-9 10-5-1-9-5-9-10V6l9-4z"/><circle cx="12" cy="10" r="2.5"/><path d="M8 16c.8-1.8 2.3-2.7 4-2.7s3.2.9 4 2.7"/></svg>',
+    Mesas:     '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="10" rx="9" ry="4"/><path d="M3 10v2c0 2.2 4 4 9 4s9-1.8 9-4v-2"/><path d="M7 15.5V20M17 15.5V20"/></svg>',
+    Arcano:    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5a2 2 0 0 1 2-2h13v16H6a2 2 0 0 0-2 2z"/><path d="M4 21V5"/><path d="M12 7l1.5 3 3 .5-2.2 2 .6 3-2.9-1.5L9.1 15.5l.6-3-2.2-2 3-.5z"/></svg>',
     Index:     '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12l9-8 9 8M5 10v10h4v-6h6v6h4V10"/></svg>',
     Itens:     '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M14 4l6 6-9 9-3 1 1-3 9-9zM5 20l3-1"/></svg>',
     Magias:    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l1.8 5.6L20 9.4l-4.8 3.6L17 19l-5-3.5L7 19l1.8-6L4 9.4l6.2-1.8L12 2z"/></svg>',
@@ -1643,6 +1628,9 @@
 
   /* ── CATEGORY THEMES ─────────────────────────── */
   const THEMES = {
+    Mesas:     { hue: 28,  label: 'MESAS' },
+    Painel:    { hue: 200, label: 'PLATINA' },
+    Arcano:    { hue: 268, label: 'SISTEMA ARCANO' },
     Index:     { hue: 268, label: 'INÍCIO' },
     Itens:     { hue: 38,  label: 'ARTEFATOS' },
     Magias:    { hue: 285, label: 'PODER' },
@@ -1685,7 +1673,7 @@
       id: 'historias',
       title: 'Histórias',
       tone: 'Campanhas, pessoas e memória',
-      tabs: ['Campanhas', 'Persona', 'Eras', 'Historias']
+      tabs: ['Campanhas', 'Eras', 'Historias']
     }
   ];
 
@@ -1885,7 +1873,7 @@
   const tabCount = (id) => {
     const tabId = canonicalTabId(id);
     if (tabId === 'Persona') {
-      return auth.user ? CHARACTERS.filter((c) => auth.isAdmin || c.userId === auth.user.id).length : 0;
+      return auth.user ? CHARACTERS.filter((c) => auth.isPlatina || c.userId === auth.user.id).length : 0;
     }
     return entriesIn(id).length;
   };
@@ -2114,7 +2102,7 @@
     }
   }
 
-  async function prepareInlineImages(editor, entryId) {
+  async function prepareInlineImages(editor, entryId, root = 'stories') {
     const uploadedPaths = [];
     if (!editor) return { html: '', uploadedPaths };
     const images = [...editor.querySelectorAll('img.rt-inline-image')].filter((image) => INLINE_DATA_IMAGE_RE.test(image.src));
@@ -2124,7 +2112,7 @@
       const blob = await response.blob();
       const extension = blob.type.includes('png') ? 'png' : (blob.type.includes('webp') ? 'webp' : 'jpg');
       const file = new File([blob], `inline-${index + 1}.${extension}`, { type: blob.type || 'image/jpeg' });
-      const upload = await uploadBanner(file, `stories/${entryId}/inline`);
+      const upload = await uploadBanner(file, `${root}/${entryId}/inline`);
       image.src = upload.url;
       image.loading = 'lazy';
       image.decoding = 'async';
@@ -2256,6 +2244,10 @@
       spells: backedArr(directSpells, 'spells'),
       image: row.image || '',
       imagePath: row.image_path || '',
+      mesaId: row.mesa_id || '',
+      isNpc: !!row.is_npc,
+      npcVisible: !!row.npc_visible,
+      levelGrant: safeObj(row.level_grant),
       createdAt: row.created_at ? new Date(row.created_at).getTime() : Date.now()
     };
   }
@@ -2294,7 +2286,10 @@
       inventory: Array.isArray(c.inventory) ? c.inventory : [],
       spells: Array.isArray(c.spells) ? c.spells : [],
       image: c.image || '',
-      image_path: c.imagePath || ''
+      image_path: c.imagePath || '',
+      // So envia a coluna quando ha mesa (funciona antes do supabase-mesas.sql).
+      ...(c.mesaId ? { mesa_id: c.mesaId } : {}),
+      ...(c.isNpc ? { is_npc: true, npc_visible: !!c.npcVisible } : {})
     };
   }
 
@@ -2797,6 +2792,21 @@
       <a href="#/" class="sidenav__item sidenav__home ${active === 'Index' ? 'is-active' : ''}" data-tab="Index" style="--hue:${themeOf('Index').hue}">
         <span class="sidenav__icon">${iconOf('Index')}</span>
         <span class="sidenav__label">Início</span>
+      </a>
+      <a href="#/Mesas" class="sidenav__item ${active === 'Mesas' ? 'is-active' : ''}" data-tab="Mesas" style="--hue:${themeOf('Mesas').hue}">
+        <span class="sidenav__icon">${iconOf('Mesas')}</span>
+        <span class="sidenav__label">Mesas</span>
+        <span class="sidenav__count">${MESAS.length}</span>
+      </a>
+      ${auth.isPlatina ? `
+      <a href="#/Painel" class="sidenav__item ${active === 'Painel' ? 'is-active' : ''}" data-tab="Painel" style="--hue:${themeOf('Painel').hue}">
+        <span class="sidenav__icon">${iconOf('Painel')}</span>
+        <span class="sidenav__label">Painel de contas</span>
+      </a>` : ''}
+      <span class="sidenav__section-label">Sistema Arcano</span>
+      <a href="#/Arcano" class="sidenav__item ${active === 'Arcano' ? 'is-active' : ''}" data-tab="Arcano" style="--hue:${themeOf('Arcano').hue}">
+        <span class="sidenav__icon">${iconOf('Arcano')}</span>
+        <span class="sidenav__label">Livro do Arcano</span>
       </a>
       <div class="sidenav__groups">
         ${NAV_GROUPS.map((group) => {
@@ -3467,13 +3477,13 @@
   }
 
   /* ── CREATE / EDIT VIEW ───────────────────────── */
-  function viewCreate(tabId, entryId) {
-    if (!auth.isAdmin) return viewForbidden();
+  function viewCreate(tabId, entryId, npcCtx) {
+    if (!auth.isAdmin && !npcCtx) return viewForbidden();
     const tab = tabById(tabId);
     if (!tab || !isCreatable(tabId)) return viewNotFound(tabId);
 
     const editing = !!entryId;
-    const existingEntry = editing ? entryById(entryId) : null;
+    const existingEntry = editing ? (npcCtx ? npcCtx.npc : entryById(entryId)) : null;
     if (editing && (!existingEntry || canonicalTabId(existingEntry.tab) !== canonicalTabId(tabId))) {
       return viewNotFound(entryId);
     }
@@ -4730,15 +4740,15 @@
       </article>`;
   }
 
-  function viewEntry(tabId, entryId) {
-    const e = entryById(entryId);
+  function viewEntry(tabId, entryId, npcCtx) {
+    const e = npcCtx ? npcCtx.entry : entryById(entryId);
     if (!e || e.tab !== tabId) return viewNotFound(entryId);
     if (isMagiasTab(tabId)) return spellEntryView(tabId, e);
     if (tabId === 'Historias') return storyReaderView(e);
     const theme = themeOf(tabId);
     const tab = tabById(tabId);
     const fields = Object.entries(e.fields || {});
-    const related = ARCHIVE.entries.filter((x) => x.tab === tabId && x.id !== e.id).slice(0, 3);
+    const related = npcCtx ? [] : ARCHIVE.entries.filter((x) => x.tab === tabId && x.id !== e.id).slice(0, 3);
     const tags = sanitizeTags(e.tags);
     const portrait = isPortrait(tabId);
     const subtypeName = e.subtype ? subtypeLabel(e.subtype) : null;
@@ -5132,7 +5142,7 @@
         <article class="entry beast-entry" style="--hue:${theme.hue}">
           <section class="beast-entry__shell" data-beast-entry-id="${escapeHtml(e.id)}">
             <header class="beast-entry__header">
-              <nav class="breadcrumb"><a href="#/">Codex</a><span>/</span><a href="#/Bestiario">Bestiário</a><span>/</span><span class="breadcrumb__current">${escapeHtml(e.title)}</span></nav>
+              ${npcCtx ? npcCtx.crumb : `<nav class="breadcrumb"><a href="#/">Codex</a><span>/</span><a href="#/Bestiario">Bestiário</a><span>/</span><span class="breadcrumb__current">${escapeHtml(e.title)}</span></nav>`}
               <div class="beast-entry__title-row">
                 <span class="beast-entry__crest" aria-hidden="true">${iconOf('Bestiario')}</span>
                 <div class="beast-entry__identity">
@@ -5276,7 +5286,7 @@
                 <div><span>Reserva de Mana <b>${escapeHtml(data.Mana || '—')}</b></span><i><em style="width:${manaMax ? Math.min(100, Math.max(18, manaMax * 2.5)) : 0}%"></em></i></div>
               </div>
               <div class="race-impact__summary"><div><small>Movimento</small><strong>${escapeHtml(data.Deslocamento || '—')}</strong></div><div><small>Sentidos</small><strong>${escapeHtml(data.Sentidos || '—')}</strong></div><div><small>Aptidões</small><strong>${abilities.filter((ability) => ability.kind !== 'Limitação').length}</strong></div><div><small>Limitações</small><strong>${abilities.filter((ability) => ability.kind === 'Limitação').length}</strong></div></div>
-              <a class="race-impact__persona" href="#/Persona/criar">Usar em personagem</a>
+              <a class="race-impact__persona" href="#/Mesas">Usar numa mesa</a>
             </aside>
           </div>
           ${relatedMarkup ? `<div class="entry__main entry__main--full race-entry__related">${relatedMarkup}</div>` : ''}
@@ -5406,7 +5416,7 @@
     `;
 
     if (isBestiario) {
-      return renderBestiaryEntry(`${editButton}${deleteButton}${backLink}`);
+      return renderBestiaryEntry(npcCtx ? npcCtx.actions : `${editButton}${deleteButton}${backLink}`);
     }
 
     if (isRacas) {
@@ -5462,6 +5472,2592 @@
   }
 
   /* ════════════════════════════════════════════════
+     MESAS — o centro da plataforma
+     Cada mesa escolhe um sistema e tem Chat, Fichas, NPCs e Membros.
+     ════════════════════════════════════════════════ */
+  const MESA_SYSTEMS = {
+    arcano: {
+      name: 'Arcano',
+      tone: 'Dark fantasy de magia viva, mana morta e sobrevivência.',
+      href: '#/Arcano',
+      image: 'assets/images/hero-arcano.webp'
+    }
+  };
+  const MESA_TABS = [
+    { id: 'chat', label: 'Chat' },
+    { id: 'fichas', label: 'Fichas' },
+    { id: 'npcs', label: 'NPCs' },
+    { id: 'membros', label: 'Membros' }
+  ];
+  const MESA_TABLE_HINT = 'As mesas ainda não existem no banco. Rode o arquivo supabase-mesas.sql no SQL Editor do Supabase.';
+
+  let MESAS = [];
+  // Mesas que Platina enxerga sem participar (papel 'observador').
+  let MESAS_OBSERVED = [];
+  let mesasLoaded = false;
+  let mesasUnavailable = false;
+  const MESA_MEMBERS = {};
+  const MESA_NPCS = {};
+  const MESA_MESSAGES = {};
+  let mesaChannel = null;
+  let mesaChannelId = '';
+  let characterFormMesaId = '';
+  let characterFormNpc = false;
+  let npcFormCtx = null;
+  let viewedNpc = null;
+
+  function mesaTableMissing(error) {
+    const msg = (error && error.message) || '';
+    return (error && (error.code === '42P01' || error.code === 'PGRST205' || error.code === 'PGRST200')) ||
+      /mesa(s|_members|_npcs|_messages)/i.test(msg) && /does not exist|schema cache|could not find/i.test(msg);
+  }
+
+  function rowToMesa(row, role) {
+    return {
+      id: row.id,
+      name: row.name || 'Mesa sem nome',
+      description: row.description || '',
+      system: row.system || 'arcano',
+      ownerId: row.owner_id,
+      inviteCode: row.invite_code || '',
+      role: role || (auth.user && row.owner_id === auth.user.id ? 'mestre' : 'jogador'),
+      createdAt: row.created_at ? new Date(row.created_at).getTime() : Date.now()
+    };
+  }
+
+  function rowToNpc(row) {
+    return {
+      id: row.id,
+      tab: 'Bestiario',
+      mesaId: row.mesa_id,
+      title: row.title || 'NPC',
+      summary: row.summary || '',
+      image: row.image || '',
+      imagePath: row.image_path || '',
+      bodyHtml: row.body_html || '',
+      tags: sanitizeTags(row.tags || []),
+      subtype: '',
+      fields: (row.fields && typeof row.fields === 'object') ? row.fields : {},
+      sourceEntryId: row.source_entry_id || '',
+      visible: !!row.visible,
+      isUserCreated: true,
+      isNpc: true,
+      createdAt: row.created_at ? new Date(row.created_at).getTime() : Date.now()
+    };
+  }
+
+  const mesaById = (id) => MESAS.find((m) => m.id === id) || MESAS_OBSERVED.find((m) => m.id === id) || null;
+  const MESA_ROLE_LABELS = { mestre: 'Mestre', jogador: 'Jogador', observador: 'Platina · observando' };
+  const mesaRoleLabel = (role) => MESA_ROLE_LABELS[role] || 'Jogador';
+  const isMesaMaster = (id) => !!id && mesaById(id)?.role === 'mestre';
+
+  function characterBase(c) {
+    if (!c || !c.mesaId) return '#/Persona';
+    return `#/Mesas/${encodeURIComponent(c.mesaId)}/${c.isNpc ? 'npcs' : 'fichas'}`;
+  }
+
+  /* Mestre da mesa da ficha (ou Platina): cria livre, concede nível, atribui dono. */
+  function isCharacterMaster(c) {
+    return auth.isPlatina || (!!c && !!c.mesaId && isMesaMaster(c.mesaId));
+  }
+
+  function canEditCharacter(c) {
+    if (!c || !auth.user) return false;
+    return auth.isPlatina || c.userId === auth.user.id || isMesaMaster(c.mesaId);
+  }
+
+  function myDisplayName() {
+    return (auth.profile && auth.profile.display_name) ||
+      auth.user?.user_metadata?.display_name ||
+      (auth.user?.email || 'Jogador').split('@')[0];
+  }
+
+  function memberName(mesaId, userId) {
+    const member = (MESA_MEMBERS[mesaId] || []).find((m) => m.userId === userId);
+    return (member && member.displayName) || 'Jogador';
+  }
+
+  async function loadMesas(force) {
+    if (!sb || !auth.user || (mesasLoaded && !force)) return;
+    const { data, error } = await sb
+      .from('mesa_members')
+      .select('role, mesa:mesas(*)')
+      .eq('user_id', auth.user.id);
+    if (error) {
+      if (mesaTableMissing(error)) {
+        mesasUnavailable = true;
+        console.warn('[O Arcano] ' + MESA_TABLE_HINT);
+      } else {
+        console.error('Erro ao carregar mesas:', error);
+      }
+      return;
+    }
+    mesasUnavailable = false;
+    MESAS = (data || [])
+      .filter((row) => row.mesa)
+      .map((row) => rowToMesa(row.mesa, row.role))
+      .sort((a, b) => b.createdAt - a.createdAt);
+    MESAS_OBSERVED = [];
+    if (auth.isPlatina) {
+      const all = await sb.from('mesas').select('*').order('created_at', { ascending: false });
+      if (all.error) console.error('Erro ao carregar todas as mesas:', all.error);
+      const mine = new Set(MESAS.map((m) => m.id));
+      MESAS_OBSERVED = (all.data || []).filter((row) => !mine.has(row.id)).map((row) => rowToMesa(row, 'observador'));
+    }
+    mesasLoaded = true;
+  }
+
+  async function loadMesaDetail(mesaId) {
+    if (!sb || !mesaById(mesaId)) return;
+    const [members, npcs, messages] = await Promise.all([
+      sb.from('mesa_members').select('*').eq('mesa_id', mesaId).order('joined_at'),
+      sb.from('mesa_npcs').select('*').eq('mesa_id', mesaId).order('created_at'),
+      sb.from('mesa_messages').select('*').eq('mesa_id', mesaId).order('created_at', { ascending: false }).limit(200)
+    ]);
+    if (members.error) console.error('Erro ao carregar membros:', members.error);
+    if (npcs.error) console.error('Erro ao carregar NPCs:', npcs.error);
+    if (messages.error) console.error('Erro ao carregar o chat:', messages.error);
+    MESA_MEMBERS[mesaId] = (members.data || []).map((m) => ({
+      userId: m.user_id,
+      role: m.role,
+      displayName: m.display_name || '',
+      joinedAt: m.joined_at
+    }));
+    MESA_NPCS[mesaId] = (npcs.data || []).map(rowToNpc);
+    MESA_MESSAGES[mesaId] = (messages.data || []).reverse();
+    const state = await sb.from('mesa_state').select('initiative').eq('mesa_id', mesaId).maybeSingle();
+    if (state.error) console.error('Erro ao carregar a iniciativa:', state.error);
+    MESA_STATE[mesaId] = (state.data && state.data.initiative) || {};
+    if (isMesaMaster(mesaId)) await Promise.all([loadMesaImages(mesaId), loadMesaSecrets(mesaId)]);
+    // Fichas: a RLS devolve as da mesa para todos os membros.
+    charactersLoaded = false;
+    await loadCharacters();
+  }
+
+  async function createMesa({ name, description, system }) {
+    const { data, error } = await sb
+      .from('mesas')
+      .insert({ name, description, system, owner_id: auth.user.id })
+      .select()
+      .single();
+    if (error) throw mesaTableMissing(error) ? new Error(MESA_TABLE_HINT) : error;
+    const mesa = rowToMesa(data, 'mestre');
+    MESAS.unshift(mesa);
+    return mesa;
+  }
+
+  async function joinMesa(code) {
+    const { data, error } = await sb.rpc('join_mesa', { p_code: code });
+    if (error) throw mesaTableMissing(error) ? new Error(MESA_TABLE_HINT) : error;
+    await loadMesas(true);
+    return data;
+  }
+
+  async function saveMesaNpc(mesaId, existing, payload) {
+    const row = {
+      mesa_id: mesaId,
+      title: payload.title,
+      summary: payload.summary || '',
+      image: payload.image || '',
+      image_path: payload.imagePath || '',
+      body_html: payload.bodyHtml || '',
+      tags: payload.tags || [],
+      fields: payload.fields || {},
+      updated_at: new Date().toISOString()
+    };
+    const query = existing
+      ? sb.from('mesa_npcs').update(row).eq('id', existing.id)
+      : sb.from('mesa_npcs').insert(row);
+    const { data, error } = await query.select().single();
+    if (error) throw error;
+    const npc = rowToNpc(data);
+    const list = MESA_NPCS[mesaId] || (MESA_NPCS[mesaId] = []);
+    const index = list.findIndex((n) => n.id === npc.id);
+    if (index >= 0) list[index] = npc; else list.push(npc);
+    return npc;
+  }
+
+  async function importBestiaryNpc(mesaId, entryId) {
+    const source = entryById(entryId);
+    if (!source) throw new Error('Criatura não encontrada no Bestiário.');
+    await loadEntryDetails(source);
+    const { data, error } = await sb.from('mesa_npcs').insert({
+      mesa_id: mesaId,
+      title: source.title,
+      summary: source.summary || '',
+      // A imagem continua sendo do Bestiário: o NPC não é dono do arquivo.
+      image: source.image || '',
+      image_path: '',
+      body_html: source.bodyHtml || '',
+      tags: source.tags || [],
+      fields: source.fields || {},
+      source_entry_id: source.id
+    }).select().single();
+    if (error) throw error;
+    const npc = rowToNpc(data);
+    (MESA_NPCS[mesaId] || (MESA_NPCS[mesaId] = [])).push(npc);
+    return npc;
+  }
+
+  /* ── Rotas: #/Mesas, #/Mesas/criar, #/Mesas/entrar/<codigo>,
+     #/Mesas/<id>[/<aba>], #/Mesas/<id>/fichas|npcs/<item>[/editar] ── */
+  function parseMesaRoute(entry, action) {
+    if (!entry) return { view: action === 'criar' ? 'create' : 'list' };
+    const parts = entry.split('/').filter(Boolean);
+    if (parts[0] === 'entrar') return { view: 'join', code: parts[1] || '' };
+    const [mesaId, tab = 'chat', itemId = ''] = parts;
+    if (tab === 'fichas') {
+      if (action === 'criar' && !itemId) return { view: 'character-form', mesaId };
+      if (itemId) return { view: action === 'editar' ? 'character-form' : 'character', mesaId, itemId };
+    }
+    if (tab === 'npcs') {
+      if (action === 'criar' && !itemId) return { view: 'npc-form', mesaId };
+      if (itemId) return { view: action === 'editar' ? 'npc-form' : 'npc', mesaId, itemId };
+    }
+    return { view: 'mesa', mesaId, tab: MESA_TABS.some((t) => t.id === tab) ? tab : 'chat' };
+  }
+
+  async function prepareMesaRoute(route) {
+    if (route.view === 'join' && route.code) {
+      try {
+        const mesaId = await joinMesa(route.code);
+        location.replace(`#/Mesas/${encodeURIComponent(mesaId)}`);
+      } catch (err) {
+        console.error(err);
+        toast('Não foi possível entrar na mesa: ' + (err.message || err));
+        location.replace('#/Mesas');
+      }
+      return false;
+    }
+    if (route.mesaId) {
+      await loadMesaDetail(route.mesaId);
+      if (route.view === 'npc-form' || route.view === 'npc' || route.tab === 'npcs') await Promise.all([loadTabFields('Bestiario'), loadTabFields('Racas')]);
+      if (route.view === 'character-form' || (route.view === 'mesa' && route.tab === 'chat')) await loadTabFields('Racas');
+    }
+    return true;
+  }
+
+  function viewMesaRoute(route) {
+    if (route.view === 'list') return viewMesasList();
+    if (route.view === 'create') return viewMesaCreate();
+    if (route.view === 'join') return viewMesaJoining();
+    const mesa = mesaById(route.mesaId);
+    if (!mesa) return viewMesaMissing();
+    if (route.view === 'character-form') {
+      if (route.itemId && characterById(route.itemId)?.mesaId !== mesa.id) return viewNotFound(route.itemId);
+      characterFormMesaId = mesa.id;
+      return viewCharacterForm(route.itemId || null);
+    }
+    if (route.view === 'character') {
+      if (characterById(route.itemId)?.mesaId !== mesa.id) return viewNotFound(route.itemId);
+      return viewCharacterSheetFolio(route.itemId);
+    }
+    if (route.view === 'npc-form') {
+      if (mesa.role !== 'mestre') return viewForbidden();
+      const npcChar = route.itemId ? characterById(route.itemId) : null;
+      if (!route.itemId || (npcChar && npcChar.isNpc && npcChar.mesaId === mesa.id)) {
+        characterFormMesaId = mesa.id;
+        characterFormNpc = true;
+        return viewCharacterForm(npcChar ? npcChar.id : null);
+      }
+      const npc = route.itemId ? (MESA_NPCS[mesa.id] || []).find((n) => n.id === route.itemId) : null;
+      if (route.itemId && !npc) return viewNotFound(route.itemId);
+      npcFormCtx = { mesaId: mesa.id, npc };
+      const base = `#/Mesas/${encodeURIComponent(mesa.id)}/npcs`;
+      return viewCreate('Bestiario', npc ? npc.id : null, npcFormCtx)
+        .replace('id="createForm"', `id="createForm" data-npc-mesa="${escapeHtml(mesa.id)}"`)
+        .replaceAll('href="#/Bestiario', `href="${base}`);
+    }
+    if (route.view === 'npc') {
+      const npcChar = characterById(route.itemId);
+      if (npcChar && npcChar.isNpc && npcChar.mesaId === mesa.id) return viewCharacterSheetFolio(npcChar.id);
+      return viewMesaNpc(mesa, route.itemId);
+    }
+    return viewMesa(mesa, route.tab);
+  }
+
+  /* ── PÁGINA INICIAL DA PLATAFORMA (#/) ───────── */
+  function viewPlatformHome() {
+    const mesas = MESAS.slice(0, 5);
+    const systems = Object.entries(MESA_SYSTEMS);
+    return `
+      <section class="codex-home__hero platform-hero" data-home-parallax>
+        <div class="codex-home__world auth-gate__world" aria-hidden="true">
+          <div class="auth-gate__layer auth-gate__base" data-auth-depth="5"></div>
+          <div class="auth-gate__layer auth-gate__nebula" data-auth-depth="18"></div>
+          <div class="auth-gate__layer auth-gate__starlight" data-auth-depth="34"></div>
+          <div class="auth-gate__layer auth-gate__foreground" data-auth-depth="52"></div>
+          <canvas class="auth-gate__fog" data-auth-fog></canvas>
+          <canvas class="auth-gate__dust" data-auth-dust></canvas>
+          <div class="auth-gate__grade"></div>
+          <div class="auth-gate__grain"></div>
+          <div class="auth-gate__vignette"></div>
+        </div>
+        <div class="codex-home__veil"></div>
+        <span class="arc-trace arc-trace--top" aria-hidden="true"></span>
+        <span class="arc-trace arc-trace--bottom" aria-hidden="true"></span>
+        <div class="codex-home__copy">
+          <div class="codex-home__eyebrow"><i></i><span>RPG E MUITO MAIS</span></div>
+          <p class="codex-home__kicker">Mesas de RPG</p>
+          <h1 data-text-reveal>O Arcano</h1>
+          <p class="codex-home__subtitle">Crie uma mesa, convide seu grupo e jogue com chat, fichas e NPCs no mesmo lugar. Cada mesa escolhe seu sistema, começando pelo Arcano.</p>
+          <div class="codex-home__actions">
+            <a href="#/Mesas/criar" class="btn btn-primary arc-energy-button">
+              <span>Criar mesa</span>
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M13 5l7 7-7 7"/></svg>
+            </a>
+            <a href="#/Mesas" class="btn btn-ghost"><span>Minhas mesas</span></a>
+          </div>
+        </div>
+      </section>
+
+      <section class="section platform-section">
+        <header class="codex-home__section-head">
+          <div><span>MESAS</span><h2>Onde você joga</h2></div>
+          <p>${mesasUnavailable ? escapeHtml(MESA_TABLE_HINT) : 'Suas mesas, como Mestre ou jogador.'}</p>
+        </header>
+        <div class="entry-grid">
+          ${mesaCreateCardHTML()}
+          ${mesas.map((m, i) => mesaCardHTML(m, i + 1)).join('')}
+        </div>
+        ${MESAS.length > mesas.length ? `<p class="platform-more"><a href="#/Mesas" class="back-link">Ver todas as ${MESAS.length} mesas</a></p>` : ''}
+      </section>
+
+      <section class="section platform-section">
+        <header class="codex-home__section-head">
+          <div><span>SISTEMAS</span><h2>Escolha as regras da mesa</h2></div>
+          <p>Cada sistema tem seu próprio livro, com mundo, regras e criaturas.</p>
+        </header>
+        <div class="platform-systems">
+          ${systems.map(([id, sys]) => `
+            <a href="${sys.href}" class="platform-system" style="--hue:${themeOf('Arcano').hue}">
+              <img src="${sys.image}" alt="" loading="lazy" decoding="async">
+              <span class="platform-system__shade"></span>
+              <span class="platform-system__body">
+                <small>SISTEMA</small>
+                <strong>${escapeHtml(sys.name)}</strong>
+                <span>${escapeHtml(sys.tone)}</span>
+                <em>Abrir o livro →</em>
+              </span>
+            </a>`).join('')}
+          <div class="platform-system platform-system--soon">
+            <span class="platform-system__body">
+              <small>SISTEMA</small>
+              <strong>Outros sistemas</strong>
+              <span>Novos sistemas de jogo chegam nas próximas atualizações.</span>
+              <em>Em breve</em>
+            </span>
+          </div>
+        </div>
+      </section>
+    `;
+  }
+
+  /* ── LISTA (#/Mesas) ─────────────────────────── */
+  function mesaCreateCardHTML() {
+    return `
+      <a href="#/Mesas/criar" class="entry-card create-card" style="--hue:${themeOf('Mesas').hue};--delay:0ms" aria-label="Criar nova mesa">
+        <div class="create-card__inner">
+          <div class="create-card__plus">
+            <svg viewBox="0 0 24 24" width="38" height="38" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+          </div>
+          <span class="create-card__label">Criar mesa</span>
+          <span class="create-card__hint">Você será o Mestre</span>
+        </div>
+      </a>`;
+  }
+
+  function mesaCardHTML(m, i) {
+    const sys = MESA_SYSTEMS[m.system] || { name: m.system, image: '' };
+    return `
+      <a href="#/Mesas/${encodeURIComponent(m.id)}" class="entry-card mesa-card" style="--hue:${themeOf('Mesas').hue};--delay:${i * 40}ms">
+        <div class="entry-card__media">
+          ${sys.image ? `<img loading="lazy" decoding="async" src="${sys.image}" alt="">` : ''}
+          <div class="entry-card__fallback">${iconOf('Mesas')}</div>
+          <div class="entry-card__shade"></div>
+          <div class="entry-card__tags">
+            <span class="char-badge ${m.role === 'mestre' ? 'char-badge--mage' : 'char-badge--mundane'}">${escapeHtml(mesaRoleLabel(m.role))}</span>
+          </div>
+        </div>
+        <div class="entry-card__body">
+          <h3 class="entry-card__title">${escapeHtml(m.name)}</h3>
+          <p class="entry-card__summary">${escapeHtml(m.description || 'Sem descrição.')}</p>
+          <div class="entry-card__chips"><span class="chip">Sistema ${escapeHtml(sys.name)}</span></div>
+        </div>
+      </a>`;
+  }
+
+  function viewMesasList() {
+    const theme = themeOf('Mesas');
+    return `
+      <section class="cat-hero" style="--hue:${theme.hue}">
+        <div class="cat-hero__icon">${iconOf('Mesas')}</div>
+        <div class="cat-hero__body">
+          <span class="cat-hero__eyebrow">${escapeHtml(theme.label)}</span>
+          <h1 class="cat-hero__title" data-text-reveal>Mesas</h1>
+          <p class="cat-hero__tone">Cada mesa reúne o chat da sessão, as fichas dos jogadores e os NPCs do Mestre.</p>
+          <div class="cat-hero__meta">
+            <span class="badge"><strong>${MESAS.length}</strong> ${MESAS.length === 1 ? 'mesa' : 'mesas'}</span>
+          </div>
+        </div>
+      </section>
+      ${mesasUnavailable ? `<p class="mesa-notice">${escapeHtml(MESA_TABLE_HINT)}</p>` : ''}
+      <form class="mesa-join" id="mesaJoinForm">
+        <label for="mesaJoinCode"><strong>Recebeu um convite?</strong><span>Cole o código ou o link da mesa.</span></label>
+        <input id="mesaJoinCode" name="code" type="text" autocomplete="off" placeholder="ex.: 3f9a1c2b" required>
+        <button type="submit" class="btn btn-primary"><span>Entrar na mesa</span></button>
+      </form>
+      <section class="entry-grid">
+        ${mesaCreateCardHTML()}
+        ${MESAS.map((m, i) => mesaCardHTML(m, i + 1)).join('')}
+      </section>
+      ${auth.isPlatina ? `
+        <section class="section">
+          <header class="section__head">
+            <div>
+              <span class="section__eyebrow">VISÃO PLATINA</span>
+              <h2 class="section__title">Todas as outras mesas</h2>
+            </div>
+          </header>
+          ${MESAS_OBSERVED.length
+            ? `<div class="entry-grid">${MESAS_OBSERVED.map((m, i) => mesaCardHTML(m, i)).join('')}</div>`
+            : '<p class="mesa-notice mesa-notice--soft">Nenhuma outra mesa por enquanto.</p>'}
+        </section>` : ''}`;
+  }
+
+  function viewMesaCreate() {
+    const theme = themeOf('Mesas');
+    return `
+      <section class="cat-hero" style="--hue:${theme.hue}">
+        <div class="cat-hero__icon">${iconOf('Mesas')}</div>
+        <div class="cat-hero__body">
+          <span class="cat-hero__eyebrow">CRIAR · MESAS</span>
+          <h1 class="cat-hero__title" data-text-reveal>Nova mesa</h1>
+          <p class="cat-hero__tone">Dê um nome, escolha o sistema e convide seu grupo depois.</p>
+        </div>
+      </section>
+      <form class="mesa-form" id="mesaCreateForm">
+        <label class="mesa-form__field">
+          <span>Nome da mesa</span>
+          <input name="name" type="text" maxlength="80" required placeholder="ex.: As Cinzas de Valdrek">
+        </label>
+        <label class="mesa-form__field">
+          <span>Descrição</span>
+          <textarea name="description" rows="3" maxlength="600" placeholder="Do que se trata a campanha, dia e horário das sessões..."></textarea>
+        </label>
+        <fieldset class="mesa-form__systems">
+          <legend>Sistema</legend>
+          ${Object.entries(MESA_SYSTEMS).map(([id, sys], i) => `
+            <label class="mesa-form__system">
+              <input type="radio" name="system" value="${id}" ${i === 0 ? 'checked' : ''}>
+              <span><strong>${escapeHtml(sys.name)}</strong><small>${escapeHtml(sys.tone)}</small></span>
+            </label>`).join('')}
+          <label class="mesa-form__system is-disabled">
+            <input type="radio" name="system" value="" disabled>
+            <span><strong>Outros sistemas</strong><small>Em breve.</small></span>
+          </label>
+        </fieldset>
+        <div class="mesa-form__actions">
+          <a href="#/Mesas" class="btn btn-ghost">Cancelar</a>
+          <button type="submit" class="btn btn-primary"><span>Criar mesa</span></button>
+        </div>
+      </form>`;
+  }
+
+  function viewMesaJoining() {
+    return `<p class="mesa-notice">Entrando na mesa…</p>`;
+  }
+
+  function viewMesaMissing() {
+    return `
+      <section class="empty-state">
+        <div class="empty-state__icon">${iconOf('Mesas')}</div>
+        <h3>Mesa não encontrada</h3>
+        <p>Ela não existe ou você ainda não participa dela. Peça o convite ao Mestre.</p>
+        <a href="#/Mesas" class="btn btn-primary">Ver minhas mesas</a>
+      </section>`;
+  }
+
+  /* ── MESA (#/Mesas/<id>/<aba>) ───────────────── */
+  function viewMesa(mesa, tabId) {
+    const theme = themeOf('Mesas');
+    const sys = MESA_SYSTEMS[mesa.system] || { name: mesa.system, href: '#/' };
+    const base = `#/Mesas/${encodeURIComponent(mesa.id)}`;
+    const characters = CHARACTERS.filter((c) => c.mesaId === mesa.id && !c.isNpc);
+    const npcChars = CHARACTERS.filter((c) => c.mesaId === mesa.id && c.isNpc);
+    const npcs = MESA_NPCS[mesa.id] || [];
+    const members = MESA_MEMBERS[mesa.id] || [];
+    const counts = { fichas: characters.length, npcs: npcs.length + npcChars.length, membros: members.length };
+    const panel = tabId === 'fichas' ? mesaFichasPanel(mesa, characters)
+      : tabId === 'npcs' ? mesaNpcsPanel(mesa, npcs)
+      : tabId === 'membros' ? mesaMembersPanel(mesa, members)
+      : mesaChatPanel(mesa);
+
+    return `
+      <header class="mesa-bar" style="--hue:${theme.hue}">
+        <a href="#/Mesas" class="mesa-bar__back" aria-label="Voltar às mesas" title="Mesas"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 18l-6-6 6-6"/></svg></a>
+        <div class="mesa-bar__id" ${mesa.description ? `title="${escapeHtml(mesa.description)}"` : ''}>
+          <strong>${escapeHtml(mesa.name)}</strong>
+          <span><a href="${sys.href}">${escapeHtml(sys.name)}</a> · ${escapeHtml(mesaRoleLabel(mesa.role))}</span>
+        </div>
+        <nav class="mesa-bar__tabs" aria-label="Abas da mesa">
+          ${MESA_TABS.map((t) => `
+            <a href="${base}/${t.id}" class="${t.id === tabId ? 'is-active' : ''}" ${t.id === tabId ? 'aria-current="page"' : ''}>${t.label}${counts[t.id] ? `<b>${counts[t.id]}</b>` : ''}</a>`).join('')}
+        </nav>
+      </header>
+      <div class="mesa-panel" data-mesa-panel="${escapeHtml(tabId)}" data-mesa-id="${escapeHtml(mesa.id)}">
+        ${panel}
+      </div>`;
+  }
+
+  /* ════════════════════════════════════════════════
+     CHAT DA MESA
+     Falar como personagem/NPC, comandos, dados, cenas, imagens e presença.
+     ════════════════════════════════════════════════ */
+  const CHAT_COLORS = ['#c8a25a', '#b8674f', '#7f9f78', '#6e98b8', '#a97a9c', '#c4894f', '#8d8cb8', '#5e9f9a', '#b96a6a', '#9aa36a'];
+  const CHAT_DICE = [3, 4, 6, 8, 10, 12, 20, 100];
+  const CHAT_GROUP_MS = 4 * 60 * 1000;
+  const CHAT_IMAGE_TTL_MS = 24 * 60 * 60 * 1000;
+  const CHAT_COMMANDS = [
+    { cmd: '/me', example: '/me saca a espada', hint: 'ação do personagem' },
+    { cmd: '/w', example: '/w Rafa texto', hint: 'sussurro' },
+    { cmd: '/grita', example: '/grita Parem!', hint: 'voz alta' },
+    { cmd: '/baixo', example: '/baixo ouviu isso?', hint: 'voz baixa' },
+    { cmd: '/ooc', example: '/ooc volto em 5 min', hint: 'fora do personagem' },
+    { cmd: '/r', example: '/r 2d6+1', hint: 'rolar dados' },
+    { cmd: '/gr', example: '/gr 1d20', hint: 'rolar em segredo', master: true },
+    { cmd: '/narrar', example: '/narrar A chuva aperta.', hint: 'narração', master: true },
+    { cmd: '/cena', example: '/cena A estrada de cinzas', hint: 'abrir cena', master: true }
+  ];
+
+  const MESA_IMAGES = {};
+  const MESA_SECRETS = {};
+  const chatState = { mesaId: '', speakerKey: '', pool: {}, typing: {}, typingTimer: null, lastTypingSent: 0, online: [] };
+
+  function chatColorFor(seed) {
+    let h = 0;
+    const text = String(seed || '');
+    for (let i = 0; i < text.length; i++) h = (h * 31 + text.charCodeAt(i)) >>> 0;
+    return CHAT_COLORS[h % CHAT_COLORS.length];
+  }
+
+  const safeChatColor = (value, seed) => (/^#[0-9a-f]{6}$/i.test(String(value || '')) ? value : chatColorFor(seed));
+
+  function storageGet(key, fallback) {
+    try {
+      const raw = localStorage.getItem(key);
+      return raw ? JSON.parse(raw) : fallback;
+    } catch { return fallback; }
+  }
+
+  function storageSet(key, value) {
+    try { localStorage.setItem(key, JSON.stringify(value)); } catch { /* sem armazenamento local */ }
+  }
+
+  const avulsosKey = (mesaId) => `arcano.avulsos.${mesaId}`;
+  const speakerKeyStore = (mesaId) => `arcano.speaker.${mesaId}`;
+
+  function chatAvulsos(mesaId) {
+    const list = storageGet(avulsosKey(mesaId), []);
+    return Array.isArray(list) ? list.filter((a) => a && a.name).slice(0, 12) : [];
+  }
+
+  function chatSpeakers(mesa) {
+    const mine = auth.user?.id;
+    const master = mesa.role === 'mestre';
+    const list = [{ key: 'self', type: 'self', name: memberName(mesa.id, mine) || myDisplayName(), image: '', color: '' }];
+    if (master) list.push({ key: 'narrador', type: 'narrador', name: 'Narrador', image: '', color: '' });
+    CHARACTERS
+      .filter((c) => c.mesaId === mesa.id && c.userId === mine && !c.isNpc)
+      .forEach((c) => list.push({ key: `c:${c.id}`, type: 'character', id: c.id, name: c.name || 'Sem nome', image: c.image || '', color: safeChatColor(c.identity?.chatColor, c.id) }));
+    if (master) {
+      CHARACTERS
+        .filter((c) => c.mesaId === mesa.id && c.isNpc)
+        .forEach((c) => list.push({ key: `c:${c.id}`, type: 'character', npc: true, id: c.id, name: c.name || 'NPC', image: c.image || '', color: safeChatColor(c.identity?.chatColor, c.id) }));
+      (MESA_NPCS[mesa.id] || []).forEach((n) => list.push({ key: `n:${n.id}`, type: 'npc', id: n.id, name: n.title, image: n.image || '', color: chatColorFor(n.id) }));
+      chatAvulsos(mesa.id).forEach((a) => list.push({ key: `a:${a.name}`, type: 'avulso', name: a.name, image: a.image || '', color: chatColorFor(`a:${a.name}`) }));
+    }
+    return list;
+  }
+
+  function currentSpeaker(mesa) {
+    const list = chatSpeakers(mesa);
+    const wanted = chatState.mesaId === mesa.id && chatState.speakerKey ? chatState.speakerKey : storageGet(speakerKeyStore(mesa.id), '');
+    return list.find((s) => s.key === wanted) || list.find((s) => s.type === 'character') || list[0];
+  }
+
+  function speakerPayload(s) {
+    return { type: s.type, id: s.id || null, name: s.name, image: s.image || '', color: s.color || '' };
+  }
+
+  function messageSpeaker(msg) {
+    const s = msg.speaker && msg.speaker.type ? msg.speaker : null;
+    if (s) return s;
+    return { type: msg.kind === 'narracao' ? 'narrador' : 'self', name: msg.author || 'Jogador' };
+  }
+
+  /* Formatação leve: **negrito**, *itálico*, ~~riscado~~, ||spoiler||. */
+  function chatInline(text) {
+    return escapeHtml(text || '')
+      .replace(/\|\|(.+?)\|\|/g, '<span class="chat-spoiler" tabindex="0" role="button" aria-label="Revelar spoiler">$1</span>')
+      .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+      .replace(/(^|[^*])\*(?!\s)(.+?)\*(?!\*)/g, '$1<em>$2</em>')
+      .replace(/~~(.+?)~~/g, '<del>$1</del>')
+      .replace(/\n/g, '<br>');
+  }
+
+  function chatAvatarHTML(s) {
+    if (s.image) return `<span class="chat-avatar"><img src="${escapeHtml(s.image)}" alt="" loading="lazy" decoding="async"></span>`;
+    return `<span class="chat-avatar chat-avatar--initial" aria-hidden="true">${escapeHtml((s.name || '?').trim().charAt(0).toUpperCase())}</span>`;
+  }
+
+  function chatTime(msg) {
+    const date = new Date(msg.created_at || Date.now());
+    const sameDay = new Date().toDateString() === date.toDateString();
+    const when = date.toLocaleString('pt-BR', sameDay ? { hour: '2-digit', minute: '2-digit' } : { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+    return msg.pinned ? `${when} · fixada` : when;
+  }
+
+  function chatGroupKey(msg) {
+    const s = messageSpeaker(msg);
+    return `${msg.user_id}|${s.type}|${s.id || s.name}|${msg.whisper_to || ''}`;
+  }
+
+  function chatIsGrouped(msg, prev) {
+    if (!prev || prev.kind !== 'fala' || msg.kind !== 'fala') return false;
+    if (chatGroupKey(prev) !== chatGroupKey(msg)) return false;
+    return new Date(msg.created_at) - new Date(prev.created_at) < CHAT_GROUP_MS;
+  }
+
+  function chatWhisperLine(mesaId, msg) {
+    if (!msg.whisper_to) return '';
+    const mine = msg.user_id === auth.user?.id;
+    const other = mine ? memberName(mesaId, msg.whisper_to) : memberName(mesaId, msg.user_id);
+    return `<span class="chat-whisper">${mine ? `sussurro para ${escapeHtml(other)}` : `sussurro de ${escapeHtml(other)}`}</span>`;
+  }
+
+  function chatToolsHTML(mesaId, msg, { editable = false } = {}) {
+    const mine = msg.user_id === auth.user?.id;
+    const master = isMesaMaster(mesaId);
+    const tools = [];
+    if (editable && mine) tools.push(`<button type="button" data-chat-edit="${escapeHtml(msg.id)}">editar</button>`);
+    if (master) tools.push(`<button type="button" data-chat-pin="${escapeHtml(msg.id)}">${msg.pinned ? 'desafixar' : 'fixar'}</button>`);
+    if (mine || master) tools.push(`<button type="button" data-chat-delete="${escapeHtml(msg.id)}">apagar</button>`);
+    return tools.length ? `<span class="chat-tools">${tools.join('')}</span>` : '';
+  }
+
+  function chatDiceChips(group) {
+    return group.rolls.map((v) => {
+      const crit = v === group.sides ? ' is-max' : (v === 1 ? ' is-min' : '');
+      return `<span class="chat-die${crit}" title="d${group.sides}">${v}</span>`;
+    }).join('');
+  }
+
+  function chatRollResultHTML(result) {
+    if (!result) return '';
+    if (result.test) {
+      const t = result.test;
+      return `
+        <span class="chat-roll__dice">${t.d6s.map((v) => `<span class="chat-die${v === 6 ? ' is-max' : (v === 1 ? ' is-min' : '')}">${v}</span>`).join('')}<span class="chat-roll__plus">+</span><span class="chat-die chat-die--destiny${t.destiny === 12 ? ' is-max' : (t.destiny === 1 ? ' is-min' : '')}" title="Destino (d12)">${t.destiny}</span></span>
+        <span class="chat-roll__total">${result.total}</span>
+        <span class="chat-roll__reading"><b>${escapeHtml(t.reading.title)}</b> ${escapeHtml(t.reading.text)}</span>`;
+    }
+    const dice = (result.groups || []).map((g) => chatDiceChips(g)).join('<span class="chat-roll__plus">+</span>');
+    const mod = Number(result.mod || 0);
+    return `
+      <span class="chat-roll__dice">${dice}${mod ? `<span class="chat-roll__plus">${mod > 0 ? '+' : '−'}</span><span class="chat-roll__mod">${Math.abs(mod)}</span>` : ''}</span>
+      <span class="chat-roll__total">${result.total}</span>`;
+  }
+
+  function chatRollHTML(mesaId, msg) {
+    const s = messageSpeaker(msg);
+    const d = msg.data || {};
+    if (d.levelUp) return chatLevelUpHTML(mesaId, msg, s, d.levelUp);
+    const label = d.test ? `Teste de ${escapeHtml(d.test.attr)} · ${escapeHtml(fmtDice(d.test.dice))} + Destino` : escapeHtml(d.expr || '');
+    const master = isMesaMaster(mesaId);
+    let result = '';
+    if (d.secret && !d.revealed) {
+      const hidden = MESA_SECRETS[msg.id];
+      result = master && hidden
+        ? `<span class="chat-roll__secret">${chatRollResultHTML(hidden)}</span><button type="button" class="chat-link" data-chat-reveal="${escapeHtml(msg.id)}">revelar</button>`
+        : '<span class="chat-roll__hidden">resultado oculto</span>';
+    } else {
+      result = chatRollResultHTML(d);
+    }
+    return `
+      <li class="chat-msg chat-msg--roll" data-mesa-msg="${escapeHtml(msg.id)}" style="--who:${safeChatColor(s.color, s.id || s.name)}">
+        ${chatWhisperLine(mesaId, msg)}
+        <p class="chat-roll">
+          <span class="chat-who">${escapeHtml(s.name)}</span>
+          <span class="chat-roll__label">${d.secret ? (d.revealed ? 'rolou em segredo e revelou' : 'rolou em segredo') : 'rolou'} ${label}</span>
+          ${result}
+        </p>
+        <span class="chat-time">${escapeHtml(chatTime(msg))}</span>
+        ${chatToolsHTML(mesaId, msg)}
+      </li>`;
+  }
+
+  function chatImageExpired(msg) {
+    const d = msg.data || {};
+    if (d.kept || !d.expiresAt) return !!d.expired;
+    return d.expired || Date.now() > new Date(d.expiresAt).getTime();
+  }
+
+  function chatImageHTML(mesaId, msg) {
+    const s = messageSpeaker(msg);
+    const d = msg.data || {};
+    const master = isMesaMaster(mesaId);
+    const expired = chatImageExpired(msg);
+    const keep = master && !expired && d.expiresAt && !d.kept
+      ? `<button type="button" class="chat-link" data-chat-keep="${escapeHtml(msg.id)}">guardar no acervo</button>` : '';
+    const left = !expired && d.expiresAt && !d.kept
+      ? `<span class="chat-image__ttl">some em ${Math.max(1, Math.ceil((new Date(d.expiresAt).getTime() - Date.now()) / 3600000))}h</span>` : '';
+    return `
+      <li class="chat-msg chat-msg--image" data-mesa-msg="${escapeHtml(msg.id)}" style="--who:${safeChatColor(s.color, s.id || s.name)}">
+        ${chatWhisperLine(mesaId, msg)}
+        <p class="chat-line"><span class="chat-who">${escapeHtml(s.name)}</span> <span class="chat-muted">mostrou uma imagem</span></p>
+        ${expired
+          ? '<p class="chat-muted chat-image__gone">A imagem expirou.</p>'
+          : `<figure class="chat-image">
+              <a href="${escapeHtml(d.url)}" target="_blank" rel="noopener"><img src="${escapeHtml(d.url)}" alt="${escapeHtml(d.title || '')}" loading="lazy" decoding="async"></a>
+              ${d.title ? `<figcaption>${escapeHtml(d.title)}</figcaption>` : ''}
+            </figure>`}
+        <span class="chat-time">${escapeHtml(chatTime(msg))}</span>
+        ${left}${keep}
+        ${chatToolsHTML(mesaId, msg)}
+      </li>`;
+  }
+
+  function mesaMessageHTML(mesaId, msg, prev) {
+    const s = messageSpeaker(msg);
+    const kind = msg.kind || 'fala';
+    const color = safeChatColor(s.color, s.id || s.name);
+    const edited = msg.edited_at ? ' · editada' : '';
+    const id = escapeHtml(msg.id);
+
+    if (kind === 'cena') {
+      const d = msg.data || {};
+      return `
+        <li class="chat-scene" data-mesa-msg="${id}">
+          ${d.image ? `<img class="chat-scene__image" src="${escapeHtml(d.image)}" alt="" loading="lazy" decoding="async">` : ''}
+          <span class="chat-scene__rule" aria-hidden="true"></span>
+          <h3 class="chat-scene__title">${escapeHtml(d.title || msg.body || 'Nova cena')}</h3>
+          ${d.title && msg.body ? `<p class="chat-scene__text">${chatInline(msg.body)}</p>` : ''}
+          ${chatToolsHTML(mesaId, msg)}
+        </li>`;
+    }
+    if (kind === 'rolagem') return chatRollHTML(mesaId, msg);
+    if (kind === 'imagem') return chatImageHTML(mesaId, msg);
+
+    const tone = msg.tone && msg.tone !== 'normal' ? ` chat-tone--${msg.tone}` : '';
+    const whisper = msg.whisper_to ? ' is-whisper' : '';
+    const text = `<span class="chat-text" data-chat-text>${chatInline(msg.body)}</span>`;
+
+    if (kind === 'narracao') {
+      return `
+        <li class="chat-msg chat-msg--narracao${whisper}" data-mesa-msg="${id}">
+          ${chatWhisperLine(mesaId, msg)}
+          <p class="chat-line">${text}</p>
+          <span class="chat-time">${escapeHtml(chatTime(msg))}${edited}</span>
+          ${chatToolsHTML(mesaId, msg, { editable: true })}
+        </li>`;
+    }
+    if (kind === 'acao') {
+      return `
+        <li class="chat-msg chat-msg--acao${whisper}" data-mesa-msg="${id}" style="--who:${color}">
+          ${chatWhisperLine(mesaId, msg)}
+          <p class="chat-line"><span class="chat-who">${escapeHtml(s.name)}</span> ${text}</p>
+          <span class="chat-time">${escapeHtml(chatTime(msg))}${edited}</span>
+          ${chatToolsHTML(mesaId, msg, { editable: true })}
+        </li>`;
+    }
+    if (kind === 'fora' || s.type === 'self') {
+      return `
+        <li class="chat-msg chat-msg--fora${tone}${whisper}" data-mesa-msg="${id}">
+          ${chatWhisperLine(mesaId, msg)}
+          <p class="chat-line"><span class="chat-who">${escapeHtml(s.name)}</span> ${text}</p>
+          <span class="chat-time">${escapeHtml(chatTime(msg))}${edited}</span>
+          ${chatToolsHTML(mesaId, msg, { editable: true })}
+        </li>`;
+    }
+    const grouped = chatIsGrouped(msg, prev);
+    return `
+      <li class="chat-msg chat-msg--fala${tone}${whisper}${grouped ? ' is-grouped' : ''}" data-mesa-msg="${id}" style="--who:${color}">
+        ${grouped ? '<span class="chat-avatar chat-avatar--spacer" aria-hidden="true"></span>' : chatAvatarHTML(s)}
+        <div class="chat-msg__body">
+          ${grouped ? '' : `<header class="chat-msg__head"><span class="chat-who">${escapeHtml(s.name)}</span><span class="chat-time">${escapeHtml(chatTime(msg))}${edited}</span></header>`}
+          ${chatWhisperLine(mesaId, msg)}
+          <p class="chat-line">${text}</p>
+        </div>
+        ${chatToolsHTML(mesaId, msg, { editable: true })}
+      </li>`;
+  }
+
+  function chatLogHTML(mesaId) {
+    const messages = MESA_MESSAGES[mesaId] || [];
+    if (!messages.length) return '<li class="chat-empty">A mesa está em silêncio.</li>';
+    return messages.map((m, i) => mesaMessageHTML(mesaId, m, messages[i - 1])).join('');
+  }
+
+  function chatSpeakerButtonHTML(s) {
+    return `${s.type === 'character' || s.type === 'npc' || s.type === 'avulso' ? chatAvatarHTML(s) : ''}<span class="chat-speaker__name" style="--who:${s.color || 'var(--chat-muted)'}">${escapeHtml(s.type === 'self' ? `${s.name} (você)` : s.name)}</span>`;
+  }
+
+  function chatSpeakerMenuHTML(mesa, current) {
+    const list = chatSpeakers(mesa);
+    const section = (title, items) => items.length ? `
+      <p class="chat-menu__title">${title}</p>
+      ${items.map((s) => `
+        <button type="button" class="chat-menu__item ${s.key === current.key ? 'is-current' : ''}" data-chat-speaker="${escapeHtml(s.key)}" style="--who:${s.color || 'var(--chat-muted)'}">
+          ${s.type === 'self' || s.type === 'narrador' ? '' : chatAvatarHTML(s)}
+          <span>${escapeHtml(s.type === 'self' ? `${s.name} (você)` : s.name)}</span>
+        </button>`).join('')}` : '';
+    const master = mesa.role === 'mestre';
+    const colorRow = current.type === 'character' ? `
+      <p class="chat-menu__title">Cor de ${escapeHtml(current.name)}</p>
+      <div class="chat-menu__colors">
+        ${CHAT_COLORS.map((c) => `<button type="button" class="chat-swatch ${c === current.color ? 'is-current' : ''}" style="--swatch:${c}" data-chat-color="${c}" aria-label="Cor ${c}"></button>`).join('')}
+      </div>` : '';
+    return `
+      ${section('Você', list.filter((s) => s.type === 'self' || s.type === 'narrador'))}
+      ${section('Personagens', list.filter((s) => s.type === 'character' && !s.npc))}
+      ${master ? section('NPCs da mesa', list.filter((s) => s.type === 'npc' || s.npc)) : ''}
+      ${master ? section('NPCs avulsos', list.filter((s) => s.type === 'avulso')) : ''}
+      ${master ? `
+        <div class="chat-menu__avulso">
+          <input type="text" maxlength="60" placeholder="Novo NPC avulso" aria-label="Nome do NPC avulso" data-chat-avulso-name>
+          <button type="button" data-chat-avulso-add>Falar</button>
+        </div>` : ''}
+      ${!list.some((s) => s.type === 'character') ? `<p class="chat-menu__hint">Crie uma ficha na aba Fichas para falar como personagem.</p>` : ''}
+      ${colorRow}`;
+  }
+
+  /* ── Painel de ferramentas (ao lado do chat, nunca por cima) ── */
+  const TOOL_ICON = (d) => `<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
+  const CHAT_TOOLS = [
+    { id: 'dados', label: 'Dados', icon: TOOL_ICON('<path d="M12 2l8.5 5v10L12 22l-8.5-5V7z"/><path d="M12 22V12M3.5 7L12 12l8.5-5"/>') },
+    { id: 'ficha', label: 'Ficha', icon: TOOL_ICON('<path d="M6 3h9l3 3v15H6z"/><path d="M9 10h6M9 14h6M9 18h4"/>') },
+    { id: 'iniciativa', label: 'Iniciativa', icon: TOOL_ICON('<path d="M14.5 17.5L3 6V3h3l11.5 11.5"/><path d="M13 19l6-6M16 16l4 4M19 21l2-2"/>') },
+    { id: 'fixadas', label: 'Fixadas', icon: TOOL_ICON('<path d="M12 17v5"/><path d="M9 10.8V5h6v5.8l2.5 3.2h-11z"/><path d="M8 5h8"/>') },
+    { id: 'notas', label: 'Notas', icon: TOOL_ICON('<path d="M20 4c-6 0-12 4-14 12l-2 4"/><path d="M8 14c4 0 7-2 9-6"/>') },
+    { id: 'npcs', label: 'NPCs em combate', master: true, icon: TOOL_ICON('<circle cx="12" cy="10" r="6"/><path d="M9 21v-3h6v3M10 10h.01M14 10h.01"/>') },
+    { id: 'acervo', label: 'Acervo', master: true, icon: TOOL_ICON('<rect x="3" y="4" width="18" height="16" rx="1"/><circle cx="9" cy="10" r="2"/><path d="M21 16l-5-5-9 9"/>') },
+    { id: 'cena', label: 'Cena', master: true, icon: TOOL_ICON('<path d="M3 20h18M5 20V9l7-5 7 5v11"/><path d="M10 20v-6h4v6"/>') },
+    { id: 'mestre', label: 'Anotações do Mestre', master: true, icon: TOOL_ICON('<path d="M4 4h12a4 4 0 014 4v12H8a4 4 0 01-4-4z"/><path d="M9 9h6M9 13h4"/>') }
+  ];
+  const MESA_STATE = {};
+  const MESA_NOTES = {};
+
+  const toolStoreKey = 'arcano.chatTool';
+  function chatToolsFor(mesa) {
+    return CHAT_TOOLS.filter((t) => !t.master || mesa.role === 'mestre');
+  }
+  function activeChatTool(mesa) {
+    const saved = storageGet(toolStoreKey, { id: 'dados', open: true });
+    const tools = chatToolsFor(mesa);
+    const id = tools.some((t) => t.id === saved.id) ? saved.id : 'dados';
+    return { id, open: saved.open !== false };
+  }
+
+  function chatPoolHTML() {
+    const groups = Object.entries(chatState.pool).filter(([, n]) => n > 0);
+    if (!groups.length) return '<span class="chat-muted">—</span>';
+    return groups.map(([sides, n]) => `<button type="button" class="chat-tray__chip" data-chat-pool-dec="${sides}" title="Tirar um d${sides}">${n}d${sides}</button>`).join('');
+  }
+
+  function chatPoolText() {
+    const parts = Object.entries(chatState.pool).filter(([, n]) => n > 0).map(([sides, n]) => `${n}d${sides}`);
+    return parts.length ? parts.join(' + ') : '';
+  }
+
+  function emptyInitiative() {
+    return { round: 1, turn: 0, entries: [] };
+  }
+  function mesaInitiative(mesaId) {
+    const ini = MESA_STATE[mesaId];
+    return ini && Array.isArray(ini.entries) ? ini : emptyInitiative();
+  }
+
+  function toolMeterHTML(attr, key, label, cur, max) {
+    const pct = max > 0 ? Math.max(0, Math.min(100, (cur / max) * 100)) : 0;
+    return `
+      <div class="tool-meter" ${attr}="${escapeHtml(key)}">
+        <span class="tool-meter__label">${escapeHtml(label)}</span>
+        <button type="button" data-meter-step="-1" aria-label="Diminuir ${escapeHtml(label)}">−</button>
+        <b>${cur}<small>/${max}</small></b>
+        <button type="button" data-meter-step="1" aria-label="Aumentar ${escapeHtml(label)}">+</button>
+        <i class="tool-meter__bar" style="width:${pct}%"></i>
+      </div>`;
+  }
+
+  function toolChipsHTML(items, removeAttr, inputAttr, placeholder) {
+    return `
+      <div class="tool-chips">
+        ${items.map((name, i) => `<span class="tool-chip">${escapeHtml(name)}<button type="button" ${removeAttr}="${i}" aria-label="Remover ${escapeHtml(name)}">×</button></span>`).join('')}
+        <input type="text" maxlength="40" ${inputAttr} placeholder="${escapeHtml(placeholder)}" aria-label="${escapeHtml(placeholder)}">
+      </div>`;
+  }
+
+  function toolDadosHTML(mesa, speaker) {
+    const master = mesa.role === 'mestre';
+    return `
+      <div class="chat-tray__dice">
+        ${CHAT_DICE.map((sides) => `<button type="button" class="chat-tray__die" data-chat-die="${sides}" title="Clique soma · clique direito tira">d${sides}<b data-chat-die-count="${sides}">${chatState.pool[sides] ? `×${chatState.pool[sides]}` : ''}</b></button>`).join('')}
+      </div>
+      <div class="chat-tray__pool">
+        <span class="chat-tray__chips" data-chat-pool>${chatPoolHTML()}</span>
+        <label class="chat-tray__mod">Mod <input type="number" data-chat-mod value="0" step="1" min="-99" max="99"></label>
+      </div>
+      ${master ? '<label class="chat-tray__secret"><input type="checkbox" data-chat-secret> Em segredo</label>' : ''}
+      <div class="chat-tray__actions">
+        <button type="button" class="chat-button" data-chat-clear>Limpar</button>
+        <button type="button" class="chat-button chat-button--primary" data-chat-roll>Rolar</button>
+      </div>
+      <p class="chat-tool__sub">Teste do Arcano</p>
+      <div data-chat-tests>${chatTrayTestHTML(mesa, speaker)}</div>`;
+  }
+
+  function chatTrayTestHTML(mesa, speaker) {
+    if (speaker.type !== 'character') return '<p class="chat-tray__hint">Fale como um personagem.</p>';
+    const c = characterById(speaker.id);
+    if (!c) return '';
+    const { mod } = raceDataFor(c.raceId);
+    const awk = normalizeAwakening(c.magic);
+    const A = attrModsView(c, mod, awkIsNonMage(awk) ? awk.bonusAttr : '');
+    return `<div class="chat-tray__tests">${CHAR_ATTRIBUTES.map((a) => {
+      const dice = Math.max(1, A[a].dice || 1);
+      return `<button type="button" class="chat-tray__test" data-chat-test="${escapeHtml(a)}" data-chat-test-dice="${dice}"><span>${escapeHtml(a)}</span><small>${fmtDice(dice)}</small></button>`;
+    }).join('')}</div>`;
+  }
+
+  function toolFichaHTML(mesa, speaker) {
+    const mine = CHARACTERS.filter((c) => c.mesaId === mesa.id && c.userId === auth.user?.id && !c.isNpc);
+    if (speaker.type !== 'character') {
+      if (!mine.length) return `<a class="chat-button" href="#/Mesas/${encodeURIComponent(mesa.id)}/fichas/criar">Criar ficha</a>`;
+      return `<div class="tool-pick">${mine.map((c) => `<button type="button" class="chat-menu__item" data-chat-speaker="c:${escapeHtml(c.id)}" style="--who:${safeChatColor(c.identity?.chatColor, c.id)}">${chatAvatarHTML({ name: c.name, image: c.image })}<span>${escapeHtml(c.name)}</span></button>`).join('')}</div>`;
+    }
+    const c = characterById(speaker.id);
+    if (!c) return '';
+    ensureVitals(c);
+    const hp = c.vitals.hp || {};
+    const mana = c.vitals.mana;
+    return `
+      <div class="tool-ficha__head" style="--who:${speaker.color}">
+        ${chatAvatarHTML(speaker)}
+        <span class="chat-who">${escapeHtml(c.name)}</span>
+        <a class="chat-link" href="${characterBase(c)}/${encodeURIComponent(c.id)}">${c.levelGrant && c.levelGrant.at ? 'subir de nível' : 'abrir'}</a>
+      </div>
+      <div class="tool-meters" data-ficha="${escapeHtml(c.id)}">
+        ${Object.keys(hp).map((part) => toolMeterHTML('data-ficha-hp', part, part, hp[part].cur, hp[part].max)).join('') || '<p class="chat-tray__hint">Sem HP na ficha.</p>'}
+        ${mana ? toolMeterHTML('data-ficha-mana', 'mana', 'Mana', mana.cur, mana.max) : ''}
+      </div>
+      <p class="chat-tool__sub">Status</p>
+      ${toolChipsHTML((c.statuses || []).map((s) => s.name), 'data-ficha-status-remove', 'data-ficha-status-input', 'Novo status')}`;
+  }
+
+  function toolNotesHTML(mesa, kind) {
+    const key = `${mesa.id}|${kind}`;
+    const loaded = Object.prototype.hasOwnProperty.call(MESA_NOTES, key);
+    return `
+      <textarea class="tool-notes" data-chat-notes="${kind}" ${loaded ? '' : 'disabled'} placeholder="${kind === 'mestre' ? 'Roteiro, segredos, ganchos…' : 'Pistas, nomes, dúvidas…'}" aria-label="${kind === 'mestre' ? 'Anotações do Mestre' : 'Notas'}">${escapeHtml(MESA_NOTES[key] || '')}</textarea>
+      <p class="tool-status" data-notes-status>${loaded ? '' : 'Carregando…'}</p>`;
+  }
+
+  function toolIniciativaHTML(mesa) {
+    const master = mesa.role === 'mestre';
+    const ini = mesaInitiative(mesa.id);
+    const options = [
+      ...CHARACTERS.filter((c) => c.mesaId === mesa.id).map((c) => `<option value="c:${escapeHtml(c.id)}">${escapeHtml(c.name)}</option>`),
+      ...(MESA_NPCS[mesa.id] || []).map((n) => `<option value="n:${escapeHtml(n.id)}">${escapeHtml(n.title)}</option>`)
+    ].join('');
+    return `
+      ${ini.entries.length ? `<p class="tool-ini__round">Rodada ${ini.round}</p>` : ''}
+      <ol class="tool-ini">
+        ${ini.entries.map((e, i) => `
+          <li class="${i === ini.turn ? 'is-turn' : ''}" style="--who:${e.color || 'var(--chat-soft)'}">
+            <span class="tool-ini__value">${e.value}</span>
+            <span class="tool-ini__name">${escapeHtml(e.name)}</span>
+            ${master ? `<button type="button" data-ini-remove="${escapeHtml(e.id)}" aria-label="Remover ${escapeHtml(e.name)}">×</button>` : ''}
+          </li>`).join('') || '<li class="tool-empty">Sem combate.</li>'}
+      </ol>
+      ${master ? `
+        ${ini.entries.length ? `
+          <div class="tool-row">
+            <button type="button" class="chat-button" data-ini-prev aria-label="Turno anterior">‹</button>
+            <button type="button" class="chat-button chat-button--primary" data-ini-next>Próximo</button>
+            <button type="button" class="chat-button" data-ini-clear>Encerrar</button>
+          </div>` : ''}
+        <div class="tool-ini__add">
+          <select data-ini-who aria-label="Quem entra">${options}<option value="">Outro…</option></select>
+          <input type="text" data-ini-name maxlength="40" placeholder="Nome" aria-label="Nome" hidden>
+          <input type="number" data-ini-value placeholder="—" aria-label="Valor (vazio rola)">
+          <button type="button" class="chat-button" data-ini-add>Entrar</button>
+        </div>
+        <button type="button" class="chat-link" data-ini-roll-all>rolar todos da mesa</button>` : ''}`;
+  }
+
+  function toolFixadasHTML(mesa) {
+    const pinned = (MESA_MESSAGES[mesa.id] || []).filter((m) => m.pinned);
+    if (!pinned.length) return '<p class="tool-empty">Nada fixado.</p>';
+    return `<ul class="tool-pins">${pinned.map((m) => {
+      const s = messageSpeaker(m);
+      const text = m.kind === 'cena' ? (m.data?.title || m.body) : (m.kind === 'imagem' ? (m.data?.title || 'Imagem') : m.body);
+      return `<li><button type="button" data-chat-jump="${escapeHtml(m.id)}" style="--who:${safeChatColor(s.color, s.id || s.name)}"><span class="chat-who">${escapeHtml(s.name)}</span>${escapeHtml(String(text || '').slice(0, 140))}</button></li>`;
+    }).join('')}</ul>`;
+  }
+
+  function npcCombat(npc) {
+    const raw = npc.combat && typeof npc.combat === 'object' ? npc.combat : {};
+    const max = Number(raw.max) > 0 ? Number(raw.max) : (Math.round(beastHpTotal(npc.fields || {})) || 10);
+    const cur = Number.isFinite(Number(raw.cur)) ? Math.max(0, Math.min(max, Number(raw.cur))) : max;
+    return { cur, max, conds: Array.isArray(raw.conds) ? raw.conds : [] };
+  }
+
+  function toolNpcsHTML(mesa) {
+    const npcs = MESA_NPCS[mesa.id] || [];
+    const chars = CHARACTERS.filter((c) => c.mesaId === mesa.id && c.isNpc);
+    if (!npcs.length && !chars.length) return `<a class="chat-button" href="#/Mesas/${encodeURIComponent(mesa.id)}/npcs/criar">Criar NPC</a>`;
+    const charItems = chars.map((c) => {
+      ensureVitals(c);
+      const hp = c.vitals.hp || {};
+      const color = safeChatColor(c.identity?.chatColor, c.id);
+      const down = Object.keys(hp).length && Object.values(hp).every((v) => v.cur === 0);
+      return `
+        <li data-npcchar="${escapeHtml(c.id)}" class="${down ? 'is-down' : ''}" style="--who:${color}">
+          <div class="tool-npc__head">
+            ${chatAvatarHTML({ name: c.name, image: c.image })}
+            <span class="chat-who">${escapeHtml(c.name)}</span>
+            <button type="button" class="chat-link" data-chat-speaker="c:${escapeHtml(c.id)}">falar</button>
+            <button type="button" class="chat-link" data-npcchar-visible="${escapeHtml(c.id)}">${c.npcVisible ? 'visível' : 'oculto'}</button>
+          </div>
+          ${Object.keys(hp).map((part) => toolMeterHTML('data-npcchar-hp', `${c.id}|${part}`, part, hp[part].cur, hp[part].max)).join('') || '<p class="chat-tray__hint">Sem HP na ficha.</p>'}
+        </li>`;
+    }).join('');
+    return `<ul class="tool-npcs">${charItems}${npcs.map((n) => {
+      const cb = npcCombat(n);
+      return `
+        <li data-npc-combat="${escapeHtml(n.id)}" class="${cb.cur === 0 ? 'is-down' : ''}" style="--who:${chatColorFor(n.id)}">
+          <div class="tool-npc__head">
+            ${chatAvatarHTML({ name: n.title, image: n.image })}
+            <span class="chat-who">${escapeHtml(n.title)}</span>
+            <button type="button" class="chat-link" data-chat-speaker="n:${escapeHtml(n.id)}">falar</button>
+            <button type="button" class="chat-link" data-npc-visible="${escapeHtml(n.id)}">${n.visible ? 'visível' : 'oculto'}</button>
+          </div>
+          ${toolMeterHTML('data-npc-hp', n.id, 'HP', cb.cur, cb.max)}
+          ${toolChipsHTML(cb.conds, 'data-npc-cond-remove', 'data-npc-cond-input', 'Condição')}
+        </li>`;
+    }).join('')}</ul>`;
+  }
+
+  function toolAcervoHTML(mesa) {
+    const images = MESA_IMAGES[mesa.id] || [];
+    return `
+      <div class="tool-upload">
+        <label class="chat-button">Escolher imagem<input type="file" accept="image/*" data-acervo-file hidden></label>
+        <input type="text" maxlength="120" data-acervo-title placeholder="Título" aria-label="Título da imagem">
+        <button type="button" class="chat-button chat-button--primary" data-acervo-add>Guardar</button>
+      </div>
+      ${images.length ? `<ul class="tool-gallery">${images.map((img) => `
+        <li>
+          <img src="${escapeHtml(img.url)}" alt="" loading="lazy" decoding="async">
+          <span>${escapeHtml(img.title || 'Sem título')}</span>
+          <span class="tool-gallery__tools">
+            <button type="button" class="chat-link" data-acervo-send="${escapeHtml(img.id)}">enviar</button>
+            <button type="button" class="chat-link" data-acervo-scene="${escapeHtml(img.id)}">cena</button>
+            <button type="button" class="chat-link" data-acervo-remove="${escapeHtml(img.id)}">remover</button>
+          </span>
+        </li>`).join('')}</ul>` : '<p class="tool-empty">Vazio.</p>'}`;
+  }
+
+  function toolCenaHTML(mesa) {
+    const images = MESA_IMAGES[mesa.id] || [];
+    const draft = chatState.sceneDraft || {};
+    return `
+      <label class="chat-field"><span>Título</span><input type="text" data-cena-title maxlength="120" value="${escapeHtml(draft.title || '')}" placeholder="Capítulo 3 · A estrada"></label>
+      <label class="chat-field"><span>Abertura</span><textarea data-cena-body rows="4" maxlength="1200">${escapeHtml(draft.body || '')}</textarea></label>
+      ${images.length ? `<label class="chat-field"><span>Imagem</span><select data-cena-image><option value="">—</option>${images.map((i) => `<option value="${escapeHtml(i.id)}" ${draft.imageId === i.id ? 'selected' : ''}>${escapeHtml(i.title || 'Sem título')}</option>`).join('')}</select></label>` : ''}
+      <button type="button" class="chat-button chat-button--primary" data-cena-open>Abrir cena</button>`;
+  }
+
+  function chatToolHTML(mesa, toolId, speaker) {
+    const tool = chatToolsFor(mesa).find((t) => t.id === toolId) || chatToolsFor(mesa)[0];
+    const body = {
+      dados: () => toolDadosHTML(mesa, speaker),
+      ficha: () => toolFichaHTML(mesa, speaker),
+      iniciativa: () => toolIniciativaHTML(mesa),
+      fixadas: () => toolFixadasHTML(mesa),
+      notas: () => toolNotesHTML(mesa, 'pessoal'),
+      npcs: () => toolNpcsHTML(mesa),
+      acervo: () => toolAcervoHTML(mesa),
+      cena: () => toolCenaHTML(mesa),
+      mestre: () => toolNotesHTML(mesa, 'mestre')
+    }[tool.id]();
+    return `<p class="chat-tool__title">${escapeHtml(tool.label)}</p><div class="chat-tool__body" data-tool-body="${tool.id}">${body}</div>`;
+  }
+
+  function mesaChatPanel(mesa) {
+    const observer = mesa.role === 'observador';
+    const speaker = currentSpeaker(mesa);
+    chatState.mesaId = mesa.id;
+    chatState.speakerKey = speaker.key;
+    const tool = activeChatTool(mesa);
+    const tools = chatToolsFor(mesa);
+    const master = mesa.role === 'mestre';
+    return `
+      <section class="chat ${observer ? 'chat--observer' : ''}" data-chat="${escapeHtml(mesa.id)}">
+        <div class="chat__main">
+          <div class="chat__presence" data-chat-presence></div>
+          <ol class="chat__log" data-mesa-chat-log="${escapeHtml(mesa.id)}" aria-live="polite">${chatLogHTML(mesa.id)}</ol>
+          <p class="chat__typing" data-chat-typing aria-live="polite"></p>
+          ${observer ? '<p class="chat__observer">Observando como Platina.</p>' : `
+          <form class="chat__composer" id="mesaChatForm" data-mesa-id="${escapeHtml(mesa.id)}">
+            <ul class="chat__commands" data-chat-commands hidden>
+              ${CHAT_COMMANDS.filter((c) => master || !c.master).map((c) => `<li><button type="button" data-chat-command="${c.cmd} "><code>${escapeHtml(c.example)}</code><span>${escapeHtml(c.hint)}</span></button></li>`).join('')}
+            </ul>
+            <div class="chat__attach" data-chat-attach hidden>
+              <img alt="" data-attach-thumb>
+              <input type="text" maxlength="120" data-attach-title aria-label="Título da imagem" placeholder="Título">
+              <button type="button" class="chat-button chat-button--primary" data-attach-send>Enviar</button>
+              <button type="button" class="chat-button" data-attach-cancel aria-label="Descartar imagem">×</button>
+            </div>
+            <div class="chat__input">
+              <div class="chat-speaker">
+                <button type="button" class="chat-speaker__toggle" data-chat-speaker-toggle aria-haspopup="true" aria-expanded="false" title="Falando como">${chatSpeakerButtonHTML(speaker)}</button>
+                <div class="chat-menu" data-chat-speaker-menu hidden>${chatSpeakerMenuHTML(mesa, speaker)}</div>
+              </div>
+              <textarea name="body" rows="1" maxlength="4000" placeholder="Mensagem" aria-label="Mensagem"></textarea>
+              <label class="chat-icon-button" title="Imagem">${TOOL_ICON('<rect x="3" y="4" width="18" height="16" rx="1"/><circle cx="9" cy="10" r="2"/><path d="M21 16l-5-5-9 9"/>')}<input type="file" accept="image/*" data-chat-image hidden></label>
+              <button type="submit" class="chat-icon-button chat-icon-button--send" aria-label="Enviar">${TOOL_ICON('<path d="M4 12l16-8-6 16-2-7z"/>')}</button>
+            </div>
+          </form>`}
+        </div>
+        ${observer ? '' : `
+        <aside class="chat-side ${tool.open ? '' : 'is-collapsed'}" data-chat-side>
+          <nav class="chat-rail" aria-label="Ferramentas">
+            ${tools.map((t) => `<button type="button" class="chat-rail__btn ${t.id === tool.id && tool.open ? 'is-active' : ''}" data-chat-tool="${t.id}" title="${escapeHtml(t.label)}" aria-label="${escapeHtml(t.label)}" aria-pressed="${t.id === tool.id && tool.open}">${t.icon}</button>`).join('')}
+          </nav>
+          <div class="chat-tool" data-chat-tool-panel>${tool.open ? chatToolHTML(mesa, tool.id, speaker) : ''}</div>
+        </aside>`}
+      </section>`;
+  }
+
+  /* ── Dados ───────────────────────────────────── */
+  function randomInt(max) {
+    const buffer = new Uint32Array(1);
+    const limit = Math.floor(0x100000000 / max) * max;
+    let value;
+    do { crypto.getRandomValues(buffer); value = buffer[0]; } while (value >= limit);
+    return (value % max) + 1;
+  }
+
+  function rollGroups(pool, mod) {
+    const groups = Object.entries(pool)
+      .filter(([, n]) => n > 0)
+      .map(([sides, n]) => ({ sides: Number(sides), rolls: Array.from({ length: n }, () => randomInt(Number(sides))) }));
+    const total = groups.reduce((sum, g) => sum + g.rolls.reduce((a, b) => a + b, 0), 0) + Number(mod || 0);
+    const expr = groups.map((g) => `${g.rolls.length}d${g.sides}`).join(' + ') + (mod ? ` ${mod > 0 ? '+' : '−'} ${Math.abs(mod)}` : '');
+    return { groups, mod: Number(mod || 0), total, expr };
+  }
+
+  /* "2d6+1d4-1", "d20", "4d6 + 2" → { pool, mod } ou null. */
+  function parseDiceExpr(text) {
+    const clean = String(text || '').replace(/\s+/g, '').toLowerCase();
+    if (!clean || !/^[+-]?(\d*d\d+|\d+)([+-](\d*d\d+|\d+))*$/.test(clean)) return null;
+    const pool = {};
+    let mod = 0;
+    let count = 0;
+    for (const [, sign, term] of clean.matchAll(/([+-]?)(\d*d\d+|\d+)/g)) {
+      const k = sign === '-' ? -1 : 1;
+      if (term.includes('d')) {
+        const [n, sides] = term.split('d');
+        const qty = Number(n || 1);
+        const faces = Number(sides);
+        if (k < 0 || faces < 2 || faces > 1000 || qty < 1) return null;
+        pool[faces] = (pool[faces] || 0) + qty;
+        count += qty;
+      } else {
+        mod += k * Number(term);
+      }
+    }
+    return count && count <= 60 ? { pool, mod } : null;
+  }
+
+  function arcanoTest(attr, dice) {
+    const d6s = Array.from({ length: dice }, () => randomInt(6));
+    const destiny = randomInt(12);
+    return {
+      total: destiny + d6s.reduce((a, b) => a + b, 0),
+      test: { attr, dice, d6s, destiny, reading: destinyReading(destiny) }
+    };
+  }
+
+  /* ── Envio ───────────────────────────────────── */
+  async function sendChatMessage(mesaId, row) {
+    const { data, error } = await sb.from('mesa_messages')
+      .insert({ mesa_id: mesaId, user_id: auth.user.id, author: row.speaker?.name || myDisplayName(), body: '', tone: 'normal', data: {}, ...row })
+      .select()
+      .single();
+    if (error) throw error;
+    addMesaMessage(mesaId, data);
+    return data;
+  }
+
+  async function sendChatRoll(mesa, result, { secret = false } = {}) {
+    const speaker = speakerPayload(currentSpeaker(mesa));
+    if (!secret) return sendChatMessage(mesa.id, { kind: 'rolagem', speaker, data: { ...result } });
+    const label = result.test ? { test: { attr: result.test.attr, dice: result.test.dice } } : { expr: result.expr };
+    const msg = await sendChatMessage(mesa.id, { kind: 'rolagem', speaker, data: { ...label, secret: true, revealed: false } });
+    const { error } = await sb.from('mesa_secret_rolls').insert({ message_id: msg.id, mesa_id: mesa.id, result });
+    if (error) throw error;
+    MESA_SECRETS[msg.id] = result;
+    rerenderChatMessage(mesa.id, msg.id);
+    return msg;
+  }
+
+  function findWhisperTarget(mesaId, rest) {
+    const members = (MESA_MEMBERS[mesaId] || []).filter((m) => m.userId !== auth.user?.id && m.displayName);
+    const quoted = rest.match(/^"([^"]+)"\s+([\s\S]+)$/);
+    if (quoted) {
+      const m = members.find((x) => normalize(x.displayName) === normalize(quoted[1]));
+      return m ? { member: m, text: quoted[2] } : null;
+    }
+    const sorted = members.slice().sort((a, b) => b.displayName.length - a.displayName.length);
+    for (const m of sorted) {
+      const name = normalize(m.displayName);
+      const head = normalize(rest.slice(0, m.displayName.length));
+      if (head === name && /\s/.test(rest.charAt(m.displayName.length))) return { member: m, text: rest.slice(m.displayName.length).trim() };
+    }
+    return null;
+  }
+
+  /* Interpreta a caixa de texto e devolve a ação a executar. */
+  function parseChatInput(mesa, raw) {
+    const text = raw.trim();
+    const master = mesa.role === 'mestre';
+    const speaker = currentSpeaker(mesa);
+    let kind = speaker.type === 'self' ? 'fora' : (speaker.type === 'narrador' ? 'narracao' : 'fala');
+    let tone = 'normal';
+    let whisperTo = null;
+    let body = text;
+    const command = text.match(/^\/(\w+)(?:\s+([\s\S]*))?$/);
+    if (command) {
+      const name = command[1].toLowerCase();
+      const rest = (command[2] || '').trim();
+      if (name === 'r' || name === 'gr') {
+        if (name === 'gr' && !master) return { error: 'Só o Mestre rola em segredo.' };
+        const parsed = parseDiceExpr(rest || 'd20');
+        if (!parsed) return { error: 'Não entendi os dados. Exemplo: /r 2d6+1' };
+        return { roll: rollGroups(parsed.pool, parsed.mod), secret: name === 'gr' };
+      }
+      if (name === 'cena') {
+        if (!master) return { error: 'Só o Mestre abre cenas.' };
+        return { scene: { title: rest } };
+      }
+      if (!rest) return { error: 'Escreva algo depois do comando.' };
+      if (name === 'me') kind = 'acao';
+      else if (name === 'grita') tone = 'grita';
+      else if (name === 'baixo') tone = 'baixo';
+      else if (name === 'ooc') kind = 'fora';
+      else if (name === 'narrar') {
+        if (!master) return { error: 'Só o Mestre narra.' };
+        kind = 'narracao';
+      } else if (name === 'w') {
+        const target = findWhisperTarget(mesa.id, rest);
+        if (!target || !target.text) return { error: 'Para quem? Exemplo: /w Rafa texto' };
+        whisperTo = target.member.userId;
+        body = target.text;
+      } else {
+        return { error: `Comando ${command[1]} não existe. Digite / para ver a lista.` };
+      }
+      if (name !== 'w') body = rest;
+    }
+    if (kind === 'fora' || kind === 'narracao') {
+      const self = kind === 'narracao'
+        ? { type: 'narrador', name: 'Narrador' }
+        : { type: 'self', name: memberName(mesa.id, auth.user.id) || myDisplayName() };
+      return { message: { kind, tone, body, whisper_to: whisperTo, speaker: self } };
+    }
+    return { message: { kind, tone, body, whisper_to: whisperTo, speaker: speakerPayload(speaker) } };
+  }
+
+  /* ── Imagens e acervo ────────────────────────── */
+  async function loadMesaImages(mesaId) {
+    const { data, error } = await sb.from('mesa_images').select('*').eq('mesa_id', mesaId).order('created_at', { ascending: false });
+    if (error) { console.error('Erro ao carregar o acervo:', error); return; }
+    MESA_IMAGES[mesaId] = data || [];
+  }
+
+  async function loadMesaSecrets(mesaId) {
+    const { data, error } = await sb.from('mesa_secret_rolls').select('message_id,result').eq('mesa_id', mesaId);
+    if (error) { console.error('Erro ao carregar rolagens secretas:', error); return; }
+    (data || []).forEach((row) => { MESA_SECRETS[row.message_id] = row.result; });
+  }
+
+  function prettyFileTitle(file) {
+    return String(file?.name || 'Imagem').replace(/\.[a-z0-9]+$/i, '').replace(/[_-]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 80) || 'Imagem';
+  }
+
+  async function uploadChatImage(mesa, file, title) {
+    const master = mesa.role === 'mestre';
+    const speaker = speakerPayload(currentSpeaker(mesa));
+    if (master) {
+      const up = await uploadBanner(file, `mesas/${mesa.id}/acervo/imagem`);
+      const { data: image, error } = await sb.from('mesa_images').insert({ mesa_id: mesa.id, title, url: up.url, path: up.path }).select().single();
+      if (error) { await removeBanner(up.path); throw error; }
+      (MESA_IMAGES[mesa.id] || (MESA_IMAGES[mesa.id] = [])).unshift(image);
+      return sendChatMessage(mesa.id, { kind: 'imagem', speaker, data: { url: up.url, title, imageId: image.id } });
+    }
+    const up = await uploadBanner(file, `mesas/${mesa.id}/chat/${auth.user.id}/imagem`);
+    try {
+      return await sendChatMessage(mesa.id, {
+        kind: 'imagem',
+        speaker,
+        data: { url: up.url, path: up.path, title, expiresAt: new Date(Date.now() + CHAT_IMAGE_TTL_MS).toISOString() }
+      });
+    } catch (err) {
+      await removeBanner(up.path);
+      throw err;
+    }
+  }
+
+  /* Imagens de jogador vencidas: apaga o arquivo quando o dono ou o Mestre abre o chat. */
+  async function cleanupExpiredChatImages(mesaId) {
+    const master = isMesaMaster(mesaId);
+    const expired = (MESA_MESSAGES[mesaId] || []).filter((m) => m.kind === 'imagem'
+      && m.data && m.data.path && m.data.expiresAt && !m.data.kept && !m.data.expired
+      && Date.now() > new Date(m.data.expiresAt).getTime()
+      && (master || m.user_id === auth.user?.id));
+    for (const msg of expired) {
+      await removeBanner(msg.data.path);
+      const data = { ...msg.data, expired: true, url: '', path: '' };
+      const { error } = await sb.from('mesa_messages').update({ data }).eq('id', msg.id);
+      if (!error) msg.data = data;
+    }
+  }
+
+  /* ── Tempo real: mensagens, presença e "digitando" ── */
+  function unsubscribeMesaChat() {
+    if (mesaChannel && sb) sb.removeChannel(mesaChannel);
+    mesaChannel = null;
+    mesaChannelId = '';
+    chatState.online = [];
+    chatState.typing = {};
+  }
+
+  function subscribeMesaChat(mesaId) {
+    if (!sb || (mesaChannel && mesaChannelId === mesaId)) return;
+    unsubscribeMesaChat();
+    mesaChannelId = mesaId;
+    const filter = `mesa_id=eq.${mesaId}`;
+    mesaChannel = sb.channel(`mesa-chat-${mesaId}`, { config: { presence: { key: auth.user?.id || 'anon' } } })
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'mesa_messages', filter }, (payload) => addMesaMessage(mesaId, payload.new))
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'mesa_messages', filter }, (payload) => updateMesaMessage(mesaId, payload.new))
+      .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'mesa_messages' }, (payload) => removeMesaMessage(mesaId, payload.old && payload.old.id))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'mesa_state', filter }, (payload) => {
+        if (!payload.new) return;
+        MESA_STATE[mesaId] = payload.new.initiative || {};
+        renderChatPresence();
+        chatState.renderTool?.('iniciativa');
+      })
+      .on('presence', { event: 'sync' }, () => {
+        const state = mesaChannel?.presenceState ? mesaChannel.presenceState() : {};
+        const names = new Map();
+        Object.values(state).flat().forEach((p) => { if (p && p.user) names.set(p.user, p.name || 'Jogador'); });
+        chatState.online = [...names.entries()];
+        renderChatPresence();
+      })
+      .on('broadcast', { event: 'typing' }, ({ payload }) => {
+        if (!payload || payload.user === auth.user?.id) return;
+        chatState.typing[payload.user] = { name: payload.name, at: Date.now() };
+        renderChatTyping();
+      })
+      .subscribe((status) => {
+        if (status === 'SUBSCRIBED' && mesaChannel?.track) {
+          mesaChannel.track({ user: auth.user?.id, name: memberName(mesaId, auth.user?.id) || myDisplayName() });
+        }
+      });
+  }
+
+  function renderChatPresence() {
+    const box = document.querySelector('[data-chat-presence]');
+    if (!box) return;
+    const others = chatState.online.filter(([id]) => id !== auth.user?.id);
+    const ini = mesaInitiative(chatState.mesaId);
+    const turn = ini.entries[ini.turn];
+    box.innerHTML = `${chatState.online.length
+      ? `<span class="chat-presence__dot" aria-hidden="true"></span><span>${chatState.online.length === 1 ? 'Só você aqui' : chatState.online.map(([, n]) => escapeHtml(n)).join(', ')}</span>`
+      : ''}${turn ? `<span class="chat-presence__turn" style="--who:${turn.color || 'inherit'}">Rodada ${ini.round} · vez de <b>${escapeHtml(turn.name)}</b></span>` : ''}`;
+    box.classList.toggle('is-alone', !others.length);
+  }
+
+  function renderChatTyping() {
+    const box = document.querySelector('[data-chat-typing]');
+    if (!box) return;
+    const now = Date.now();
+    const names = Object.entries(chatState.typing).filter(([, t]) => now - t.at < 4000).map(([, t]) => t.name);
+    box.textContent = !names.length ? '' : names.length === 1 ? `${names[0]} está escrevendo…` : `${names.join(', ')} estão escrevendo…`;
+    clearTimeout(chatState.typingTimer);
+    if (names.length) chatState.typingTimer = setTimeout(renderChatTyping, 1500);
+  }
+
+  function notifyTyping(mesaId) {
+    if (!mesaChannel || !mesaChannel.send || Date.now() - chatState.lastTypingSent < 2500) return;
+    chatState.lastTypingSent = Date.now();
+    mesaChannel.send({ type: 'broadcast', event: 'typing', payload: { user: auth.user?.id, name: memberName(mesaId, auth.user?.id) || myDisplayName() } });
+  }
+
+  function chatLogEl(mesaId) {
+    return document.querySelector(`[data-mesa-chat-log="${CSS.escape(mesaId)}"]`);
+  }
+
+  function addMesaMessage(mesaId, row) {
+    const list = MESA_MESSAGES[mesaId] || (MESA_MESSAGES[mesaId] = []);
+    if (!row || list.some((m) => m.id === row.id)) return;
+    list.push(row);
+    if (row.user_id && chatState.typing[row.user_id]) { delete chatState.typing[row.user_id]; renderChatTyping(); }
+    const log = chatLogEl(mesaId);
+    if (!log) return;
+    log.querySelector('.chat-empty')?.remove();
+    const nearBottom = log.scrollHeight - log.scrollTop - log.clientHeight < 140;
+    log.insertAdjacentHTML('beforeend', mesaMessageHTML(mesaId, row, list[list.length - 2]));
+    if (nearBottom || row.user_id === auth.user?.id) log.scrollTop = log.scrollHeight;
+  }
+
+  function rerenderChatMessage(mesaId, id) {
+    const list = MESA_MESSAGES[mesaId] || [];
+    const index = list.findIndex((m) => m.id === id);
+    const node = document.querySelector(`[data-mesa-msg="${CSS.escape(id)}"]`);
+    if (index < 0 || !node) return;
+    node.outerHTML = mesaMessageHTML(mesaId, list[index], list[index - 1]);
+  }
+
+  function updateMesaMessage(mesaId, row) {
+    const list = MESA_MESSAGES[mesaId] || [];
+    const index = list.findIndex((m) => m.id === row?.id);
+    if (index < 0) return;
+    list[index] = { ...list[index], ...row };
+    rerenderChatMessage(mesaId, row.id);
+  }
+
+  function removeMesaMessage(mesaId, id) {
+    const list = MESA_MESSAGES[mesaId] || [];
+    const index = list.findIndex((m) => m.id === id);
+    if (index < 0) return;
+    list.splice(index, 1);
+    document.querySelector(`[data-mesa-msg="${CSS.escape(id)}"]`)?.remove();
+    // A mensagem seguinte pode precisar voltar a mostrar o cabeçalho.
+    if (list[index]) rerenderChatMessage(mesaId, list[index].id);
+  }
+
+  /* ── Handlers do chat ────────────────────────── */
+  let chatResizeBound = false;
+  const isCompactChat = () => window.matchMedia('(max-width: 980px)').matches;
+  function fitChatHeight() {
+    const chat = document.querySelector('.chat');
+    if (!chat) return;
+    const vv = window.visualViewport;
+    const viewport = vv ? vv.height + vv.offsetTop : window.innerHeight;
+    const compact = isCompactChat();
+    const top = chat.getBoundingClientRect().top;
+    const height = Math.round(viewport - Math.max(0, top) - (compact ? 0 : 14));
+    chat.style.setProperty('--chat-h', `${Math.max(compact ? 280 : 420, height)}px`);
+    const log = chat.querySelector('.chat__log');
+    if (log && log.dataset.stick !== '0') log.scrollTop = log.scrollHeight;
+  }
+
+  async function loadMesaNotes(mesaId, kind) {
+    const key = `${mesaId}|${kind}`;
+    if (Object.prototype.hasOwnProperty.call(MESA_NOTES, key)) return;
+    const { data, error } = await sb.from('mesa_notes').select('body').eq('mesa_id', mesaId).eq('user_id', auth.user.id).eq('kind', kind).maybeSingle();
+    if (error) { console.error('Erro ao carregar notas:', error); return; }
+    MESA_NOTES[key] = data ? data.body : '';
+  }
+
+  async function saveMesaInitiative(mesaId, ini) {
+    MESA_STATE[mesaId] = ini;
+    const { error } = await sb.from('mesa_state').upsert({ mesa_id: mesaId, initiative: ini, updated_at: new Date().toISOString() }, { onConflict: 'mesa_id' });
+    if (error) toast('Iniciativa não salva: ' + error.message);
+  }
+
+  function initiativeRoll(mesa, key) {
+    const [type, id] = key.split(':');
+    if (type === 'c') {
+      const c = characterById(id);
+      if (!c) return null;
+      const { mod } = raceDataFor(c.raceId);
+      const awk = normalizeAwakening(c.magic);
+      const A = attrModsView(c, mod, awkIsNonMage(awk) ? awk.bonusAttr : '');
+      const dice = Math.max(1, A['Destreza'].dice || 1);
+      const value = randomInt(12) + Array.from({ length: dice }, () => randomInt(6)).reduce((a, b) => a + b, 0);
+      return { id: key, name: c.name, value, color: safeChatColor(c.identity?.chatColor, c.id) };
+    }
+    const n = (MESA_NPCS[mesa.id] || []).find((x) => x.id === id);
+    if (!n) return null;
+    return { id: key, name: n.title, value: randomInt(6) + randomInt(12), color: chatColorFor(n.id) };
+  }
+
+  function sortInitiative(ini) {
+    const current = ini.entries[ini.turn];
+    ini.entries.sort((a, b) => b.value - a.value || a.name.localeCompare(b.name, 'pt-BR'));
+    ini.turn = current ? Math.max(0, ini.entries.indexOf(current)) : 0;
+    return ini;
+  }
+
+  function attachMesaChat() {
+    const root = document.querySelector('[data-chat]');
+    if (!root || root.dataset.bound) return;
+    root.dataset.bound = '1';
+    const mesaId = root.dataset.chat;
+    const mesa = mesaById(mesaId);
+    if (!mesa) return;
+    document.body.classList.add('is-mesa-chat');
+    fitChatHeight();
+    if (!chatResizeBound) {
+      chatResizeBound = true;
+      window.addEventListener('resize', fitChatHeight);
+      window.visualViewport?.addEventListener('resize', fitChatHeight);
+    }
+    const log = chatLogEl(mesaId);
+    if (log) {
+      log.scrollTop = log.scrollHeight;
+      // Só gruda no fim se a pessoa já estava no fim (não puxa quem está lendo o histórico).
+      log.addEventListener('scroll', () => {
+        log.dataset.stick = log.scrollHeight - log.scrollTop - log.clientHeight < 80 ? '1' : '0';
+      }, { passive: true });
+    }
+    subscribeMesaChat(mesaId);
+    renderChatPresence();
+    cleanupExpiredChatImages(mesaId).then(() => {
+      (MESA_MESSAGES[mesaId] || []).filter((m) => m.kind === 'imagem').forEach((m) => rerenderChatMessage(mesaId, m.id));
+    });
+
+    const form = document.getElementById('mesaChatForm');
+    const textarea = form?.querySelector('textarea');
+    const commands = form?.querySelector('[data-chat-commands]');
+    const menu = form?.querySelector('[data-chat-speaker-menu]');
+    const toggle = form?.querySelector('[data-chat-speaker-toggle]');
+    const side = root.querySelector('[data-chat-side]');
+    const panel = root.querySelector('[data-chat-tool-panel]');
+    let attachFile = null;
+    let fichaTimer = null;
+    let notesTimer = null;
+
+    const currentTool = () => activeChatTool(mesa);
+    const renderTool = () => {
+      if (!panel) return;
+      const tool = currentTool();
+      side.classList.toggle('is-collapsed', !tool.open);
+      side.querySelectorAll('[data-chat-tool]').forEach((b) => {
+        const on = tool.open && b.dataset.chatTool === tool.id;
+        b.classList.toggle('is-active', on);
+        b.setAttribute('aria-pressed', String(on));
+      });
+      panel.innerHTML = tool.open ? chatToolHTML(mesa, tool.id, currentSpeaker(mesa)) : '';
+      if (tool.open && (tool.id === 'notas' || tool.id === 'mestre')) {
+        const kind = tool.id === 'mestre' ? 'mestre' : 'pessoal';
+        loadMesaNotes(mesaId, kind).then(() => {
+          if (currentTool().id === tool.id) panel.innerHTML = chatToolHTML(mesa, tool.id, currentSpeaker(mesa));
+        });
+      }
+      fitChatHeight();
+    };
+    const openTool = (id) => {
+      storageSet(toolStoreKey, { id, open: true });
+      renderTool();
+    };
+    chatState.renderTool = (only) => {
+      if (document.querySelector('[data-chat]') !== root) return;
+      if (!only || currentTool().id === only) renderTool();
+    };
+
+    const setSpeaker = (key) => {
+      chatState.speakerKey = key;
+      storageSet(speakerKeyStore(mesaId), key);
+      const speaker = currentSpeaker(mesa);
+      if (toggle) toggle.innerHTML = chatSpeakerButtonHTML(speaker);
+      if (menu) menu.innerHTML = chatSpeakerMenuHTML(mesa, speaker);
+      const id = currentTool().id;
+      if (id === 'dados' || id === 'ficha') renderTool();
+    };
+    const closeMenu = () => { if (menu) { menu.hidden = true; toggle?.setAttribute('aria-expanded', 'false'); } };
+
+    const syncPool = () => {
+      const pool = root.querySelector('[data-chat-pool]');
+      if (pool) pool.innerHTML = chatPoolHTML();
+      root.querySelectorAll('[data-chat-die-count]').forEach((b) => {
+        const n = chatState.pool[b.dataset.chatDieCount] || 0;
+        b.textContent = n ? `×${n}` : '';
+      });
+    };
+    chatState.pool = {};
+    syncPool();
+
+    const fichaChar = () => {
+      const speaker = currentSpeaker(mesa);
+      return speaker.type === 'character' ? characterById(speaker.id) : null;
+    };
+    const saveFicha = (c) => {
+      clearTimeout(fichaTimer);
+      fichaTimer = setTimeout(() => {
+        persistCharacterState(c).catch((err) => { console.error(err); toast('Ficha não salva: ' + (err.message || err)); });
+      }, 600);
+    };
+    const saveNpcCombat = async (npc, patch) => {
+      npc.combat = { ...npcCombat(npc), ...patch };
+      const { error } = await sb.from('mesa_npcs').update({ combat: npc.combat, updated_at: new Date().toISOString() }).eq('id', npc.id);
+      if (error) toast('NPC não salvo: ' + error.message);
+    };
+    const npcById = (id) => (MESA_NPCS[mesaId] || []).find((n) => n.id === id);
+
+    root.addEventListener('contextmenu', (event) => {
+      const die = event.target.closest('[data-chat-die]');
+      if (!die) return;
+      event.preventDefault();
+      const sides = die.dataset.chatDie;
+      chatState.pool[sides] = Math.max(0, (chatState.pool[sides] || 0) - 1);
+      syncPool();
+    });
+
+    root.addEventListener('click', async (event) => {
+      const target = event.target;
+      const spoiler = target.closest('.chat-spoiler');
+      if (spoiler) { spoiler.classList.add('is-open'); return; }
+
+      const pressed = target.closest('[data-chat-pool-dec]');
+      if (pressed) {
+        const sides = pressed.dataset.chatPoolDec;
+        chatState.pool[sides] = Math.max(0, (chatState.pool[sides] || 0) - 1);
+        syncPool();
+        return;
+      }
+
+      const touchedMsg = target.closest('[data-mesa-msg]');
+      if (touchedMsg && !target.closest('button, a, input, textarea, select, .chat-edit') && window.matchMedia('(hover: none)').matches) {
+        const wasOpen = touchedMsg.classList.contains('is-touched');
+        root.querySelectorAll('.is-touched').forEach((n) => n.classList.remove('is-touched'));
+        if (!wasOpen) touchedMsg.classList.add('is-touched');
+        return;
+      }
+
+      const toolBtn = target.closest('[data-chat-tool]');
+      if (toolBtn) {
+        const tool = currentTool();
+        if (tool.open && tool.id === toolBtn.dataset.chatTool) storageSet(toolStoreKey, { id: tool.id, open: false });
+        else storageSet(toolStoreKey, { id: toolBtn.dataset.chatTool, open: true });
+        renderTool();
+        return;
+      }
+
+      if (target.closest('[data-chat-speaker-toggle]')) {
+        menu.hidden = !menu.hidden;
+        toggle.setAttribute('aria-expanded', String(!menu.hidden));
+        return;
+      }
+      const pick = target.closest('[data-chat-speaker]');
+      if (pick) { setSpeaker(pick.dataset.chatSpeaker); closeMenu(); textarea?.focus(); return; }
+      const swatch = target.closest('[data-chat-color]');
+      if (swatch) {
+        const c = fichaChar();
+        if (!c) return;
+        c.identity = { ...(c.identity || {}), chatColor: swatch.dataset.chatColor };
+        setSpeaker(currentSpeaker(mesa).key);
+        try { await persistCharacterState(c); } catch (err) { console.error(err); toast('Cor não salva.'); }
+        return;
+      }
+      if (menu && !menu.hidden && !target.closest('.chat-speaker')) closeMenu();
+
+      const cmd = target.closest('[data-chat-command]');
+      if (cmd) { textarea.value = cmd.dataset.chatCommand; commands.hidden = true; textarea.focus(); return; }
+
+      const jump = target.closest('[data-chat-jump]');
+      if (jump) {
+        const node = document.querySelector(`[data-mesa-msg="${CSS.escape(jump.dataset.chatJump)}"]`);
+        if (node) {
+          node.scrollIntoView({ block: 'center', behavior: 'smooth' });
+          node.classList.remove('is-flash'); void node.offsetWidth; node.classList.add('is-flash');
+        }
+        return;
+      }
+
+      /* Dados */
+      const die = target.closest('[data-chat-die]');
+      if (die) {
+        const sides = die.dataset.chatDie;
+        chatState.pool[sides] = Math.min(60, (chatState.pool[sides] || 0) + 1);
+        syncPool();
+        return;
+      }
+      if (target.closest('[data-chat-clear]')) {
+        chatState.pool = {};
+        root.querySelector('[data-chat-mod]').value = '0';
+        syncPool();
+        return;
+      }
+      const rollBtn = target.closest('[data-chat-roll]');
+      if (rollBtn) {
+        if (!chatPoolText()) { root.querySelector('.chat-tray__dice')?.classList.add('is-nudge'); setTimeout(() => root.querySelector('.chat-tray__dice')?.classList.remove('is-nudge'), 400); return; }
+        const mod = Math.max(-99, Math.min(99, parseInt(root.querySelector('[data-chat-mod]').value, 10) || 0));
+        const secret = !!root.querySelector('[data-chat-secret]')?.checked;
+        rollBtn.disabled = true;
+        try {
+          await sendChatRoll(mesa, rollGroups(chatState.pool, mod), { secret });
+          chatState.pool = {};
+          root.querySelector('[data-chat-mod]').value = '0';
+          syncPool();
+        } catch (err) { console.error(err); toast('Rolagem não enviada: ' + (err.message || err)); }
+        finally { rollBtn.disabled = false; }
+        return;
+      }
+      const test = target.closest('[data-chat-test]');
+      if (test) {
+        const secret = !!root.querySelector('[data-chat-secret]')?.checked;
+        test.disabled = true;
+        try { await sendChatRoll(mesa, arcanoTest(test.dataset.chatTest, Math.max(1, parseInt(test.dataset.chatTestDice, 10) || 1)), { secret }); }
+        catch (err) { console.error(err); toast('Teste não enviado: ' + (err.message || err)); }
+        finally { test.disabled = false; }
+        return;
+      }
+
+      /* Medidores: HP/mana da ficha e HP dos NPCs (shift = 5) */
+      const step = target.closest('[data-meter-step]');
+      if (step) {
+        const meter = step.closest('.tool-meter');
+        const delta = Number(step.dataset.meterStep) * (event.shiftKey ? 5 : 1);
+        if (meter.dataset.fichaHp || meter.dataset.fichaMana) {
+          const c = fichaChar();
+          if (!c) return;
+          ensureVitals(c);
+          const slot = meter.dataset.fichaMana ? c.vitals.mana : c.vitals.hp[meter.dataset.fichaHp];
+          if (!slot) return;
+          slot.cur = Math.max(0, Math.min(slot.max, slot.cur + delta));
+          meter.querySelector('b').innerHTML = `${slot.cur}<small>/${slot.max}</small>`;
+          meter.querySelector('.tool-meter__bar').style.width = `${slot.max ? (slot.cur / slot.max) * 100 : 0}%`;
+          saveFicha(c);
+        } else if (meter.dataset.npccharHp) {
+          const [cid, part] = meter.dataset.npccharHp.split('|');
+          const c = characterById(cid);
+          if (!c) return;
+          ensureVitals(c);
+          const slot = c.vitals.hp[part];
+          if (!slot) return;
+          slot.cur = Math.max(0, Math.min(slot.max, slot.cur + delta));
+          meter.querySelector('b').innerHTML = `${slot.cur}<small>/${slot.max}</small>`;
+          meter.querySelector('.tool-meter__bar').style.width = `${slot.max ? (slot.cur / slot.max) * 100 : 0}%`;
+          saveFicha(c);
+        } else if (meter.dataset.npcHp) {
+          const npc = npcById(meter.dataset.npcHp);
+          if (!npc) return;
+          const cb = npcCombat(npc);
+          const cur = Math.max(0, Math.min(cb.max, cb.cur + delta));
+          meter.querySelector('b').innerHTML = `${cur}<small>/${cb.max}</small>`;
+          meter.querySelector('.tool-meter__bar').style.width = `${(cur / cb.max) * 100}%`;
+          meter.closest('[data-npc-combat]')?.classList.toggle('is-down', cur === 0);
+          await saveNpcCombat(npc, { cur, max: cb.max });
+        }
+        return;
+      }
+      const statusRemove = target.closest('[data-ficha-status-remove]');
+      if (statusRemove) {
+        const c = fichaChar();
+        if (!c) return;
+        c.statuses = (c.statuses || []).filter((_, i) => i !== Number(statusRemove.dataset.fichaStatusRemove));
+        saveFicha(c);
+        renderTool();
+        return;
+      }
+      const condRemove = target.closest('[data-npc-cond-remove]');
+      if (condRemove) {
+        const npc = npcById(condRemove.closest('[data-npc-combat]').dataset.npcCombat);
+        if (!npc) return;
+        const cb = npcCombat(npc);
+        await saveNpcCombat(npc, { conds: cb.conds.filter((_, i) => i !== Number(condRemove.dataset.npcCondRemove)) });
+        renderTool();
+        return;
+      }
+      const charVisible = target.closest('[data-npcchar-visible]');
+      if (charVisible) {
+        const c = characterById(charVisible.dataset.npccharVisible);
+        if (!c) return;
+        const { error } = await sb.from('characters').update({ npc_visible: !c.npcVisible }).eq('id', c.id);
+        if (error) { toast('Erro: ' + error.message); return; }
+        c.npcVisible = !c.npcVisible;
+        charVisible.textContent = c.npcVisible ? 'visível' : 'oculto';
+        return;
+      }
+      const visible = target.closest('[data-npc-visible]');
+      if (visible) {
+        const npc = npcById(visible.dataset.npcVisible);
+        if (!npc) return;
+        const { error } = await sb.from('mesa_npcs').update({ visible: !npc.visible, updated_at: new Date().toISOString() }).eq('id', npc.id);
+        if (error) { toast('Erro: ' + error.message); return; }
+        npc.visible = !npc.visible;
+        visible.textContent = npc.visible ? 'visível' : 'oculto';
+        return;
+      }
+
+      /* Iniciativa (Mestre) */
+      if (target.closest('[data-ini-add]')) {
+        const who = root.querySelector('[data-ini-who]').value;
+        const valueText = root.querySelector('[data-ini-value]').value;
+        let entry;
+        if (who) {
+          entry = initiativeRoll(mesa, who);
+          if (entry && valueText !== '') entry.value = Number(valueText);
+        } else {
+          const name = root.querySelector('[data-ini-name]').value.trim();
+          if (!name) { root.querySelector('[data-ini-name]').focus(); return; }
+          entry = { id: `x:${Date.now()}`, name, value: valueText !== '' ? Number(valueText) : randomInt(6) + randomInt(12), color: chatColorFor(name) };
+        }
+        if (!entry) return;
+        const ini = mesaInitiative(mesaId);
+        ini.entries = ini.entries.filter((e) => e.id !== entry.id).concat(entry);
+        await saveMesaInitiative(mesaId, sortInitiative({ ...ini }));
+        renderTool();
+        renderChatPresence();
+        return;
+      }
+      if (target.closest('[data-ini-roll-all]')) {
+        const keys = [
+          ...CHARACTERS.filter((c) => c.mesaId === mesaId).map((c) => `c:${c.id}`),
+          ...(MESA_NPCS[mesaId] || []).map((n) => `n:${n.id}`)
+        ];
+        const entries = keys.map((k) => initiativeRoll(mesa, k)).filter(Boolean);
+        await saveMesaInitiative(mesaId, sortInitiative({ round: 1, turn: 0, entries }));
+        renderTool();
+        renderChatPresence();
+        return;
+      }
+      const iniRemove = target.closest('[data-ini-remove]');
+      if (iniRemove) {
+        const ini = mesaInitiative(mesaId);
+        const index = ini.entries.findIndex((e) => e.id === iniRemove.dataset.iniRemove);
+        ini.entries.splice(index, 1);
+        if (ini.turn >= ini.entries.length) ini.turn = 0;
+        await saveMesaInitiative(mesaId, { ...ini });
+        renderTool();
+        renderChatPresence();
+        return;
+      }
+      if (target.closest('[data-ini-next]') || target.closest('[data-ini-prev]')) {
+        const ini = { ...mesaInitiative(mesaId) };
+        const forward = !!target.closest('[data-ini-next]');
+        if (!ini.entries.length) return;
+        if (forward) {
+          ini.turn += 1;
+          if (ini.turn >= ini.entries.length) { ini.turn = 0; ini.round += 1; }
+        } else {
+          ini.turn -= 1;
+          if (ini.turn < 0) { ini.turn = ini.entries.length - 1; ini.round = Math.max(1, ini.round - 1); }
+        }
+        await saveMesaInitiative(mesaId, ini);
+        renderTool();
+        renderChatPresence();
+        return;
+      }
+      if (target.closest('[data-ini-clear]')) {
+        await saveMesaInitiative(mesaId, emptyInitiative());
+        renderTool();
+        renderChatPresence();
+        return;
+      }
+
+      /* Acervo e cena (Mestre) */
+      if (target.closest('[data-acervo-add]')) {
+        const fileInput = root.querySelector('[data-acervo-file]');
+        const file = fileInput?.files && fileInput.files[0];
+        if (!file) { fileInput?.closest('label')?.classList.add('is-nudge'); setTimeout(() => fileInput?.closest('label')?.classList.remove('is-nudge'), 400); return; }
+        const title = root.querySelector('[data-acervo-title]').value.trim() || prettyFileTitle(file);
+        const button = target.closest('[data-acervo-add]');
+        button.disabled = true;
+        try {
+          const up = await uploadBanner(file, `mesas/${mesaId}/acervo/imagem`);
+          const { data, error } = await sb.from('mesa_images').insert({ mesa_id: mesaId, title, url: up.url, path: up.path }).select().single();
+          if (error) { await removeBanner(up.path); throw error; }
+          (MESA_IMAGES[mesaId] || (MESA_IMAGES[mesaId] = [])).unshift(data);
+          renderTool();
+        } catch (err) { console.error(err); toast('Imagem não guardada: ' + (err.message || err)); button.disabled = false; }
+        return;
+      }
+      const acervoSend = target.closest('[data-acervo-send]');
+      if (acervoSend) {
+        const img = (MESA_IMAGES[mesaId] || []).find((i) => i.id === acervoSend.dataset.acervoSend);
+        if (!img) return;
+        try { await sendChatMessage(mesaId, { kind: 'imagem', speaker: speakerPayload(currentSpeaker(mesa)), data: { url: img.url, title: img.title, imageId: img.id } }); }
+        catch (err) { toast('Imagem não enviada: ' + (err.message || err)); }
+        return;
+      }
+      const acervoScene = target.closest('[data-acervo-scene]');
+      if (acervoScene) {
+        chatState.sceneDraft = { ...(chatState.sceneDraft || {}), imageId: acervoScene.dataset.acervoScene };
+        openTool('cena');
+        return;
+      }
+      const acervoRemove = target.closest('[data-acervo-remove]');
+      if (acervoRemove) {
+        const img = (MESA_IMAGES[mesaId] || []).find((i) => i.id === acervoRemove.dataset.acervoRemove);
+        if (!img || !(await askConfirm(`Remover "${img.title || 'imagem'}" do acervo?`, { confirmLabel: 'Remover', danger: true }))) return;
+        const { error } = await sb.from('mesa_images').delete().eq('id', img.id);
+        if (error) { toast('Erro: ' + error.message); return; }
+        if (img.path) await removeBanner(img.path);
+        MESA_IMAGES[mesaId] = (MESA_IMAGES[mesaId] || []).filter((i) => i.id !== img.id);
+        renderTool();
+        return;
+      }
+      const cenaOpen = target.closest('[data-cena-open]');
+      if (cenaOpen) {
+        const titleInput = root.querySelector('[data-cena-title]');
+        const title = titleInput.value.trim();
+        if (!title) { titleInput.focus(); return; }
+        const body = root.querySelector('[data-cena-body]').value.trim();
+        const image = (MESA_IMAGES[mesaId] || []).find((i) => i.id === root.querySelector('[data-cena-image]')?.value);
+        cenaOpen.disabled = true;
+        try {
+          await sendChatMessage(mesaId, { kind: 'cena', body, speaker: { type: 'narrador', name: 'Narrador' }, data: { title, image: image ? image.url : '' } });
+          chatState.sceneDraft = {};
+          renderTool();
+        } catch (err) { toast('Cena não aberta: ' + (err.message || err)); cenaOpen.disabled = false; }
+        return;
+      }
+
+      /* Mensagens */
+      const reveal = target.closest('[data-chat-reveal]');
+      if (reveal) {
+        const id = reveal.dataset.chatReveal;
+        const msg = (MESA_MESSAGES[mesaId] || []).find((m) => m.id === id);
+        const result = MESA_SECRETS[id];
+        if (!msg || !result) return;
+        const data = { ...msg.data, ...result, secret: true, revealed: true };
+        const { error } = await sb.from('mesa_messages').update({ data }).eq('id', id);
+        if (error) { toast('Não foi possível revelar: ' + error.message); return; }
+        updateMesaMessage(mesaId, { ...msg, data });
+        return;
+      }
+      const pin = target.closest('[data-chat-pin]');
+      if (pin) {
+        const msg = (MESA_MESSAGES[mesaId] || []).find((m) => m.id === pin.dataset.chatPin);
+        if (!msg) return;
+        const { error } = await sb.from('mesa_messages').update({ pinned: !msg.pinned }).eq('id', msg.id);
+        if (error) { toast('Erro: ' + error.message); return; }
+        updateMesaMessage(mesaId, { ...msg, pinned: !msg.pinned });
+        return;
+      }
+      const keep = target.closest('[data-chat-keep]');
+      if (keep) {
+        const msg = (MESA_MESSAGES[mesaId] || []).find((m) => m.id === keep.dataset.chatKeep);
+        if (!msg) return;
+        const { data: image, error } = await sb.from('mesa_images').insert({ mesa_id: mesaId, title: msg.data.title || 'Imagem', url: msg.data.url, path: msg.data.path || '' }).select().single();
+        if (error) { toast('Não foi possível guardar: ' + error.message); return; }
+        (MESA_IMAGES[mesaId] || (MESA_IMAGES[mesaId] = [])).unshift(image);
+        const data = { ...msg.data, kept: true, imageId: image.id };
+        await sb.from('mesa_messages').update({ data }).eq('id', msg.id);
+        updateMesaMessage(mesaId, { ...msg, data });
+        chatState.renderTool('acervo');
+        return;
+      }
+      const del = target.closest('[data-chat-delete]');
+      if (del) {
+        const id = del.dataset.chatDelete;
+        if (!(await askConfirm('Apagar esta mensagem?', { confirmLabel: 'Apagar', danger: true }))) return;
+        const msg = (MESA_MESSAGES[mesaId] || []).find((m) => m.id === id);
+        const { error } = await sb.from('mesa_messages').delete().eq('id', id);
+        if (error) { toast('Erro ao apagar: ' + error.message); return; }
+        if (msg?.kind === 'imagem' && msg.data?.path && !msg.data.kept && msg.data.expiresAt) await removeBanner(msg.data.path);
+        removeMesaMessage(mesaId, id);
+        return;
+      }
+      const edit = target.closest('[data-chat-edit]');
+      if (edit) {
+        const id = edit.dataset.chatEdit;
+        const msg = (MESA_MESSAGES[mesaId] || []).find((m) => m.id === id);
+        const node = document.querySelector(`[data-mesa-msg="${CSS.escape(id)}"]`);
+        const textNode = node?.querySelector('[data-chat-text]');
+        if (!msg || !textNode || node.querySelector('.chat-edit')) return;
+        textNode.hidden = true;
+        textNode.insertAdjacentHTML('afterend', `<span class="chat-edit"><textarea rows="2" maxlength="4000">${escapeHtml(msg.body)}</textarea><span><button type="button" class="chat-link" data-chat-edit-save>salvar</button><button type="button" class="chat-link" data-chat-edit-cancel>cancelar</button></span></span>`);
+        const area = node.querySelector('.chat-edit textarea');
+        area.focus();
+        area.setSelectionRange(area.value.length, area.value.length);
+        return;
+      }
+      if (target.closest('[data-chat-edit-cancel]')) {
+        rerenderChatMessage(mesaId, target.closest('[data-mesa-msg]').dataset.mesaMsg);
+        return;
+      }
+      if (target.closest('[data-chat-edit-save]')) {
+        const node = target.closest('[data-mesa-msg]');
+        const id = node.dataset.mesaMsg;
+        const msg = (MESA_MESSAGES[mesaId] || []).find((m) => m.id === id);
+        const body = node.querySelector('.chat-edit textarea').value.trim();
+        if (!msg || !body) return;
+        const edited_at = new Date().toISOString();
+        const { error } = await sb.from('mesa_messages').update({ body, edited_at }).eq('id', id);
+        if (error) { toast('Não foi possível editar: ' + error.message); return; }
+        updateMesaMessage(mesaId, { ...msg, body, edited_at });
+        return;
+      }
+
+      /* Anexo de imagem (faixa acima da caixa de texto) */
+      if (target.closest('[data-attach-cancel]')) {
+        attachFile = null;
+        form.querySelector('[data-chat-attach]').hidden = true;
+        return;
+      }
+      const attachSend = target.closest('[data-attach-send]');
+      if (attachSend && attachFile) {
+        const title = form.querySelector('[data-attach-title]').value.trim() || prettyFileTitle(attachFile);
+        attachSend.disabled = true;
+        try {
+          await uploadChatImage(mesa, attachFile, title);
+          attachFile = null;
+          form.querySelector('[data-chat-attach]').hidden = true;
+          chatState.renderTool('acervo');
+        } catch (err) { console.error(err); toast('Imagem não enviada: ' + (err.message || err)); }
+        finally { attachSend.disabled = false; }
+      }
+    });
+
+    /* Enter nos campos das ferramentas */
+    root.addEventListener('keydown', async (event) => {
+      if (event.target.closest('.chat-spoiler') && (event.key === 'Enter' || event.key === ' ')) {
+        event.preventDefault();
+        event.target.closest('.chat-spoiler').classList.add('is-open');
+        return;
+      }
+      if (event.key === 'Escape') { closeMenu(); return; }
+      if (event.key !== 'Enter') return;
+      const statusInput = event.target.closest('[data-ficha-status-input]');
+      if (statusInput) {
+        event.preventDefault();
+        const c = fichaChar();
+        const name = statusInput.value.trim();
+        if (!c || !name) return;
+        c.statuses = [...(c.statuses || []), { name }];
+        saveFicha(c);
+        renderTool();
+        root.querySelector('[data-ficha-status-input]')?.focus();
+        return;
+      }
+      const condInput = event.target.closest('[data-npc-cond-input]');
+      if (condInput) {
+        event.preventDefault();
+        const name = condInput.value.trim();
+        const npc = npcById(condInput.closest('[data-npc-combat]').dataset.npcCombat);
+        if (!npc || !name) return;
+        await saveNpcCombat(npc, { conds: [...npcCombat(npc).conds, name] });
+        renderTool();
+        root.querySelector(`[data-npc-combat="${CSS.escape(npc.id)}"] [data-npc-cond-input]`)?.focus();
+        return;
+      }
+      if (event.target.closest('[data-ini-name], [data-ini-value]')) {
+        event.preventDefault();
+        root.querySelector('[data-ini-add]')?.click();
+        return;
+      }
+      if (event.target.closest('[data-chat-avulso-name]')) {
+        event.preventDefault();
+        addAvulso();
+      }
+    });
+
+    root.addEventListener('change', (event) => {
+      const who = event.target.closest('[data-ini-who]');
+      if (who) root.querySelector('[data-ini-name]').hidden = who.value !== '';
+      const acervoFile = event.target.closest('[data-acervo-file]');
+      if (acervoFile && acervoFile.files[0]) {
+        const title = root.querySelector('[data-acervo-title]');
+        if (title && !title.value) title.value = prettyFileTitle(acervoFile.files[0]);
+        acervoFile.closest('label').firstChild.textContent = acervoFile.files[0].name.slice(0, 24);
+      }
+    });
+
+    /* Notas: salvam sozinhas */
+    root.addEventListener('input', (event) => {
+      const notes = event.target.closest('[data-chat-notes]');
+      if (notes) {
+        const kind = notes.dataset.chatNotes;
+        const key = `${mesaId}|${kind}`;
+        MESA_NOTES[key] = notes.value;
+        const status = root.querySelector('[data-notes-status]');
+        if (status) status.textContent = '…';
+        clearTimeout(notesTimer);
+        notesTimer = setTimeout(async () => {
+          const { error } = await sb.from('mesa_notes').upsert({ mesa_id: mesaId, user_id: auth.user.id, kind, body: MESA_NOTES[key], updated_at: new Date().toISOString() }, { onConflict: 'mesa_id,user_id,kind' });
+          const now = root.querySelector('[data-notes-status]');
+          if (now) now.textContent = error ? 'Não salvou' : 'Salvo';
+        }, 800);
+      }
+      const cenaField = event.target.closest('[data-cena-title], [data-cena-body], [data-cena-image]');
+      if (cenaField) {
+        chatState.sceneDraft = {
+          title: root.querySelector('[data-cena-title]')?.value || '',
+          body: root.querySelector('[data-cena-body]')?.value || '',
+          imageId: root.querySelector('[data-cena-image]')?.value || ''
+        };
+      }
+    });
+
+    if (!form) return;
+
+    form.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const raw = textarea.value;
+      if (!raw.trim()) return;
+      const parsed = parseChatInput(mesa, raw);
+      if (parsed.error) { toast(parsed.error); return; }
+      if (parsed.scene) {
+        chatState.sceneDraft = { ...(chatState.sceneDraft || {}), title: parsed.scene.title };
+        textarea.value = '';
+        commands.hidden = true;
+        openTool('cena');
+        root.querySelector('[data-cena-body]')?.focus();
+        return;
+      }
+      textarea.disabled = true;
+      try {
+        if (parsed.roll) await sendChatRoll(mesa, parsed.roll, { secret: parsed.secret });
+        else await sendChatMessage(mesaId, parsed.message);
+        textarea.value = '';
+        textarea.style.height = '';
+        commands.hidden = true;
+      } catch (err) {
+        console.error(err);
+        toast('Mensagem não enviada: ' + (err.message || err));
+      } finally {
+        textarea.disabled = false;
+        textarea.focus();
+      }
+    });
+
+    // NPC avulso: só um nome, guardado neste navegador para reusar.
+    function addAvulso() {
+      const input = menu.querySelector('[data-chat-avulso-name]');
+      const name = (input?.value || '').trim().slice(0, 60);
+      if (!name) { input?.focus(); return; }
+      const list = chatAvulsos(mesaId).filter((a) => normalize(a.name) !== normalize(name));
+      list.unshift({ name });
+      storageSet(avulsosKey(mesaId), list.slice(0, 12));
+      setSpeaker(`a:${name}`);
+      closeMenu();
+      textarea.focus();
+    }
+    menu.addEventListener('click', (event) => {
+      if (event.target.closest('[data-chat-avulso-add]')) addAvulso();
+    });
+
+    textarea.addEventListener('focus', () => {
+      if (isCompactChat()) side?.classList.add('is-typing');
+      setTimeout(fitChatHeight, 250);
+    });
+    textarea.addEventListener('blur', () => {
+      setTimeout(() => {
+        if (!root.contains(document.activeElement) || !document.activeElement.closest('.chat__composer')) side?.classList.remove('is-typing');
+        fitChatHeight();
+      }, 150);
+    });
+
+    textarea.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter' && !event.shiftKey && !isCompactChat()) {
+        event.preventDefault();
+        form.requestSubmit();
+      }
+    });
+    textarea.addEventListener('input', () => {
+      const value = textarea.value;
+      textarea.style.height = '';
+      textarea.style.height = `${Math.min(180, textarea.scrollHeight)}px`;
+      commands.hidden = !(value.startsWith('/') && !/\s/.test(value));
+      if (!commands.hidden) {
+        const typed = value.toLowerCase();
+        commands.querySelectorAll('[data-chat-command]').forEach((b) => {
+          b.closest('li').hidden = !b.dataset.chatCommand.startsWith(typed);
+        });
+      }
+      if (value.trim()) notifyTyping(mesaId);
+    });
+
+    form.querySelector('[data-chat-image]')?.addEventListener('change', (event) => {
+      const input = event.target;
+      const file = input.files && input.files[0];
+      input.value = '';
+      if (!file) return;
+      attachFile = file;
+      const strip = form.querySelector('[data-chat-attach]');
+      strip.hidden = false;
+      const thumb = strip.querySelector('[data-attach-thumb]');
+      if (thumb.src.startsWith('blob:')) URL.revokeObjectURL(thumb.src);
+      thumb.src = URL.createObjectURL(file);
+      const title = strip.querySelector('[data-attach-title]');
+      title.value = prettyFileTitle(file);
+      title.focus();
+      title.select();
+    });
+    form.querySelector('[data-attach-title]')?.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter') { event.preventDefault(); form.querySelector('[data-attach-send]').click(); }
+    });
+  }
+
+  function mesaFichasPanel(mesa, characters) {
+    const base = `#/Mesas/${encodeURIComponent(mesa.id)}/fichas`;
+    const loose = CHARACTERS.filter((c) => !c.mesaId && c.userId === auth.user?.id);
+    const hasMine = characters.some((c) => c.userId === auth.user?.id);
+    if (mesa.role === 'observador') {
+      return characters.length
+        ? `<section class="entry-grid">${characters.map((c, i) => characterCardHTML(c, i, { owner: memberName(mesa.id, c.userId) })).join('')}</section>`
+        : '<p class="mesa-notice mesa-notice--soft">Nenhuma ficha nesta mesa ainda.</p>';
+    }
+    return `
+      ${loose.length ? `
+        <form class="mesa-inline-form" id="mesaLinkCharacterForm" data-mesa-id="${escapeHtml(mesa.id)}">
+          <label for="mesaLinkCharacter"><strong>Trazer uma ficha antiga</strong><span>Fichas suas que ainda não estão em nenhuma mesa.</span></label>
+          <select id="mesaLinkCharacter" name="character" required>
+            ${loose.map((c) => `<option value="${escapeHtml(c.id)}">${escapeHtml(c.name || 'Sem nome')}</option>`).join('')}
+          </select>
+          <button type="submit" class="btn btn-ghost"><span>Trazer para a mesa</span></button>
+        </form>` : ''}
+      <section class="entry-grid">
+        <a href="${base}/criar" class="entry-card create-card" style="--hue:${themeOf('Persona').hue};--delay:0ms" aria-label="Criar ficha nesta mesa">
+          <div class="create-card__inner">
+            <div class="create-card__plus">
+              <svg viewBox="0 0 24 24" width="38" height="38" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+            </div>
+            <span class="create-card__label">Criar ficha</span>
+            <span class="create-card__hint">${hasMine ? 'Mais um personagem' : 'Seu personagem nesta mesa'}</span>
+          </div>
+        </a>
+        ${characters.map((c, i) => characterCardHTML(c, i + 1, { owner: memberName(mesa.id, c.userId) })).join('')}
+      </section>`;
+  }
+
+  function npcCardHTML(mesa, npc, i) {
+    const href = `#/Mesas/${encodeURIComponent(mesa.id)}/npcs/${encodeURIComponent(npc.id)}`;
+    return `
+      <a href="${href}" class="entry-card npc-card ${npc.visible ? '' : 'is-hidden-npc'}" style="--hue:${themeOf('Bestiario').hue};--delay:${i * 40}ms">
+        <div class="entry-card__media">
+          ${npc.image ? `<img loading="lazy" decoding="async" src="${npc.image}" alt="" onerror="this.parentElement.classList.add('is-fallback')">` : ''}
+          <div class="entry-card__fallback">${iconOf('Bestiario')}</div>
+          <div class="entry-card__shade"></div>
+          ${mesa.role !== 'jogador' ? `<div class="entry-card__tags"><span class="char-badge ${npc.visible ? 'char-badge--mage' : 'char-badge--mundane'}">${npc.visible ? 'Revelado' : 'Oculto'}</span></div>` : ''}
+        </div>
+        <div class="entry-card__body">
+          <h3 class="entry-card__title">${escapeHtml(npc.title)}</h3>
+          <p class="entry-card__summary">${escapeHtml(npc.summary || '')}</p>
+        </div>
+      </a>`;
+  }
+
+  function mesaNpcsPanel(mesa, npcs) {
+    const master = mesa.role === 'mestre';
+    const base = `#/Mesas/${encodeURIComponent(mesa.id)}/npcs`;
+    const bestiary = entriesIn('Bestiario').slice().sort((a, b) => a.title.localeCompare(b.title, 'pt-BR'));
+    const shown = (master || mesa.role === 'observador') ? npcs : npcs.filter((n) => n.visible);
+    const npcCharsFor = (m) => CHARACTERS.filter((c) => c.mesaId === m.id && c.isNpc);
+    return `
+      ${master ? `
+        <p class="mesa-notice mesa-notice--soft">Os jogadores só veem os NPCs que você revelar.</p>
+        ${bestiary.length ? `
+          <form class="mesa-inline-form" id="mesaImportNpcForm" data-mesa-id="${escapeHtml(mesa.id)}">
+            <label for="mesaImportNpc"><strong>Trazer do Bestiário</strong><span>Copia a ficha da criatura para esta mesa. Você pode editar a cópia.</span></label>
+            <select id="mesaImportNpc" name="entry" required>
+              ${bestiary.map((e) => `<option value="${escapeHtml(e.id)}">${escapeHtml(e.title)}</option>`).join('')}
+            </select>
+            <button type="submit" class="btn btn-ghost"><span>Adicionar</span></button>
+          </form>` : ''}` : ''}
+      <section class="entry-grid">
+        ${master ? `
+          <a href="${base}/criar" class="entry-card create-card" style="--hue:${themeOf('Bestiario').hue};--delay:0ms" aria-label="Criar NPC">
+            <div class="create-card__inner">
+              <div class="create-card__plus">
+                <svg viewBox="0 0 24 24" width="38" height="38" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+              </div>
+              <span class="create-card__label">Criar NPC</span>
+              <span class="create-card__hint">Raça e HP automáticos</span>
+            </div>
+          </a>` : ''}
+        ${npcCharsFor(mesa).map((c, i) => characterCardHTML(c, i + 1, { owner: mesa.role === 'jogador' ? '' : (c.npcVisible ? 'Revelado' : 'Oculto') })).join('')}
+        ${shown.map((n, i) => npcCardHTML(mesa, n, i + 1)).join('')}
+      </section>
+      ${!master && !shown.length && !npcCharsFor(mesa).length ? `<p class="mesa-notice mesa-notice--soft">${mesa.role === 'observador' ? 'Nenhum NPC nesta mesa.' : 'O Mestre ainda não revelou nenhum NPC.'}</p>` : ''}`;
+  }
+
+  function mesaMembersPanel(mesa, members) {
+    const master = mesa.role === 'mestre';
+    const inviteUrl = `${location.origin}${location.pathname}#/Mesas/entrar/${mesa.inviteCode}`;
+    return `
+      ${master ? `
+        <section class="mesa-invite">
+          <div><strong>Convite</strong><span>Envie o link ao seu grupo. Quem abrir entra como jogador.</span></div>
+          <code>${escapeHtml(inviteUrl)}</code>
+          <button type="button" class="btn btn-primary" data-mesa-copy="${escapeHtml(inviteUrl)}"><span>Copiar link</span></button>
+        </section>` : ''}
+      <ul class="mesa-members">
+        ${members.map((m) => `
+          <li>
+            <span class="mesa-members__name">${escapeHtml(m.displayName || 'Jogador')}${m.userId === auth.user?.id ? ' <small>(você)</small>' : ''}</span>
+            <span class="char-badge ${m.role === 'mestre' ? 'char-badge--mage' : 'char-badge--mundane'}">${escapeHtml(mesaRoleLabel(m.role))}</span>
+            ${master && m.userId !== auth.user?.id ? `<button type="button" class="back-link back-link--danger" data-mesa-remove-member="${escapeHtml(m.userId)}">Remover</button>` : ''}
+          </li>`).join('')}
+      </ul>
+      ${mesa.role === 'observador' ? '' : `<div class="mesa-danger">
+        ${mesa.ownerId === auth.user?.id
+          ? `<button type="button" class="back-link back-link--danger" data-mesa-delete="${escapeHtml(mesa.id)}">Apagar mesa</button>`
+          : `<button type="button" class="back-link back-link--danger" data-mesa-leave="${escapeHtml(mesa.id)}">Sair da mesa</button>`}
+      </div>`}`;
+  }
+
+  /* ── NPC (#/Mesas/<id>/npcs/<npc>) ───────────── */
+  function viewMesaNpc(mesa, npcId) {
+    const npc = (MESA_NPCS[mesa.id] || []).find((n) => n.id === npcId);
+    if (!npc) return viewNotFound(npcId);
+    viewedNpc = npc;
+    const base = `#/Mesas/${encodeURIComponent(mesa.id)}/npcs`;
+    const master = mesa.role === 'mestre';
+    const crumb = `<nav class="breadcrumb"><a href="#/Mesas">Mesas</a><span>/</span><a href="#/Mesas/${encodeURIComponent(mesa.id)}">${escapeHtml(mesa.name)}</a><span>/</span><a href="${base}">NPCs</a><span>/</span><span class="breadcrumb__current">${escapeHtml(npc.title)}</span></nav>`;
+    const actions = `
+      ${master ? `
+        <button type="button" class="back-link back-link--edit" data-npc-visibility="${escapeHtml(npc.id)}">${npc.visible ? 'Ocultar dos jogadores' : 'Revelar aos jogadores'}</button>
+        <a class="back-link back-link--edit" href="${base}/${encodeURIComponent(npc.id)}/editar">Editar NPC</a>
+        <button type="button" class="back-link back-link--danger" data-npc-delete="${escapeHtml(npc.id)}">Apagar NPC</button>` : ''}
+      <a href="${base}" class="back-link">
+        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+        Voltar aos NPCs
+      </a>`;
+    return viewEntry('Bestiario', npc.id, { entry: npc, crumb, actions });
+  }
+
+  /* ── PAINEL (#/Painel) — Platina troca o nivel das contas ── */
+  let PANEL_USERS = [];
+
+  async function loadPanelUsers() {
+    if (!sb || !auth.isPlatina) return;
+    const { data, error } = await sb
+      .from('access_requests')
+      .select('user_id,email,display_name,tier,created_at')
+      .order('created_at', { ascending: true });
+    if (error) {
+      console.error('Erro ao carregar contas:', error);
+      PANEL_USERS = [];
+      return;
+    }
+    PANEL_USERS = data || [];
+  }
+
+  function viewPanel() {
+    if (!auth.isPlatina) return viewForbidden();
+    const theme = themeOf('Painel');
+    const counts = PANEL_USERS.reduce((acc, u) => { acc[u.tier] = (acc[u.tier] || 0) + 1; return acc; }, {});
+    return `
+      <section class="cat-hero" style="--hue:${theme.hue}">
+        <div class="cat-hero__icon">${iconOf('Painel')}</div>
+        <div class="cat-hero__body">
+          <span class="cat-hero__eyebrow">${escapeHtml(theme.label)}</span>
+          <h1 class="cat-hero__title" data-text-reveal>Painel de contas</h1>
+          <p class="cat-hero__tone">Defina o nível de cada conta. Você não pode alterar o seu próprio nível.</p>
+          <div class="cat-hero__meta">
+            ${Object.keys(TIERS).filter((t) => counts[t]).map((t) => `<span class="badge"><strong>${counts[t]}</strong> ${escapeHtml(TIERS[t].label)}</span>`).join('')}
+          </div>
+        </div>
+      </section>
+      <ul class="tier-legend">
+        ${TIERS_ACTIVE.map((t) => `<li><span class="role-pill" data-role="${t}"><strong>${escapeHtml(TIERS[t].label.toUpperCase())}</strong></span>${escapeHtml(TIERS[t].tone)}</li>`).join('')}
+      </ul>
+      <ul class="panel-users" id="panelUsers">
+        ${PANEL_USERS.map((u) => {
+          const self = u.user_id === auth.user?.id;
+          const options = [...new Set([...TIERS_ACTIVE, u.tier])].filter((t) => TIERS[t]);
+          return `
+            <li>
+              <span class="panel-users__who">
+                <strong>${escapeHtml(u.display_name || 'Sem nome')}${self ? ' <small>(você)</small>' : ''}</strong>
+                <small>${escapeHtml(u.email || '')}</small>
+              </span>
+              <select data-tier-user="${escapeHtml(u.user_id)}" aria-label="Nível de ${escapeHtml(u.display_name || u.email || 'conta')}" ${self ? 'disabled' : ''}>
+                ${options.map((t) => `<option value="${t}" ${t === u.tier ? 'selected' : ''}>${escapeHtml(TIERS[t].label)}</option>`).join('')}
+              </select>
+            </li>`;
+        }).join('')}
+      </ul>`;
+  }
+
+  function attachPanelHandlers() {
+    const list = document.getElementById('panelUsers');
+    if (!list || list.dataset.bound) return;
+    list.dataset.bound = '1';
+    list.addEventListener('change', async (event) => {
+      const select = event.target.closest('[data-tier-user]');
+      if (!select) return;
+      const user = PANEL_USERS.find((u) => u.user_id === select.dataset.tierUser);
+      if (!user) return;
+      const previous = user.tier;
+      const next = select.value;
+      const name = user.display_name || user.email || 'esta conta';
+      if (!(await askConfirm(`Mudar ${name} de ${tierLabel(previous)} para ${tierLabel(next)}?`, { confirmLabel: 'Mudar nível' }))) {
+        select.value = previous;
+        return;
+      }
+      select.disabled = true;
+      const { error } = await sb.rpc('set_user_tier', { p_user: user.user_id, p_tier: next });
+      select.disabled = false;
+      if (error) {
+        console.error(error);
+        toast('Não foi possível mudar o nível: ' + error.message);
+        select.value = previous;
+        return;
+      }
+      user.tier = next;
+      toast(`${name} agora é ${tierLabel(next)}.`);
+    });
+  }
+
+  /* ── Handlers ────────────────────────────────── */
+  function attachMesaHandlers() {
+    const createForm = document.getElementById('mesaCreateForm');
+    if (createForm && !createForm.dataset.bound) {
+      createForm.dataset.bound = '1';
+      createForm.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        const data = new FormData(createForm);
+        const name = String(data.get('name') || '').trim();
+        if (!name) return;
+        const button = createForm.querySelector('[type="submit"]');
+        button.disabled = true;
+        try {
+          const mesa = await createMesa({
+            name,
+            description: String(data.get('description') || '').trim(),
+            system: String(data.get('system') || 'arcano')
+          });
+          location.hash = `#/Mesas/${encodeURIComponent(mesa.id)}/membros`;
+        } catch (err) {
+          console.error(err);
+          toast('Erro ao criar mesa: ' + (err.message || err));
+          button.disabled = false;
+        }
+      });
+    }
+
+    const joinForm = document.getElementById('mesaJoinForm');
+    if (joinForm && !joinForm.dataset.bound) {
+      joinForm.dataset.bound = '1';
+      joinForm.addEventListener('submit', (event) => {
+        event.preventDefault();
+        const raw = String(new FormData(joinForm).get('code') || '').trim();
+        const code = (raw.match(/entrar\/([a-z0-9]+)/i) || [null, raw])[1];
+        if (code) location.hash = `#/Mesas/entrar/${encodeURIComponent(code)}`;
+      });
+    }
+
+    attachMesaChat();
+
+    const panel = document.querySelector('[data-mesa-panel]');
+    if (panel && !panel.dataset.bound) {
+      panel.dataset.bound = '1';
+      const mesaId = panel.dataset.mesaId;
+      panel.addEventListener('click', async (event) => {
+        const copy = event.target.closest('[data-mesa-copy]');
+        if (copy) {
+          try {
+            await navigator.clipboard.writeText(copy.dataset.mesaCopy);
+            toast('Link de convite copiado.');
+          } catch {
+            toast('Copie o link manualmente.');
+          }
+          return;
+        }
+        const remove = event.target.closest('[data-mesa-remove-member]');
+        if (remove) {
+          const userId = remove.dataset.mesaRemoveMember;
+          if (!(await askConfirm(`Remover ${memberName(mesaId, userId)} da mesa?`, { confirmLabel: 'Remover', danger: true }))) return;
+          const { error } = await sb.from('mesa_members').delete().eq('mesa_id', mesaId).eq('user_id', userId);
+          if (error) { toast('Erro ao remover: ' + error.message); return; }
+          render(true);
+          return;
+        }
+        const leave = event.target.closest('[data-mesa-leave]');
+        if (leave) {
+          if (!(await askConfirm('Sair desta mesa? Suas fichas continuam salvas.', { confirmLabel: 'Sair', danger: true }))) return;
+          const { error } = await sb.from('mesa_members').delete().eq('mesa_id', mesaId).eq('user_id', auth.user.id);
+          if (error) { toast('Erro ao sair: ' + error.message); return; }
+          MESAS = MESAS.filter((m) => m.id !== mesaId);
+          location.hash = '#/Mesas';
+          return;
+        }
+        const drop = event.target.closest('[data-mesa-delete]');
+        if (drop) {
+          const mesa = mesaById(mesaId);
+          if (!(await askConfirm(`Apagar a mesa "${mesa?.name}"? O chat e os NPCs serão apagados. As fichas continuam com os jogadores.`, { confirmLabel: 'Apagar mesa', danger: true }))) return;
+          const { error } = await sb.from('mesas').delete().eq('id', mesaId);
+          if (error) { toast('Erro ao apagar: ' + error.message); return; }
+          MESAS = MESAS.filter((m) => m.id !== mesaId);
+          location.hash = '#/Mesas';
+        }
+      });
+    }
+
+    const linkForm = document.getElementById('mesaLinkCharacterForm');
+    if (linkForm && !linkForm.dataset.bound) {
+      linkForm.dataset.bound = '1';
+      linkForm.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        const mesaId = linkForm.dataset.mesaId;
+        const id = linkForm.querySelector('select').value;
+        const { error } = await sb.from('characters').update({ mesa_id: mesaId }).eq('id', id);
+        if (error) { toast('Erro ao trazer a ficha: ' + error.message); return; }
+        const c = characterById(id);
+        if (c) c.mesaId = mesaId;
+        render(true);
+      });
+    }
+
+    const importForm = document.getElementById('mesaImportNpcForm');
+    if (importForm && !importForm.dataset.bound) {
+      importForm.dataset.bound = '1';
+      importForm.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        const mesaId = importForm.dataset.mesaId;
+        const button = importForm.querySelector('[type="submit"]');
+        button.disabled = true;
+        try {
+          const npc = await importBestiaryNpc(mesaId, importForm.querySelector('select').value);
+          location.hash = `#/Mesas/${encodeURIComponent(mesaId)}/npcs/${encodeURIComponent(npc.id)}`;
+        } catch (err) {
+          console.error(err);
+          toast('Erro ao adicionar NPC: ' + (err.message || err));
+          button.disabled = false;
+        }
+      });
+    }
+
+    document.querySelectorAll('[data-npc-visibility]').forEach((btn) => {
+      if (btn.dataset.bound) return;
+      btn.dataset.bound = '1';
+      btn.addEventListener('click', async () => {
+        const npc = viewedNpc;
+        if (!npc || npc.id !== btn.dataset.npcVisibility) return;
+        const { error } = await sb.from('mesa_npcs').update({ visible: !npc.visible, updated_at: new Date().toISOString() }).eq('id', npc.id);
+        if (error) { toast('Erro: ' + error.message); return; }
+        npc.visible = !npc.visible;
+        toast(npc.visible ? 'NPC revelado aos jogadores.' : 'NPC oculto dos jogadores.');
+        render(true);
+      });
+    });
+
+    document.querySelectorAll('[data-npc-delete]').forEach((btn) => {
+      if (btn.dataset.bound) return;
+      btn.dataset.bound = '1';
+      btn.addEventListener('click', async () => {
+        const npc = viewedNpc;
+        if (!npc || npc.id !== btn.dataset.npcDelete) return;
+        if (!(await askConfirm(`Apagar o NPC "${npc.title}"? Esta ação não pode ser desfeita.`, { confirmLabel: 'Apagar', danger: true }))) return;
+        const { error } = await sb.from('mesa_npcs').delete().eq('id', npc.id);
+        if (error) { toast('Erro ao apagar: ' + error.message); return; }
+        if (npc.imagePath) await removeBanner(npc.imagePath);
+        MESA_NPCS[npc.mesaId] = (MESA_NPCS[npc.mesaId] || []).filter((n) => n.id !== npc.id);
+        location.hash = `#/Mesas/${encodeURIComponent(npc.mesaId)}/npcs`;
+      });
+    });
+  }
+
+  /* ════════════════════════════════════════════════
      FICHAS DE PERSONAGEM — views (aba Persona)
      ════════════════════════════════════════════════ */
 
@@ -5492,7 +8088,7 @@
     const tab = tabById('Persona');
     const theme = themeOf('Persona');
     const mine = auth.user ? CHARACTERS.filter((c) => c.userId === auth.user.id) : [];
-    const others = auth.isAdmin && auth.user
+    const others = auth.isPlatina && auth.user
       ? CHARACTERS.filter((c) => c.userId !== auth.user.id)
       : [];
 
@@ -5503,11 +8099,11 @@
       </section>
     `;
 
-    const othersBlock = (auth.isAdmin && others.length) ? `
+    const othersBlock = (auth.isPlatina && others.length) ? `
       <section class="section">
         <header class="section__head">
           <div>
-            <span class="section__eyebrow">VISÃO DO MESTRE</span>
+            <span class="section__eyebrow">VISÃO PLATINA</span>
             <h2 class="section__title">Fichas de outros jogadores</h2>
           </div>
         </header>
@@ -5526,7 +8122,7 @@
           <p class="cat-hero__tone">Crie e gerencie suas fichas de personagem. Cada ficha é vinculada à sua conta.</p>
           <div class="cat-hero__meta">
             <span class="badge"><strong>${mine.length}</strong> ${mine.length === 1 ? 'ficha sua' : 'fichas suas'}</span>
-            ${auth.isAdmin && others.length ? `<span class="badge badge-soft">${others.length} de outros</span>` : ''}
+            ${auth.isPlatina && others.length ? `<span class="badge badge-soft">${others.length} de outros</span>` : ''}
           </div>
         </div>
       </section>
@@ -5558,7 +8154,7 @@
     const mageLabel = isMage ? ('Mago' + (sc ? ' · ' + sc.name : '')) : 'Não-mago';
     const owner = opts.showOwner && c.identity && c.identity.ownerLabel ? c.identity.ownerLabel : '';
     return `
-      <a href="#/Persona/${encodeURIComponent(c.id)}" class="entry-card char-card" style="--hue:${theme.hue};--delay:${i * 40}ms">
+      <a href="${characterBase(c)}/${encodeURIComponent(c.id)}" class="entry-card char-card" style="--hue:${theme.hue};--delay:${i * 40}ms">
         <div class="entry-card__media">
           ${c.image ? `<img loading="lazy" decoding="async" src="${c.image}" alt="" onerror="this.parentElement.classList.add('is-fallback')">` : ''}
           <div class="entry-card__fallback">${iconOf('Persona')}</div>
@@ -5571,7 +8167,9 @@
           <h3 class="entry-card__title">${escapeHtml(c.name || 'Sem nome')}</h3>
           <p class="entry-card__summary">${escapeHtml(c.raceName || 'Raça não definida')}</p>
           <div class="entry-card__chips">
-            ${owner ? `<span class="chip">${escapeHtml(owner)}</span>` : ''}
+            <span class="chip">Nv ${Number(c.identity?.level) || 1}</span>
+            ${c.levelGrant && c.levelGrant.at ? '<span class="chip chip--level">nível liberado</span>' : ''}
+            ${(opts.owner || owner) ? `<span class="chip">${escapeHtml(opts.owner || owner)}</span>` : ''}
             ${c.skills && c.skills.length ? `<span class="chip">${c.skills.length} ${c.skills.length === 1 ? 'perícia' : 'perícias'}</span>` : ''}
           </div>
         </div>
@@ -6232,7 +8830,9 @@
   function viewCharacterSheetFolio(id) {
     const c = characterById(id);
     if (!c) return viewNotFound(id);
-    const canEdit = auth.isAdmin || (auth.user && c.userId === auth.user.id);
+    const canEdit = canEditCharacter(c);
+    const base = characterBase(c);
+    const backLabel = c.mesaId ? `Voltar à mesa ${mesaById(c.mesaId)?.name || ''}`.trim() : 'Voltar às Personas';
     const theme = themeOf('Persona');
     const tab = tabById('Persona');
     const { mod } = raceDataFor(c.raceId);
@@ -6346,7 +8946,11 @@
 
     return `
       <article class="entry char-sheet char-sheet--folio" id="charSheet" style="--hue:${theme.hue}" data-char-id="${escapeHtml(c.id)}" data-can-edit="${canEdit ? '1' : '0'}">
-        <nav class="breadcrumb"><a href="#/">Codex</a><span>/</span><a href="#/Persona">${escapeHtml(tab.title)}</a><span>/</span><span class="breadcrumb__current">${escapeHtml(c.name || 'Ficha')}</span></nav>
+        ${c.mesaId
+          ? `<nav class="breadcrumb"><a href="#/Mesas">Mesas</a><span>/</span><a href="#/Mesas/${encodeURIComponent(c.mesaId)}">${escapeHtml(mesaById(c.mesaId)?.name || 'Mesa')}</a><span>/</span><a href="${base}">Fichas</a><span>/</span><span class="breadcrumb__current">${escapeHtml(c.name || 'Ficha')}</span></nav>`
+          : `<nav class="breadcrumb"><a href="#/">Codex</a><span>/</span><a href="#/Persona">${escapeHtml(tab.title)}</a><span>/</span><span class="breadcrumb__current">${escapeHtml(c.name || 'Ficha')}</span></nav>`}
+
+        ${levelPanelHTML(c)}
 
         <div class="arc-folio">
           <header class="arc-folio-head">
@@ -6363,7 +8967,7 @@
             <div class="arc-folio-actions">
               <span class="arc-level-seal"><strong>${level}</strong><small>Nível</small></span>
               ${canEdit ? `<div class="arc-folio-actions__buttons">
-                <a class="btn-line" href="#/Persona/${encodeURIComponent(c.id)}/editar"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg><span>Editar</span></a>
+                <a class="btn-line" href="${base}/${encodeURIComponent(c.id)}/editar"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg><span>Editar</span></a>
                 <button type="button" class="btn-line btn-line--danger" data-delete-character="${escapeHtml(c.id)}" aria-label="Apagar ficha">×</button>
               </div>` : ''}
             </div>
@@ -6399,7 +9003,7 @@
           </div>
         </div>
 
-        <div class="char-sheet__foot"><a href="#/Persona" class="back-link"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>Voltar às Personas</a></div>
+        <div class="char-sheet__foot"><a href="${base}" class="back-link"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>${escapeHtml(backLabel)}</a></div>
       </article>`;
   }
 
@@ -6409,7 +9013,7 @@
     const editing = !!id;
     const existing = editing ? characterById(id) : null;
     if (editing && !existing) return viewNotFound(id);
-    if (editing && !(auth.isAdmin || (auth.user && existing.userId === auth.user.id))) return viewForbidden();
+    if (editing && !canEditCharacter(existing)) return viewForbidden();
 
     const theme = themeOf('Persona');
     const races = entriesIn('Racas');
@@ -6423,10 +9027,16 @@
     const formIsMage = awkIsAcceptedMage(formAwakening);
     const manaValue = formIsMage ? ((existing && c.mana) ? c.mana : raceMana) : '';
 
-    const heroEyebrow = editing ? `EDITAR · ${theme.label}` : `CRIAR · ${theme.label}`;
-    const heroTitle = editing ? `Editar ${c.name || 'ficha'}` : 'Nova persona';
+    const formMesaId = existing ? existing.mesaId : characterFormMesaId;
+    const masterMode = auth.isPlatina || (!!formMesaId && isMesaMaster(formMesaId));
+    const isNpcForm = existing ? !!existing.isNpc : characterFormNpc;
+    const owners = masterMode && formMesaId && !isNpcForm ? (MESA_MEMBERS[formMesaId] || []) : [];
+    const ownerId = existing ? existing.userId : auth.user?.id;
+    const heroEyebrow = editing ? `EDITAR · ${isNpcForm ? 'NPC' : theme.label}` : `CRIAR · ${isNpcForm ? 'NPC' : theme.label}`;
+    const heroTitle = editing ? `Editar ${c.name || 'ficha'}` : (isNpcForm ? 'Novo NPC' : 'Nova persona');
     const saveLabel = editing ? 'Salvar alterações' : 'Salvar ficha';
-    const cancelHref = editing ? `#/Persona/${encodeURIComponent(id)}` : '#/Persona';
+    const formBase = editing ? characterBase(existing) : (characterFormMesaId ? `#/Mesas/${encodeURIComponent(characterFormMesaId)}/fichas` : '#/Persona');
+    const cancelHref = editing ? `${formBase}/${encodeURIComponent(id)}` : formBase;
     const defenseOptions = (selected) => Array.from({ length: DEF_MAX_LEVEL + 1 }, (_, level) =>
       `<option value="${level}" ${level === selected ? 'selected' : ''}>Nível ${level} · ${defPct(level)}%</option>`
     ).join('');
@@ -6443,7 +9053,7 @@
         </header>
 
         <form class="create-form create-form--portrait char-create__form" id="characterForm"
-              data-char-id="${editing ? escapeHtml(id) : ''}" novalidate>
+              data-char-id="${editing ? escapeHtml(id) : ''}" data-master="${masterMode ? '1' : ''}" data-npc="${isNpcForm ? '1' : ''}" novalidate>
           <nav class="char-create__index" aria-label="Seções da ficha">
             <button type="button" data-char-form-section="char-form-identidade"><b>I</b><span>Identidade</span></button>
             <button type="button" data-char-form-section="char-form-atributos"><b>II</b><span>Atributos</span></button>
@@ -6472,6 +9082,7 @@
                 </div>
                 <div class="char-create__identity-fields">
                   <label class="dossier-field char-create__name"><span>Nome</span><input type="text" id="charName" class="create-form__input" placeholder="Nome da persona" maxlength="120" required value="${escapeHtml(c.name || '')}"></label>
+                  ${owners.length ? `<label class="dossier-field"><span>Jogador</span><select id="charOwner" class="create-form__input char-select">${owners.map((m) => `<option value="${escapeHtml(m.userId)}" ${m.userId === ownerId ? 'selected' : ''}>${escapeHtml(m.displayName || 'Jogador')}${m.role === 'mestre' ? ' (Mestre)' : ''}</option>`).join('')}</select></label>` : ''}
                   <label class="dossier-field"><span>Raça</span><select id="charRace" class="create-form__input char-select"><option value="">— Sem raça —</option>${races.map((r) => `<option value="${escapeHtml(r.id)}" ${r.id === selectedRaceId ? 'selected' : ''}>${escapeHtml(r.title)}</option>`).join('')}</select></label>
                   <label class="dossier-field"><span>Nível</span><input type="number" id="charLevel" class="create-form__input" min="1" max="99" value="${escapeHtml(String(idn.level || 1))}"></label>
                   <label class="dossier-field"><span>Movimento</span><input type="text" id="charMovement" class="create-form__input" maxlength="20" value="${escapeHtml(idn.movement || idn.movimento || '9m')}" placeholder="9m"></label>
@@ -6487,10 +9098,9 @@
               <header class="char-create__section-head"><span>II</span><div><h2>Atributos e talentos</h2><p>Capacidades naturais e conhecimentos adquiridos.</p></div></header>
               <div class="create-form__field">
           <div class="attr-buy" id="attrBuy"
-               data-base="${CHAR_ATTR_BASE}" data-pool="${CHAR_POINT_POOL}" data-max="${CHAR_ATTR_MAX}">
+               data-base="${CHAR_ATTR_BASE}" data-pool="livre" data-min="1" data-max="${masterMode ? 99 : CHAR_ATTR_MAX}">
             <div class="attr-buy__head">
-                    <span>Todos começam em ${CHAR_ATTR_BASE}. Distribua ${CHAR_POINT_POOL} pontos; a cada 2 pontos acima da base, +1d6 nos testes. A raça soma nos dados.</span>
-              <span class="attr-buy__pool">Pontos restantes: <strong id="attrPool">${CHAR_POINT_POOL}</strong></span>
+                    <span>Base ${CHAR_ATTR_BASE}. A cada 2 pontos acima da base, +1d6 nos testes; a raça soma nos dados.</span>
             </div>
             <div class="attr-buy__grid">
               ${CHAR_ATTRIBUTES.map((a) => {
@@ -6598,7 +9208,7 @@
   let raceAnatomyParallaxCleanup = null;
 
   function syncAmbientMode(tabId) {
-    const suspended = !!document.getElementById('authGate') || ((auth.canRead || !sb) && tabId === 'Index');
+    const suspended = !!document.getElementById('authGate') || ((auth.canRead || !sb) && (tabId === 'Index' || tabId === 'Arcano'));
     window.dispatchEvent(new CustomEvent('arcano:ambient-mode', { detail: { suspended } }));
   }
 
@@ -6676,13 +9286,26 @@
     const routeKey = `${tab}|${entry || ''}|${action || ''}`;
     if (!force && routeKey === lastRoute) return;
     lastRoute = routeKey;
+    document.body.classList.remove('is-mesa-chat');
     const sequence = ++renderSequence;
     document.body.classList.add('is-routing');
     view.setAttribute('aria-busy', 'true');
     setTimeout(() => { if (sequence === renderSequence) { document.body.classList.remove('is-routing'); view.removeAttribute('aria-busy'); } }, 10000);
 
+    characterFormMesaId = '';
+    characterFormNpc = false;
+    npcFormCtx = null;
+    viewedNpc = null;
+    const mesaRoute = tab === 'Mesas' ? parseMesaRoute(entry, action) : null;
+    if (!mesaRoute || mesaRoute.view !== 'mesa' || mesaRoute.tab !== 'chat') unsubscribeMesaChat();
+
     if (auth.canRead && sb) {
-      if (tab === 'Persona') await loadCharacters();
+      await loadMesas();
+      if (mesaRoute) {
+        if (!(await prepareMesaRoute(mesaRoute))) return;
+      }
+      else if (tab === 'Painel') await loadPanelUsers();
+      else if (tab === 'Persona') await loadCharacters();
       else if (action && (tab === 'Historias' || tab === 'Eras')) {
         await Promise.all([
           entry ? loadEntryDetails(entryById(entry)) : Promise.resolve(),
@@ -6699,8 +9322,11 @@
     renderSidenav(tab);
 
     let html;
-    if (tab === 'Index' && !entry && !action) html = viewHome();
+    if (tab === 'Index' && !entry && !action) html = viewPlatformHome();
+    else if (tab === 'Arcano' && !entry && !action) html = viewHome();
     else if (tab === 'Index' && action === 'editar') html = viewEditIndex();
+    else if (mesaRoute) html = viewMesaRoute(mesaRoute);
+    else if (tab === 'Painel') html = viewPanel();
     else if (tab === 'Persona') {
       // Persona = fichas de personagem dos jogadores (não usa o fluxo de stories).
       if (action === 'criar' && !entry) html = viewCharacterForm(null);
@@ -6743,6 +9369,9 @@
         attachDeleteHandlers();
         attachCharacterDeleteHandlers();
         attachCharacterSheet();
+        attachMesaHandlers();
+        attachPanelHandlers();
+        attachLevelPanel();
         attachBeastAbilityCards();
         attachRaceAnatomyParallax();
       });
@@ -6825,7 +9454,7 @@
     const root = document.querySelector('[data-beast-entry-id]');
     if (!root || root.dataset.abilitiesBound) return;
     root.dataset.abilitiesBound = '1';
-    const entry = entryById(root.dataset.beastEntryId);
+    const entry = entryById(root.dataset.beastEntryId) || (viewedNpc && viewedNpc.id === root.dataset.beastEntryId ? viewedNpc : null);
     if (!entry) return;
     root.addEventListener('click', (e) => {
       const btn = e.target.closest('[data-beast-ability-index]');
@@ -9107,7 +11736,8 @@
     const tabId = form.dataset.tab;
     const editId = form.dataset.editId || '';
     const editing = !!editId;
-    const existing = editing ? entryById(editId) : null;
+    const npcMesaId = form.dataset.npcMesa || '';
+    const existing = editing ? (npcMesaId ? npcFormCtx?.npc : entryById(editId)) : null;
 
     const titleInput = document.getElementById('titleInput');
     const summaryInput = document.getElementById('summaryInput');
@@ -9236,10 +11866,47 @@
       const originalLabel = submitBtn.innerHTML;
       submitBtn.innerHTML = '<span>Salvando…</span>';
 
-      if (editing) {
+      if (npcMesaId) {
+        await handleNpcSubmit({ title, summary, tags, bodyHtml, fields });
+      } else if (editing) {
         await handleEditSubmit({ existing, title, summary, tags, bodyHtml, subtype, fields });
       } else {
         await handleCreateSubmit({ title, summary, tags, bodyHtml, subtype, fields });
+      }
+
+      async function handleNpcSubmit(payload) {
+        let uploadedPath = '';
+        let inlinePaths = [];
+        try {
+          const inline = await prepareInlineImages(editor, `${npcMesaId}/npcs`, 'mesas');
+          payload.bodyHtml = inline.html;
+          inlinePaths = inline.uploadedPaths;
+          let image = existing?.image || '';
+          let imagePath = existing?.imagePath || '';
+          const oldPaths = [];
+          const file = banner.getFile();
+          if (file) {
+            const up = await uploadBanner(file, `mesas/${npcMesaId}/npcs/retrato`);
+            uploadedPath = up.path;
+            if (imagePath) oldPaths.push(imagePath);
+            image = up.url;
+            imagePath = up.path;
+          } else if (editing && !banner.getDataUrl() && image) {
+            if (imagePath) oldPaths.push(imagePath);
+            image = '';
+            imagePath = '';
+          }
+          const saved = await saveMesaNpc(npcMesaId, existing, { ...payload, image, imagePath });
+          for (const path of oldPaths) await removeBanner(path);
+          location.hash = `#/Mesas/${encodeURIComponent(npcMesaId)}/npcs/${encodeURIComponent(saved.id)}`;
+        } catch (err) {
+          console.error(err);
+          toast('Erro ao salvar NPC: ' + (err.message || err));
+          submitBtn.disabled = false;
+          submitBtn.innerHTML = originalLabel;
+          if (uploadedPath) await removeBanner(uploadedPath);
+          for (const path of inlinePaths) await removeBanner(path);
+        }
       }
 
       async function handleCreateSubmit(payload) {
@@ -9378,8 +12045,9 @@
     const stub = { getAllocated: () => ({}), getRemaining: () => 0, refreshRaceMod() {}, setResCap() {}, setBonusAttr() {} };
     if (!root) return stub;
     const base = Number(root.dataset.base) || 10;
-    const pool = Number(root.dataset.pool) || 6;
+    const pool = root.dataset.pool === 'livre' ? Infinity : (Number(root.dataset.pool) || 6);
     const max = Number(root.dataset.max) || 16;
+    const min = Number(root.dataset.min) || base;
     const poolEl = document.getElementById('attrPool');
     let bonusAttr = '';
 
@@ -9413,7 +12081,7 @@
       if (poolEl) poolEl.textContent = rem;
       rows().forEach((row) => {
         const v = valueOf(row);
-        row.querySelector('[data-step="-1"]').disabled = v <= base;
+        row.querySelector('[data-step="-1"]').disabled = v <= min;
         row.querySelector('[data-step="1"]').disabled = v >= capOf(row) || rem <= 0;
         syncRow(row);
       });
@@ -9427,7 +12095,7 @@
       let v = Number(valEl.textContent) || base;
       const dir = Number(btn.dataset.step);
       if (dir > 0 && v < capOf(row) && remaining() > 0) v += 1;
-      else if (dir < 0 && v > base) v -= 1;
+      else if (dir < 0 && v > min) v -= 1;
       valEl.textContent = v;
       syncAll();
     });
@@ -9436,7 +12104,7 @@
 
     return {
       getAllocated: allocated,
-      getRemaining: remaining,
+      getRemaining: () => (Number.isFinite(remaining()) ? remaining() : 0),
       refreshRaceMod(mod) {
         rows().forEach((r) => { r.dataset.racemod = Number((mod && mod[r.dataset.attr]) || 0); });
         syncAll();
@@ -9566,6 +12234,247 @@
     `;
   }
 
+  /* ── Natureza arcana definida pelo Mestre (sem ritual) ── */
+  function awakeningMasterHTML(a) {
+    const isMage = awkIsAcceptedMage(a);
+    const isMundane = awkIsNonMage(a);
+    return `
+      <div class="awk-master">
+        <span class="awk-master__title">Definir pelo Mestre</span>
+        <select data-awk-master-kind aria-label="Natureza arcana">
+          <option value="">—</option>
+          <option value="mago" ${isMage ? 'selected' : ''}>Mago</option>
+          <option value="mundano" ${isMundane ? 'selected' : ''}>Não-mago</option>
+        </select>
+        <select data-awk-master-school aria-label="Escola">
+          ${MAGIC_SCHOOLS.map((sc) => `<option value="${escapeHtml(sc.id)}" ${a.school === sc.id ? 'selected' : ''}>${escapeHtml(sc.name)}</option>`).join('')}
+        </select>
+        <select data-awk-master-bonus aria-label="Atributo bônus do não-mago">
+          <option value="">Sem bônus</option>
+          ${CHAR_ATTRIBUTES.map((attr) => `<option value="${escapeHtml(attr)}" ${a.bonusAttr === attr ? 'selected' : ''}>+1 ${escapeHtml(attr)}</option>`).join('')}
+        </select>
+        <button type="button" class="btn btn-ghost" data-awk="master-apply">Aplicar</button>
+      </div>`;
+  }
+
+  /* ════════════════════════════════════════════════
+     NÍVEIS — o Mestre concede; o dono sobe com testes
+     HP: teste de Resistência por parte (ganha a soma dos d6).
+     Mana: teste de Inteligência (mesma regra). Pontos: o Mestre define.
+     ════════════════════════════════════════════════ */
+  const levelAlloc = {};
+
+  function characterDiceFor(c, attr) {
+    const { mod } = raceDataFor(c.raceId);
+    const awk = normalizeAwakening(c.magic);
+    const A = attrModsView(c, mod, awkIsNonMage(awk) ? awk.bonusAttr : '');
+    return Math.max(1, (A[attr] && A[attr].dice) || 1);
+  }
+
+  function levelGrantOf(c) {
+    const g = c && c.levelGrant;
+    return g && g.at ? { points: Math.max(0, Number(g.points) || 0), at: g.at } : null;
+  }
+
+  function rollLevelTest(dice) {
+    const d6s = Array.from({ length: dice }, () => randomInt(6));
+    const destiny = randomInt(12);
+    return { dice, d6s, destiny, gain: d6s.reduce((a, b) => a + b, 0), reading: destinyReading(destiny).title };
+  }
+
+  function levelDieChips(t) {
+    return `${t.d6s.map((v) => `<span class="chat-die${v === 6 ? ' is-max' : (v === 1 ? ' is-min' : '')}">${v}</span>`).join('')}<span class="chat-roll__plus">+</span><span class="chat-die chat-die--destiny" title="Destino">${t.destiny}</span>`;
+  }
+
+  function levelFlowHTML(c, draft) {
+    const grant = levelGrantOf(c);
+    const alloc = levelAlloc[c.id] || {};
+    const spent = Object.values(alloc).reduce((a, b) => a + b, 0);
+    const left = (grant ? grant.points : 0) - spent;
+    return `
+      <ul class="level-rolls">
+        ${draft.parts.map((t) => `<li><span>${escapeHtml(t.part)}</span><span class="level-rolls__dice">${levelDieChips(t)}</span><b>+${t.gain}</b></li>`).join('')}
+        ${draft.mana ? `<li class="is-mana"><span>Mana</span><span class="level-rolls__dice">${levelDieChips(draft.mana)}</span><b>+${draft.mana.gain}</b></li>` : ''}
+      </ul>
+      ${grant && grant.points ? `
+        <p class="level-panel__sub">Pontos de atributo <b data-level-left>${left}</b></p>
+        <div class="level-attrs">
+          ${CHAR_ATTRIBUTES.map((attr) => {
+            const base = Number(c.attributes?.[attr] ?? CHAR_ATTR_BASE);
+            const add = alloc[attr] || 0;
+            return `<div class="level-attr" data-level-attr="${escapeHtml(attr)}">
+              <span>${escapeHtml(attr)}</span>
+              <button type="button" data-level-step="-1" ${add ? '' : 'disabled'} aria-label="Tirar ponto de ${escapeHtml(attr)}">−</button>
+              <b>${base + add}${add ? `<small>+${add}</small>` : ''}</b>
+              <button type="button" data-level-step="1" ${left > 0 ? '' : 'disabled'} aria-label="Pôr ponto em ${escapeHtml(attr)}">+</button>
+            </div>`;
+          }).join('')}
+        </div>` : ''}
+      <button type="button" class="btn btn-primary" data-level-finish ${left > 0 ? 'disabled' : ''}>${left > 0 ? `Distribua ${left} ${left === 1 ? 'ponto' : 'pontos'}` : 'Concluir nível'}</button>`;
+  }
+
+  function levelPanelHTML(c) {
+    if (!c || !auth.user) return '';
+    const master = isCharacterMaster(c);
+    const owner = c.userId === auth.user.id;
+    const grant = levelGrantOf(c);
+    const level = Number(c.identity?.level) || 1;
+    if (!master && !(grant && owner)) return '';
+    const draft = c.identity?.levelUpDraft;
+    return `
+      <section class="level-panel ${grant ? 'is-ready' : ''}" data-level-panel="${escapeHtml(c.id)}">
+        <div class="level-panel__head">
+          <span class="level-panel__lvl">Nível ${level}</span>
+          ${grant ? `<span class="level-panel__grant-info">Nível ${level + 1} liberado${grant.points ? ` · ${grant.points} ${grant.points === 1 ? 'ponto' : 'pontos'} de atributo` : ''}</span>` : ''}
+          ${master && c.isNpc ? `<button type="button" class="chat-link" data-level-npc-visible>${c.npcVisible ? 'visível aos jogadores' : 'oculto dos jogadores'}</button>` : ''}
+          ${master && grant ? '<button type="button" class="chat-link" data-level-cancel>cancelar</button>' : ''}
+        </div>
+        ${grant && (owner || master) ? `<div class="level-panel__flow" data-level-flow>${draft ? levelFlowHTML(c, draft) : '<button type="button" class="btn btn-primary" data-level-start>Passar de nível</button>'}</div>` : ''}
+        ${master && !grant ? `
+          <div class="level-panel__grant">
+            <label>Conceder nível ${level + 1} com <input type="number" min="0" max="99" value="3" data-level-points aria-label="Pontos de atributo"> pontos</label>
+            <button type="button" class="btn btn-ghost" data-level-grant>Conceder</button>
+          </div>` : ''}
+      </section>`;
+  }
+
+  function chatLevelUpHTML(mesaId, msg, s, lv) {
+    const parts = (lv.parts || []).map((t) => `${escapeHtml(t.part)} +${t.gain}`).join(' · ');
+    const pts = Object.entries(lv.points || {}).filter(([, n]) => n).map(([a, n]) => `${escapeHtml(a)} +${n}`).join(' · ');
+    return `
+      <li class="chat-msg chat-msg--roll chat-msg--level" data-mesa-msg="${escapeHtml(msg.id)}" style="--who:${safeChatColor(s.color, s.id || s.name)}">
+        <p class="chat-roll"><span class="chat-who">${escapeHtml(s.name)}</span> <span class="chat-roll__label">chegou ao</span> <span class="chat-roll__total chat-level__n">nível ${Number(lv.level) || ''}</span></p>
+        <p class="chat-level__detail">
+          ${parts ? `<span>HP: ${parts}</span>` : ''}
+          ${lv.mana ? `<span>Mana +${lv.mana.gain}</span>` : ''}
+          ${pts ? `<span>${pts}</span>` : ''}
+        </p>
+        <span class="chat-time">${escapeHtml(chatTime(msg))}</span>
+        ${chatToolsHTML(mesaId, msg)}
+      </li>`;
+  }
+
+  function attachLevelPanel() {
+    const panel = document.querySelector('[data-level-panel]');
+    if (!panel || panel.dataset.bound) return;
+    panel.dataset.bound = '1';
+    const c = characterById(panel.dataset.levelPanel);
+    if (!c) return;
+
+    const redraw = () => {
+      const flow = panel.querySelector('[data-level-flow]');
+      if (flow && c.identity?.levelUpDraft) flow.innerHTML = levelFlowHTML(c, c.identity.levelUpDraft);
+    };
+
+    panel.addEventListener('click', async (event) => {
+      const target = event.target;
+      const button = target.closest('button');
+      if (!button) return;
+      try {
+        if (button.matches('[data-level-grant]')) {
+          const points = Math.max(0, Math.min(99, parseInt(panel.querySelector('[data-level-points]').value, 10) || 0));
+          const grant = { points, by: auth.user.id, at: new Date().toISOString() };
+          button.disabled = true;
+          const { error } = await sb.from('characters').update({ level_grant: grant }).eq('id', c.id);
+          if (error) throw error;
+          c.levelGrant = grant;
+          render(true);
+          return;
+        }
+        if (button.matches('[data-level-cancel]')) {
+          const { error } = await sb.from('characters').update({ level_grant: {} }).eq('id', c.id);
+          if (error) throw error;
+          c.levelGrant = {};
+          if (c.identity?.levelUpDraft) {
+            const identity = { ...c.identity };
+            delete identity.levelUpDraft;
+            c.identity = identity;
+            await persistCharacterState(c);
+          }
+          delete levelAlloc[c.id];
+          render(true);
+          return;
+        }
+        if (button.matches('[data-level-npc-visible]')) {
+          const { error } = await sb.from('characters').update({ npc_visible: !c.npcVisible }).eq('id', c.id);
+          if (error) throw error;
+          c.npcVisible = !c.npcVisible;
+          button.textContent = c.npcVisible ? 'visível aos jogadores' : 'oculto dos jogadores';
+          return;
+        }
+        if (button.matches('[data-level-start]')) {
+          // Os testes ficam gravados na ficha: recarregar a página não rola de novo.
+          ensureVitals(c);
+          const resDice = characterDiceFor(c, 'Resistência');
+          const parts = Object.keys(c.vitals.hp || {}).map((part) => ({ part, ...rollLevelTest(resDice) }));
+          const awk = normalizeAwakening(c.magic);
+          const mana = awkIsAcceptedMage(awk) && c.vitals.mana ? rollLevelTest(characterDiceFor(c, 'Inteligência')) : null;
+          c.identity = { ...(c.identity || {}), levelUpDraft: { parts, mana, at: new Date().toISOString() } };
+          levelAlloc[c.id] = {};
+          button.disabled = true;
+          await persistCharacterState(c);
+          redraw();
+          return;
+        }
+        const step = target.closest('[data-level-step]');
+        if (step) {
+          const attr = step.closest('[data-level-attr]').dataset.levelAttr;
+          const alloc = levelAlloc[c.id] || (levelAlloc[c.id] = {});
+          alloc[attr] = Math.max(0, (alloc[attr] || 0) + Number(step.dataset.levelStep));
+          redraw();
+          return;
+        }
+        if (button.matches('[data-level-finish]')) {
+          const draft = c.identity?.levelUpDraft;
+          const grant = levelGrantOf(c);
+          if (!draft || !grant) return;
+          const alloc = levelAlloc[c.id] || {};
+          button.disabled = true;
+          ensureVitals(c);
+          c.hp = { ...(c.hp || {}) };
+          draft.parts.forEach((t) => {
+            const slot = c.vitals.hp[t.part];
+            if (!slot) return;
+            slot.max += t.gain;
+            slot.cur += t.gain;
+            c.hp[t.part] = String(slot.max);
+          });
+          if (draft.mana && c.vitals.mana) {
+            c.vitals.mana.max += draft.mana.gain;
+            c.vitals.mana.cur += draft.mana.gain;
+            c.mana = `${c.vitals.mana.cur}/${c.vitals.mana.max}`;
+          }
+          c.attributes = { ...(c.attributes || {}) };
+          Object.entries(alloc).forEach(([attr, n]) => {
+            c.attributes[attr] = Number(c.attributes[attr] ?? CHAR_ATTR_BASE) + n;
+          });
+          const newLevel = (Number(c.identity?.level) || 1) + 1;
+          const identity = { ...(c.identity || {}), level: newLevel };
+          delete identity.levelUpDraft;
+          c.identity = identity;
+          const saved = await updateCharacter(c);
+          const { error } = await sb.from('characters').update({ level_grant: {} }).eq('id', c.id);
+          if (error) throw error;
+          Object.assign(c, saved, { levelGrant: {} });
+          delete levelAlloc[c.id];
+          if (c.mesaId) {
+            await sendChatMessage(c.mesaId, {
+              kind: 'rolagem',
+              speaker: { type: 'character', id: c.id, name: c.name, image: c.image || '', color: safeChatColor(c.identity?.chatColor, c.id) },
+              data: { levelUp: { level: newLevel, parts: draft.parts, mana: draft.mana, points: alloc } }
+            });
+          }
+          toast(`${c.name} chegou ao nível ${newLevel}.`);
+          render(true);
+        }
+      } catch (err) {
+        console.error(err);
+        toast('Não deu certo: ' + (err.message || err));
+        button.disabled = false;
+      }
+    });
+  }
+
   /* ── FORM DA FICHA DE PERSONAGEM ──────────────── */
   function attachCharacterForm() {
     const form = document.getElementById('characterForm');
@@ -9575,6 +12484,9 @@
     const editId = form.dataset.charId || '';
     const editing = !!editId;
     const existing = editing ? characterById(editId) : null;
+    const masterMode = form.dataset.master === '1';
+    const isNpcForm = form.dataset.npc === '1';
+    const ownerSelect = document.getElementById('charOwner');
 
     const nameInput = document.getElementById('charName');
     const levelInput = document.getElementById('charLevel');
@@ -9630,7 +12542,7 @@
     }
 
     function renderAwakening() {
-      awakeningEl.innerHTML = awakeningPanelHTML(awakening);
+      awakeningEl.innerHTML = awakeningPanelHTML(awakening) + (masterMode ? awakeningMasterHTML(awakening) : '');
     }
 
     function animateRoll(el, finalValue, done) {
@@ -9698,6 +12610,31 @@
         return;
       }
 
+      if (action === 'master-apply') {
+        const kind = awakeningEl.querySelector('[data-awk-master-kind]').value;
+        if (kind === 'mago') {
+          awakening.mageRoll = Math.max(awakening.mageRoll, AWAKEN_MAGE_MIN);
+          awakening.accepted = true;
+          awakening.renounced = false;
+          awakening.school = awakeningEl.querySelector('[data-awk-master-school]').value || MAGIC_SCHOOLS[0].id;
+          awakening.bonusAttr = '';
+        } else if (kind === 'mundano') {
+          awakening.mageRoll = awakening.mageRoll && awakening.mageRoll < AWAKEN_MAGE_MIN ? awakening.mageRoll : 1;
+          awakening.accepted = false;
+          awakening.renounced = false;
+          awakening.school = '';
+          awakening.schoolRoll = 0;
+          awakening.bonusAttr = awakeningEl.querySelector('[data-awk-master-bonus]').value || '';
+        } else {
+          return;
+        }
+        awakening.resolved = true;
+        awakening.byMaster = true;
+        applyAwakeningToAttributes();
+        renderAwakening();
+        return;
+      }
+
       if (action === 'renounce') {
         awakening.accepted = false;
         awakening.renounced = true;
@@ -9743,6 +12680,11 @@
       }
       nameInput.classList.remove('is-invalid');
 
+      if (!awakening.resolved && masterMode) {
+        // O Mestre pode salvar sem o ritual: vira não-mago sem bônus até ele decidir.
+        awakening.resolved = true;
+        awakening.byMaster = true;
+      }
       if (!awakening.resolved) {
         toast('Conclua o Despertar antes de salvar: role o destino e, se for mago, aceite ou renuncie à Mana.');
         awakeningEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -9768,7 +12710,10 @@
         magic: { ...awakening },
         hp: hpValue,
         mana: manaValue,
+        ...(ownerSelect ? { userId: ownerSelect.value } : {}),
+        ...(isNpcForm ? { isNpc: true, npcVisible: !!existing?.npcVisible } : {}),
         identity: {
+          ...(existing?.identity || {}),
           level: Math.max(1, parseInt(levelInput && levelInput.value, 10) || 1),
           movement: (movementInput && movementInput.value.trim()) || '9m',
           daAttr: CHAR_ATTRIBUTES.includes(daAttrInput && daAttrInput.value) ? daAttrInput.value : 'Destreza',
@@ -9816,12 +12761,12 @@
           const i = CHARACTERS.findIndex((x) => x.id === editId);
           if (i >= 0) CHARACTERS[i] = saved; else CHARACTERS.unshift(saved);
         } else {
-          saved = await persistCharacter({ ...data, image, imagePath });
+          saved = await persistCharacter({ ...data, image, imagePath, mesaId: characterFormMesaId || '' });
           CHARACTERS.unshift(saved);
         }
 
         for (const p of oldPathsToRemove) await removeBanner(p);
-        location.hash = `#/Persona/${encodeURIComponent(saved.id)}`;
+        location.hash = `${characterBase(saved)}/${encodeURIComponent(saved.id)}`;
         render(true);
       } catch (err) {
         console.error(err);
@@ -9847,7 +12792,7 @@
           await deleteCharacter(c);
           const i = CHARACTERS.indexOf(c);
           if (i >= 0) CHARACTERS.splice(i, 1);
-          location.hash = '#/Persona';
+          location.hash = characterBase(c);
         } catch (err) {
           console.error(err);
           toast('Erro ao apagar ficha: ' + (err.message || err));
@@ -10219,7 +13164,7 @@
         if (location.hash === '#/' || location.hash === '') {
           render(true);
         } else {
-          location.hash = '#/';
+          location.hash = '#/Arcano';
         }
       } catch (err) {
         console.error(err);
