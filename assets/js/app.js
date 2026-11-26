@@ -6120,12 +6120,18 @@
   }
 
   /* Formatação leve: **negrito**, *itálico*, ~~riscado~~, ||spoiler||. */
+  /* Formatação do chat:
+     **ação** (negrito na cor do personagem) · -- fala -- · ((pensamento))
+     *itálico* · ~~riscado~~ · ||spoiler|| · >> no fim = passou a vez. */
   function chatInline(text) {
     return escapeHtml(text || '')
-      .replace(/\|\|(.+?)\|\|/g, '<span class="chat-spoiler" tabindex="0" role="button" aria-label="Revelar spoiler">$1</span>')
-      .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+      .replace(/\|\|([\s\S]+?)\|\|/g, '<span class="chat-spoiler" tabindex="0" role="button" aria-label="Revelar spoiler">$1</span>')
+      .replace(/\(\(([\s\S]+?)\)\)/g, '<span class="chat-thought">“$1”</span>')
+      .replace(/--\s*([\s\S]+?)\s*--/g, '<span class="chat-speech">— $1 —</span>')
+      .replace(/\*\*([\s\S]+?)\*\*/g, '<strong class="chat-action">$1</strong>')
       .replace(/(^|[^*])\*(?!\s)(.+?)\*(?!\*)/g, '$1<em>$2</em>')
       .replace(/~~(.+?)~~/g, '<del>$1</del>')
+      .replace(/\s*&gt;&gt;\s*$/, ' <span class="chat-turn" title="Passou a vez">»</span>')
       .replace(/\n/g, '<br>');
   }
 
@@ -6184,6 +6190,14 @@
         <span class="chat-roll__dice">${t.d6s.map((v) => `<span class="chat-die${v === 6 ? ' is-max' : (v === 1 ? ' is-min' : '')}">${v}</span>`).join('')}<span class="chat-roll__plus">+</span><span class="chat-die chat-die--destiny${t.destiny === 12 ? ' is-max' : (t.destiny === 1 ? ' is-min' : '')}" title="Destino (d12)">${t.destiny}</span></span>
         <span class="chat-roll__total">${result.total}</span>
         <span class="chat-roll__reading"><b>${escapeHtml(t.reading.title)}</b> ${escapeHtml(t.reading.text)}</span>`;
+    }
+    if (result.calc != null) {
+      const chips = (result.groups || []).map((g) => chatDiceChips(g)).join('<span class="chat-roll__plus">·</span>');
+      const showCalc = (result.groups || []).length && result.calc !== String(result.total);
+      return `
+        ${chips ? `<span class="chat-roll__dice">${chips}</span>` : ''}
+        ${showCalc ? `<span class="chat-roll__calc">${escapeHtml(result.calc)}</span>` : ''}
+        <span class="chat-roll__total">${escapeHtml(formatRollNumber(result.total))}</span>`;
     }
     const dice = (result.groups || []).map((g) => chatDiceChips(g)).join('<span class="chat-roll__plus">+</span>');
     const mod = Number(result.mod || 0);
@@ -6359,14 +6373,14 @@
   const TOOL_ICON = (d) => `<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
   const CHAT_TOOLS = [
     { id: 'dados', label: 'Dados', icon: TOOL_ICON('<path d="M12 2l8.5 5v10L12 22l-8.5-5V7z"/><path d="M12 22V12M3.5 7L12 12l8.5-5"/>') },
-    { id: 'ficha', label: 'Ficha', icon: TOOL_ICON('<path d="M6 3h9l3 3v15H6z"/><path d="M9 10h6M9 14h6M9 18h4"/>') },
-    { id: 'iniciativa', label: 'Iniciativa', icon: TOOL_ICON('<path d="M14.5 17.5L3 6V3h3l11.5 11.5"/><path d="M13 19l6-6M16 16l4 4M19 21l2-2"/>') },
-    { id: 'fixadas', label: 'Fixadas', icon: TOOL_ICON('<path d="M12 17v5"/><path d="M9 10.8V5h6v5.8l2.5 3.2h-11z"/><path d="M8 5h8"/>') },
+    { id: 'ficha', label: 'Fichas', icon: TOOL_ICON('<path d="M6 3h9l3 3v15H6z"/><path d="M9 10h6M9 14h6M9 18h4"/>') },
+    { id: 'combate', label: 'Combate · em breve', soon: true, icon: TOOL_ICON('<path d="M14.5 17.5L3 6V3h3l11.5 11.5"/><path d="M13 19l6-6M16 16l4 4M19 21l2-2"/>') },
     { id: 'notas', label: 'Notas', icon: TOOL_ICON('<path d="M20 4c-6 0-12 4-14 12l-2 4"/><path d="M8 14c4 0 7-2 9-6"/>') },
-    { id: 'npcs', label: 'NPCs em combate', master: true, icon: TOOL_ICON('<circle cx="12" cy="10" r="6"/><path d="M9 21v-3h6v3M10 10h.01M14 10h.01"/>') },
+    { id: 'npcs', label: 'NPCs', master: true, icon: TOOL_ICON('<circle cx="12" cy="10" r="6"/><path d="M9 21v-3h6v3M10 10h.01M14 10h.01"/>') },
     { id: 'acervo', label: 'Acervo', master: true, icon: TOOL_ICON('<rect x="3" y="4" width="18" height="16" rx="1"/><circle cx="9" cy="10" r="2"/><path d="M21 16l-5-5-9 9"/>') },
     { id: 'cena', label: 'Cena', master: true, icon: TOOL_ICON('<path d="M3 20h18M5 20V9l7-5 7 5v11"/><path d="M10 20v-6h4v6"/>') },
-    { id: 'mestre', label: 'Anotações do Mestre', master: true, icon: TOOL_ICON('<path d="M4 4h12a4 4 0 014 4v12H8a4 4 0 01-4-4z"/><path d="M9 9h6M9 13h4"/>') }
+    { id: 'mestre', label: 'Anotações do Mestre', master: true, icon: TOOL_ICON('<path d="M4 4h12a4 4 0 014 4v12H8a4 4 0 01-4-4z"/><path d="M9 9h6M9 13h4"/>') },
+    { id: 'opcoes', label: 'Opções', bottom: true, icon: TOOL_ICON('<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 00.3 1.8l.1.1a2 2 0 11-2.8 2.8l-.1-.1a1.7 1.7 0 00-1.8-.3 1.7 1.7 0 00-1 1.5V21a2 2 0 01-4 0v-.1a1.7 1.7 0 00-1.1-1.5 1.7 1.7 0 00-1.8.3l-.1.1a2 2 0 11-2.8-2.8l.1-.1a1.7 1.7 0 00.3-1.8 1.7 1.7 0 00-1.5-1H3a2 2 0 010-4h.1a1.7 1.7 0 001.5-1.1 1.7 1.7 0 00-.3-1.8l-.1-.1a2 2 0 112.8-2.8l.1.1a1.7 1.7 0 001.8.3H9a1.7 1.7 0 001-1.5V3a2 2 0 014 0v.1a1.7 1.7 0 001 1.5 1.7 1.7 0 001.8-.3l.1-.1a2 2 0 112.8 2.8l-.1.1a1.7 1.7 0 00-.3 1.8V9a1.7 1.7 0 001.5 1H21a2 2 0 010 4h-.1a1.7 1.7 0 00-1.5 1z"/>') }
   ];
   const MESA_STATE = {};
   const MESA_NOTES = {};
@@ -6377,20 +6391,9 @@
   }
   function activeChatTool(mesa) {
     const saved = storageGet(toolStoreKey, { id: 'dados', open: true });
-    const tools = chatToolsFor(mesa);
+    const tools = chatToolsFor(mesa).filter((t) => !t.soon);
     const id = tools.some((t) => t.id === saved.id) ? saved.id : 'dados';
     return { id, open: saved.open !== false };
-  }
-
-  function chatPoolHTML() {
-    const groups = Object.entries(chatState.pool).filter(([, n]) => n > 0);
-    if (!groups.length) return '<span class="chat-muted">—</span>';
-    return groups.map(([sides, n]) => `<button type="button" class="chat-tray__chip" data-chat-pool-dec="${sides}" title="Tirar um d${sides}">${n}d${sides}</button>`).join('');
-  }
-
-  function chatPoolText() {
-    const parts = Object.entries(chatState.pool).filter(([, n]) => n > 0).map(([sides, n]) => `${n}d${sides}`);
-    return parts.length ? parts.join(' + ') : '';
   }
 
   function emptyInitiative() {
@@ -6401,6 +6404,57 @@
     return ini && Array.isArray(ini.entries) ? ini : emptyInitiative();
   }
 
+  /* ── Dados: ícone vetorial de cada dado com o número dentro ── */
+  const DIE_SHAPES = {
+    3: { d: '<polygon points="20,6 35,33 5,33"/>', y: 25 },
+    4: { d: '<polygon points="20,4 37,35 3,35"/>', y: 25 },
+    6: { d: '<rect x="6" y="6" width="28" height="28" rx="4"/>', y: 20 },
+    8: { d: '<polygon points="20,3 37,20 20,37 3,20"/>', y: 20 },
+    10: { d: '<polygon points="20,3 36,17 20,37 4,17"/><path d="M4 17l16 5 16-5" opacity=".45"/>', y: 18 },
+    12: { d: '<polygon points="20,3 37,15 31,36 9,36 3,15"/>', y: 21 },
+    20: { d: '<polygon points="20,3 36,12 36,28 20,37 4,28 4,12"/><polygon points="20,10 30,27 10,27" opacity=".45"/>', y: 22 },
+    100: { d: '<circle cx="20" cy="20" r="17"/><circle cx="20" cy="20" r="12" opacity=".35"/>', y: 20 }
+  };
+  function dieIconSVG(sides, size = 40, text = null) {
+    const shape = DIE_SHAPES[sides] || DIE_SHAPES[6];
+    const label = text == null ? String(sides) : String(text);
+    return `<svg class="die-ico" viewBox="0 0 40 40" width="${size}" height="${size}" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round">${shape.d}</g><text x="20" y="${shape.y}" text-anchor="middle" dominant-baseline="central" font-size="${label.length > 2 ? 9.5 : 12}" font-weight="600" fill="currentColor">${label}</text></svg>`;
+  }
+
+  function firstDieSides(expr) {
+    const m = /\d*d(\d+)/i.exec(String(expr || ''));
+    return m && DIE_SHAPES[Number(m[1])] ? Number(m[1]) : 20;
+  }
+
+  function diceStageHTML() {
+    const sides = chatState.stageSides || firstDieSides(chatState.expr);
+    const r = chatState.stageResult;
+    return `
+      <div class="dice-stage__die" data-stage-die>${dieIconSVG(sides, 132, r ? formatRollNumber(r.total) : null)}</div>
+      <div class="dice-stage__calc" data-stage-calc>${r ? escapeHtml(r.groups.length && r.calc !== String(r.total) ? `${r.calc} = ${formatRollNumber(r.total)}` : r.expr) : 'Monte a rolagem'}</div>`;
+  }
+
+  function toolDadosHTML(mesa) {
+    const master = mesa.role === 'mestre';
+    return `
+      <div class="dice-stage" data-dice-stage>${diceStageHTML()}</div>
+      <input class="dice-calc" data-dice-expr value="${escapeHtml(chatState.expr || '')}" placeholder="2d6 + 1d8 × 2 − 3" spellcheck="false" autocomplete="off" inputmode="text" aria-label="Conta da rolagem">
+      <div class="dice-keys">
+        ${['+', '−', '×', '÷', '(', ')', '%'].map((k) => `<button type="button" data-calc-key="${k}">${k}</button>`).join('')}
+        <button type="button" data-calc-key="+1">+1</button>
+        <button type="button" data-calc-key="−1">−1</button>
+      </div>
+      <div class="dice-grid">
+        ${CHAT_DICE.map((sides) => `<button type="button" class="dice-btn" data-chat-die="${sides}" title="d${sides} · clique direito tira">${dieIconSVG(sides)}</button>`).join('')}
+      </div>
+      ${master ? '<label class="chat-tray__secret"><input type="checkbox" data-chat-secret> Em segredo</label>' : ''}
+      <div class="tool-row">
+        <button type="button" class="chat-button" data-chat-clear>Limpar</button>
+        <button type="button" class="chat-button chat-button--primary" data-chat-roll>Rolar</button>
+      </div>`;
+  }
+
+  /* ── Medidores e etiquetas ── */
   function toolMeterHTML(attr, key, label, cur, max) {
     const pct = max > 0 ? Math.max(0, Math.min(100, (cur / max) * 100)) : 0;
     return `
@@ -6421,114 +6475,6 @@
       </div>`;
   }
 
-  function toolDadosHTML(mesa, speaker) {
-    const master = mesa.role === 'mestre';
-    return `
-      <div class="chat-tray__dice">
-        ${CHAT_DICE.map((sides) => `<button type="button" class="chat-tray__die" data-chat-die="${sides}" title="Clique soma · clique direito tira">d${sides}<b data-chat-die-count="${sides}">${chatState.pool[sides] ? `×${chatState.pool[sides]}` : ''}</b></button>`).join('')}
-      </div>
-      <div class="chat-tray__pool">
-        <span class="chat-tray__chips" data-chat-pool>${chatPoolHTML()}</span>
-        <label class="chat-tray__mod">Mod <input type="number" data-chat-mod value="0" step="1" min="-99" max="99"></label>
-      </div>
-      ${master ? '<label class="chat-tray__secret"><input type="checkbox" data-chat-secret> Em segredo</label>' : ''}
-      <div class="chat-tray__actions">
-        <button type="button" class="chat-button" data-chat-clear>Limpar</button>
-        <button type="button" class="chat-button chat-button--primary" data-chat-roll>Rolar</button>
-      </div>
-      <p class="chat-tool__sub">Teste do Arcano</p>
-      <div data-chat-tests>${chatTrayTestHTML(mesa, speaker)}</div>`;
-  }
-
-  function chatTrayTestHTML(mesa, speaker) {
-    if (speaker.type !== 'character') return '<p class="chat-tray__hint">Fale como um personagem.</p>';
-    const c = characterById(speaker.id);
-    if (!c) return '';
-    const { mod } = raceDataFor(c.raceId);
-    const awk = normalizeAwakening(c.magic);
-    const A = attrModsView(c, mod, awkIsNonMage(awk) ? awk.bonusAttr : '');
-    return `<div class="chat-tray__tests">${CHAR_ATTRIBUTES.map((a) => {
-      const dice = Math.max(1, A[a].dice || 1);
-      return `<button type="button" class="chat-tray__test" data-chat-test="${escapeHtml(a)}" data-chat-test-dice="${dice}"><span>${escapeHtml(a)}</span><small>${fmtDice(dice)}</small></button>`;
-    }).join('')}</div>`;
-  }
-
-  function toolFichaHTML(mesa, speaker) {
-    const mine = CHARACTERS.filter((c) => c.mesaId === mesa.id && c.userId === auth.user?.id && !c.isNpc);
-    if (speaker.type !== 'character') {
-      if (!mine.length) return `<a class="chat-button" href="#/Mesas/${encodeURIComponent(mesa.id)}/fichas/criar">Criar ficha</a>`;
-      return `<div class="tool-pick">${mine.map((c) => `<button type="button" class="chat-menu__item" data-chat-speaker="c:${escapeHtml(c.id)}" style="--who:${safeChatColor(c.identity?.chatColor, c.id)}">${chatAvatarHTML({ name: c.name, image: c.image })}<span>${escapeHtml(c.name)}</span></button>`).join('')}</div>`;
-    }
-    const c = characterById(speaker.id);
-    if (!c) return '';
-    ensureVitals(c);
-    const hp = c.vitals.hp || {};
-    const mana = c.vitals.mana;
-    return `
-      <div class="tool-ficha__head" style="--who:${speaker.color}">
-        ${chatAvatarHTML(speaker)}
-        <span class="chat-who">${escapeHtml(c.name)}</span>
-        <a class="chat-link" href="${characterBase(c)}/${encodeURIComponent(c.id)}">${c.levelGrant && c.levelGrant.at ? 'subir de nível' : 'abrir'}</a>
-      </div>
-      <div class="tool-meters" data-ficha="${escapeHtml(c.id)}">
-        ${Object.keys(hp).map((part) => toolMeterHTML('data-ficha-hp', part, part, hp[part].cur, hp[part].max)).join('') || '<p class="chat-tray__hint">Sem HP na ficha.</p>'}
-        ${mana ? toolMeterHTML('data-ficha-mana', 'mana', 'Mana', mana.cur, mana.max) : ''}
-      </div>
-      <p class="chat-tool__sub">Status</p>
-      ${toolChipsHTML((c.statuses || []).map((s) => s.name), 'data-ficha-status-remove', 'data-ficha-status-input', 'Novo status')}`;
-  }
-
-  function toolNotesHTML(mesa, kind) {
-    const key = `${mesa.id}|${kind}`;
-    const loaded = Object.prototype.hasOwnProperty.call(MESA_NOTES, key);
-    return `
-      <textarea class="tool-notes" data-chat-notes="${kind}" ${loaded ? '' : 'disabled'} placeholder="${kind === 'mestre' ? 'Roteiro, segredos, ganchos…' : 'Pistas, nomes, dúvidas…'}" aria-label="${kind === 'mestre' ? 'Anotações do Mestre' : 'Notas'}">${escapeHtml(MESA_NOTES[key] || '')}</textarea>
-      <p class="tool-status" data-notes-status>${loaded ? '' : 'Carregando…'}</p>`;
-  }
-
-  function toolIniciativaHTML(mesa) {
-    const master = mesa.role === 'mestre';
-    const ini = mesaInitiative(mesa.id);
-    const options = [
-      ...CHARACTERS.filter((c) => c.mesaId === mesa.id).map((c) => `<option value="c:${escapeHtml(c.id)}">${escapeHtml(c.name)}</option>`),
-      ...(MESA_NPCS[mesa.id] || []).map((n) => `<option value="n:${escapeHtml(n.id)}">${escapeHtml(n.title)}</option>`)
-    ].join('');
-    return `
-      ${ini.entries.length ? `<p class="tool-ini__round">Rodada ${ini.round}</p>` : ''}
-      <ol class="tool-ini">
-        ${ini.entries.map((e, i) => `
-          <li class="${i === ini.turn ? 'is-turn' : ''}" style="--who:${e.color || 'var(--chat-soft)'}">
-            <span class="tool-ini__value">${e.value}</span>
-            <span class="tool-ini__name">${escapeHtml(e.name)}</span>
-            ${master ? `<button type="button" data-ini-remove="${escapeHtml(e.id)}" aria-label="Remover ${escapeHtml(e.name)}">×</button>` : ''}
-          </li>`).join('') || '<li class="tool-empty">Sem combate.</li>'}
-      </ol>
-      ${master ? `
-        ${ini.entries.length ? `
-          <div class="tool-row">
-            <button type="button" class="chat-button" data-ini-prev aria-label="Turno anterior">‹</button>
-            <button type="button" class="chat-button chat-button--primary" data-ini-next>Próximo</button>
-            <button type="button" class="chat-button" data-ini-clear>Encerrar</button>
-          </div>` : ''}
-        <div class="tool-ini__add">
-          <select data-ini-who aria-label="Quem entra">${options}<option value="">Outro…</option></select>
-          <input type="text" data-ini-name maxlength="40" placeholder="Nome" aria-label="Nome" hidden>
-          <input type="number" data-ini-value placeholder="—" aria-label="Valor (vazio rola)">
-          <button type="button" class="chat-button" data-ini-add>Entrar</button>
-        </div>
-        <button type="button" class="chat-link" data-ini-roll-all>rolar todos da mesa</button>` : ''}`;
-  }
-
-  function toolFixadasHTML(mesa) {
-    const pinned = (MESA_MESSAGES[mesa.id] || []).filter((m) => m.pinned);
-    if (!pinned.length) return '<p class="tool-empty">Nada fixado.</p>';
-    return `<ul class="tool-pins">${pinned.map((m) => {
-      const s = messageSpeaker(m);
-      const text = m.kind === 'cena' ? (m.data?.title || m.body) : (m.kind === 'imagem' ? (m.data?.title || 'Imagem') : m.body);
-      return `<li><button type="button" data-chat-jump="${escapeHtml(m.id)}" style="--who:${safeChatColor(s.color, s.id || s.name)}"><span class="chat-who">${escapeHtml(s.name)}</span>${escapeHtml(String(text || '').slice(0, 140))}</button></li>`;
-    }).join('')}</ul>`;
-  }
-
   function npcCombat(npc) {
     const raw = npc.combat && typeof npc.combat === 'object' ? npc.combat : {};
     const max = Number(raw.max) > 0 ? Number(raw.max) : (Math.round(beastHpTotal(npc.fields || {})) || 10);
@@ -6536,50 +6482,228 @@
     return { cur, max, conds: Array.isArray(raw.conds) ? raw.conds : [] };
   }
 
-  function toolNpcsHTML(mesa) {
-    const npcs = MESA_NPCS[mesa.id] || [];
-    const chars = CHARACTERS.filter((c) => c.mesaId === mesa.id && c.isNpc);
-    if (!npcs.length && !chars.length) return `<a class="chat-button" href="#/Mesas/${encodeURIComponent(mesa.id)}/npcs/criar">Criar NPC</a>`;
-    const charItems = chars.map((c) => {
-      ensureVitals(c);
-      const hp = c.vitals.hp || {};
-      const color = safeChatColor(c.identity?.chatColor, c.id);
-      const down = Object.keys(hp).length && Object.values(hp).every((v) => v.cur === 0);
-      return `
-        <li data-npcchar="${escapeHtml(c.id)}" class="${down ? 'is-down' : ''}" style="--who:${color}">
-          <div class="tool-npc__head">
-            ${chatAvatarHTML({ name: c.name, image: c.image })}
-            <span class="chat-who">${escapeHtml(c.name)}</span>
-            <button type="button" class="chat-link" data-chat-speaker="c:${escapeHtml(c.id)}">falar</button>
-            <button type="button" class="chat-link" data-npcchar-visible="${escapeHtml(c.id)}">${c.npcVisible ? 'visível' : 'oculto'}</button>
-          </div>
-          ${Object.keys(hp).map((part) => toolMeterHTML('data-npcchar-hp', `${c.id}|${part}`, part, hp[part].cur, hp[part].max)).join('') || '<p class="chat-tray__hint">Sem HP na ficha.</p>'}
-        </li>`;
-    }).join('');
-    return `<ul class="tool-npcs">${charItems}${npcs.map((n) => {
-      const cb = npcCombat(n);
-      return `
-        <li data-npc-combat="${escapeHtml(n.id)}" class="${cb.cur === 0 ? 'is-down' : ''}" style="--who:${chatColorFor(n.id)}">
-          <div class="tool-npc__head">
-            ${chatAvatarHTML({ name: n.title, image: n.image })}
-            <span class="chat-who">${escapeHtml(n.title)}</span>
-            <button type="button" class="chat-link" data-chat-speaker="n:${escapeHtml(n.id)}">falar</button>
-            <button type="button" class="chat-link" data-npc-visible="${escapeHtml(n.id)}">${n.visible ? 'visível' : 'oculto'}</button>
-          </div>
-          ${toolMeterHTML('data-npc-hp', n.id, 'HP', cb.cur, cb.max)}
-          ${toolChipsHTML(cb.conds, 'data-npc-cond-remove', 'data-npc-cond-input', 'Condição')}
-        </li>`;
-    }).join('')}</ul>`;
+  /* ── Fichas: jogadores e NPCs ── */
+  function charHpSummary(c) {
+    ensureVitals(c);
+    const parts = Object.values(c.vitals.hp || {});
+    const max = parts.reduce((a, p) => a + (Number(p.max) || 0), 0);
+    const cur = parts.reduce((a, p) => a + (Number(p.cur) || 0), 0);
+    return { cur, max };
   }
 
+  function fichaEntries(mesa) {
+    const master = mesa.role === 'mestre';
+    const players = CHARACTERS
+      .filter((c) => c.mesaId === mesa.id && !c.isNpc && (master || c.userId === auth.user?.id))
+      .map((c) => ({ key: `c:${c.id}`, name: c.name || 'Sem nome', image: c.image, color: safeChatColor(c.identity?.chatColor, c.id), sub: master ? memberName(mesa.id, c.userId) : (c.raceName || ''), hp: charHpSummary(c) }));
+    const npcs = !master ? [] : [
+      ...CHARACTERS.filter((c) => c.mesaId === mesa.id && c.isNpc)
+        .map((c) => ({ key: `c:${c.id}`, name: c.name || 'NPC', image: c.image, color: safeChatColor(c.identity?.chatColor, c.id), sub: c.npcVisible ? 'revelado' : 'oculto', hp: charHpSummary(c) })),
+      ...(MESA_NPCS[mesa.id] || []).map((n) => {
+        const cb = npcCombat(n);
+        return { key: `n:${n.id}`, name: n.title, image: n.image, color: chatColorFor(n.id), sub: n.visible ? 'revelado' : 'oculto', hp: { cur: cb.cur, max: cb.max } };
+      })
+    ];
+    return { players, npcs };
+  }
+
+  function toolListItemHTML(e, attr) {
+    const pct = e.hp && e.hp.max ? Math.round((e.hp.cur / e.hp.max) * 100) : null;
+    return `
+      <li><button type="button" class="tool-list__item" ${attr}="${escapeHtml(e.key)}" style="--who:${e.color}">
+        ${chatAvatarHTML({ name: e.name, image: e.image })}
+        <span class="tool-list__text"><span class="chat-who">${escapeHtml(e.name)}</span>${e.sub ? `<small>${escapeHtml(e.sub)}</small>` : ''}</span>
+        ${pct != null ? `<span class="tool-list__hp" title="${e.hp.cur}/${e.hp.max}"><i style="width:${pct}%"></i></span>` : ''}
+        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg>
+      </button></li>`;
+  }
+
+  function fichaSelection(mesa) {
+    const key = chatState.fichaSel || '';
+    const [type, id] = key.split(':');
+    if (type === 'c') {
+      const c = characterById(id);
+      const master = mesa.role === 'mestre';
+      if (c && c.mesaId === mesa.id && (master || c.userId === auth.user?.id)) return { type, c };
+    }
+    if (type === 'n' && mesa.role === 'mestre') {
+      const n = (MESA_NPCS[mesa.id] || []).find((x) => x.id === id);
+      if (n) return { type, n };
+    }
+    return null;
+  }
+
+  function fichaDetailHTML(mesa, sel) {
+    const sub = chatState.fichaSub === 'condicao' ? 'condicao' : 'combate';
+    const isChar = sel.type === 'c';
+    const name = isChar ? sel.c.name : sel.n.title;
+    const image = isChar ? sel.c.image : sel.n.image;
+    const color = isChar ? safeChatColor(sel.c.identity?.chatColor, sel.c.id) : chatColorFor(sel.n.id);
+    const editHref = isChar
+      ? `${characterBase(sel.c)}/${encodeURIComponent(sel.c.id)}/editar`
+      : `#/Mesas/${encodeURIComponent(mesa.id)}/npcs/${encodeURIComponent(sel.n.id)}/editar`;
+    let body = '';
+    if (sub === 'combate') {
+      if (isChar) {
+        const c = sel.c;
+        ensureVitals(c);
+        const hp = c.vitals.hp || {};
+        const { mod } = raceDataFor(c.raceId);
+        const awk = normalizeAwakening(c.magic);
+        const A = attrModsView(c, mod, awkIsNonMage(awk) ? awk.bonusAttr : '');
+        body = `
+          <div class="tool-meters" data-char="${escapeHtml(c.id)}">
+            ${Object.keys(hp).map((part) => toolMeterHTML('data-hp-part', part, part, hp[part].cur, hp[part].max)).join('') || '<p class="tool-empty">Sem HP na ficha.</p>'}
+            ${c.vitals.mana ? toolMeterHTML('data-mana', 'mana', 'Mana', c.vitals.mana.cur, c.vitals.mana.max) : ''}
+          </div>
+          <p class="chat-tool__sub">Testes</p>
+          <div class="chat-tray__tests">${CHAR_ATTRIBUTES.map((a) => {
+            const dice = Math.max(1, A[a].dice || 1);
+            return `<button type="button" class="chat-tray__test" data-chat-test="${escapeHtml(a)}" data-chat-test-dice="${dice}" data-test-char="${escapeHtml(c.id)}"><span>${escapeHtml(a)}</span><small>${fmtDice(dice)} + d12</small></button>`;
+          }).join('')}</div>`;
+      } else {
+        const cb = npcCombat(sel.n);
+        body = `<div class="tool-meters" data-npc="${escapeHtml(sel.n.id)}">${toolMeterHTML('data-npc-hp', sel.n.id, 'HP', cb.cur, cb.max)}</div>`;
+      }
+    } else {
+      const items = isChar ? (sel.c.statuses || []).map((s) => s.name) : npcCombat(sel.n).conds;
+      body = `<div data-cond-target="${escapeHtml(chatState.fichaSel)}">${toolChipsHTML(items, 'data-cond-remove', 'data-cond-input', 'Nova condição')}</div>`;
+    }
+    return `
+      <div class="tool-view tool-anim" data-tool-view="detail">
+        <div class="tool-detail__head" style="--who:${color}">
+          <button type="button" class="tool-back" data-ficha-back aria-label="Voltar">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M15 6l-6 6 6 6"/></svg>
+          </button>
+          ${chatAvatarHTML({ name, image })}
+          <span class="chat-who">${escapeHtml(name)}</span>
+        </div>
+        <nav class="tool-seg" aria-label="Opções da ficha">
+          <button type="button" class="${sub === 'combate' ? 'is-on' : ''}" data-ficha-sub="combate">Combate</button>
+          <button type="button" class="${sub === 'condicao' ? 'is-on' : ''}" data-ficha-sub="condicao">Condição</button>
+          <a href="${editHref}">Edição</a>
+        </nav>
+        <div class="tool-sub tool-anim" data-ficha-body>${body}</div>
+      </div>`;
+  }
+
+  function toolFichaHTML(mesa) {
+    const sel = fichaSelection(mesa);
+    if (sel) return fichaDetailHTML(mesa, sel);
+    chatState.fichaSel = '';
+    const { players, npcs } = fichaEntries(mesa);
+    const master = mesa.role === 'mestre';
+    return `
+      <div class="tool-view tool-anim" data-tool-view="list">
+        <p class="chat-tool__sub">Jogadores</p>
+        ${players.length
+          ? `<ul class="tool-list">${players.map((e) => toolListItemHTML(e, 'data-ficha-open')).join('')}</ul>`
+          : `<a class="chat-button" href="#/Mesas/${encodeURIComponent(mesa.id)}/fichas/criar">Criar ficha</a>`}
+        ${master ? `
+          <p class="chat-tool__sub">NPCs</p>
+          ${npcs.length
+            ? `<ul class="tool-list">${npcs.map((e) => toolListItemHTML(e, 'data-ficha-open')).join('')}</ul>`
+            : `<a class="chat-button" href="#/Mesas/${encodeURIComponent(mesa.id)}/npcs/criar">Criar NPC</a>`}` : ''}
+      </div>`;
+  }
+
+  /* ── Notas com formatação ── */
+  const NOTE_COLORS = ['#e6dfd1', '#c8a25a', '#b96a6a', '#7f9f78', '#6e98b8', '#a97a9c'];
+  const notesKey = (mesaId, userId, kind, target = '') => `${mesaId}|${userId}|${kind}|${target}`;
+
+  function notesEditorHTML(attrs, html, placeholder) {
+    return `
+      <div class="note-tools" role="toolbar" aria-label="Formatação">
+        <button type="button" data-fmt="bold" aria-label="Negrito"><b>N</b></button>
+        <button type="button" data-fmt="italic" aria-label="Itálico"><i>I</i></button>
+        <button type="button" data-fmt="underline" aria-label="Sublinhado"><u>S</u></button>
+        <button type="button" data-fmt="strikeThrough" aria-label="Riscado"><s>R</s></button>
+        <button type="button" data-fmt="insertUnorderedList" aria-label="Lista">•</button>
+        <span class="note-tools__sep"></span>
+        ${NOTE_COLORS.map((c) => `<button type="button" class="note-swatch" data-fmt-color="${c}" style="--swatch:${c}" aria-label="Cor"></button>`).join('')}
+        <button type="button" data-fmt="removeFormat" aria-label="Limpar formatação">⌫</button>
+      </div>
+      <div class="note-editor" contenteditable="true" ${attrs} data-placeholder="${escapeHtml(placeholder)}">${sanitizeHtml(html || '')}</div>
+      <p class="tool-status" data-notes-status></p>`;
+  }
+
+  function toolNotasHTML(mesa) {
+    const me = auth.user?.id;
+    const all = MESA_NOTES[`${mesa.id}|all`];
+    if (!all) return '<p class="tool-empty">Carregando…</p>';
+    const view = chatState.notesView && chatState.notesView !== me && all[chatState.notesView] != null ? chatState.notesView : me;
+    const others = Object.keys(all).filter((uid) => uid !== me && String(all[uid] || '').replace(/<[^>]+>/g, '').trim());
+    const pills = others.length ? `
+      <div class="tool-pills">
+        <button type="button" class="${view === me ? 'is-on' : ''}" data-notes-view="${escapeHtml(me)}">Minhas</button>
+        ${others.map((uid) => `<button type="button" class="${view === uid ? 'is-on' : ''}" data-notes-view="${escapeHtml(uid)}">${escapeHtml(memberName(mesa.id, uid))}</button>`).join('')}
+      </div>` : '';
+    if (view !== me) {
+      return `${pills}<div class="note-editor is-readonly tool-anim">${sanitizeHtml(all[view] || '')}</div>`;
+    }
+    return `${pills}${notesEditorHTML('data-chat-notes="pessoal"', all[me] || '', 'Suas notas. Todos da mesa podem ler.')}`;
+  }
+
+  function toolMestreHTML(mesa) {
+    const key = notesKey(mesa.id, auth.user?.id, 'mestre');
+    if (!Object.prototype.hasOwnProperty.call(MESA_NOTES, key)) return '<p class="tool-empty">Carregando…</p>';
+    return notesEditorHTML('data-chat-notes="mestre"', MESA_NOTES[key], 'Roteiro, segredos, ganchos… Só você vê.');
+  }
+
+  /* ── NPCs (Mestre): notas e edição rápida ── */
+  function toolNpcsHTML(mesa) {
+    const { npcs } = fichaEntries(mesa);
+    const sel = chatState.npcSel ? npcs.find((e) => e.key === chatState.npcSel) : null;
+    if (!sel) {
+      chatState.npcSel = '';
+      return npcs.length
+        ? `<div class="tool-view tool-anim"><ul class="tool-list">${npcs.map((e) => toolListItemHTML(e, 'data-npc-open')).join('')}</ul></div>`
+        : `<a class="chat-button" href="#/Mesas/${encodeURIComponent(mesa.id)}/npcs/criar">Criar NPC</a>`;
+    }
+    const [type, id] = sel.key.split(':');
+    const isChar = type === 'c';
+    const c = isChar ? characterById(id) : null;
+    const n = isChar ? null : (MESA_NPCS[mesa.id] || []).find((x) => x.id === id);
+    const visible = isChar ? c.npcVisible : n.visible;
+    const sheetHref = isChar ? `${characterBase(c)}/${encodeURIComponent(c.id)}` : `#/Mesas/${encodeURIComponent(mesa.id)}/npcs/${encodeURIComponent(n.id)}`;
+    const noteKey = notesKey(mesa.id, auth.user?.id, 'npc', id);
+    const loaded = Object.prototype.hasOwnProperty.call(MESA_NOTES, noteKey);
+    return `
+      <div class="tool-view tool-anim" data-tool-view="detail">
+        <div class="tool-detail__head" style="--who:${sel.color}">
+          <button type="button" class="tool-back" data-npc-back aria-label="Voltar">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M15 6l-6 6 6 6"/></svg>
+          </button>
+          ${chatAvatarHTML({ name: sel.name, image: sel.image })}
+          <span class="chat-who">${escapeHtml(sel.name)}</span>
+        </div>
+        <label class="chat-field"><span>Nome</span><input type="text" maxlength="80" value="${escapeHtml(sel.name)}" data-npc-name="${escapeHtml(sel.key)}"></label>
+        <div class="tool-row tool-row--wrap">
+          <button type="button" class="chat-button" data-npc-toggle-visible="${escapeHtml(sel.key)}">${visible ? 'Revelado aos jogadores' : 'Oculto dos jogadores'}</button>
+          <button type="button" class="chat-button" data-chat-speaker="${isChar ? `c:${escapeHtml(id)}` : `n:${escapeHtml(id)}`}">Falar como</button>
+        </div>
+        <div class="tool-row tool-row--wrap">
+          <a class="chat-button" href="${sheetHref}">Abrir ficha</a>
+          <a class="chat-button" href="${sheetHref}/editar">Editar ficha</a>
+        </div>
+        <p class="chat-tool__sub">Notas sobre o NPC</p>
+        ${loaded ? notesEditorHTML(`data-chat-notes="npc" data-note-target="${escapeHtml(id)}"`, MESA_NOTES[noteKey], 'Motivações, segredos, falas…') : '<p class="tool-empty">Carregando…</p>'}
+      </div>`;
+  }
+
+  /* ── Acervo (discreto) e cena ── */
   function toolAcervoHTML(mesa) {
     const images = MESA_IMAGES[mesa.id] || [];
     return `
-      <div class="tool-upload">
-        <label class="chat-button">Escolher imagem<input type="file" accept="image/*" data-acervo-file hidden></label>
-        <input type="text" maxlength="120" data-acervo-title placeholder="Título" aria-label="Título da imagem">
-        <button type="button" class="chat-button chat-button--primary" data-acervo-add>Guardar</button>
-      </div>
+      ${chatState.acervoOpen ? `
+        <div class="tool-upload tool-anim">
+          <label class="chat-button">Escolher imagem<input type="file" accept="image/*" data-acervo-file hidden></label>
+          <input type="text" maxlength="120" data-acervo-title placeholder="Título" aria-label="Título da imagem">
+          <div class="tool-row">
+            <button type="button" class="chat-button" data-acervo-toggle>Cancelar</button>
+            <button type="button" class="chat-button chat-button--primary" data-acervo-add>Guardar</button>
+          </div>
+        </div>` : '<button type="button" class="chat-button tool-new" data-acervo-toggle>+ Nova imagem</button>'}
       ${images.length ? `<ul class="tool-gallery">${images.map((img) => `
         <li>
           <img src="${escapeHtml(img.url)}" alt="" loading="lazy" decoding="async">
@@ -6589,7 +6713,7 @@
             <button type="button" class="chat-link" data-acervo-scene="${escapeHtml(img.id)}">cena</button>
             <button type="button" class="chat-link" data-acervo-remove="${escapeHtml(img.id)}">remover</button>
           </span>
-        </li>`).join('')}</ul>` : '<p class="tool-empty">Vazio.</p>'}`;
+        </li>`).join('')}</ul>` : ''}`;
   }
 
   function toolCenaHTML(mesa) {
@@ -6602,20 +6726,77 @@
       <button type="button" class="chat-button chat-button--primary" data-cena-open>Abrir cena</button>`;
   }
 
-  function chatToolHTML(mesa, toolId, speaker) {
-    const tool = chatToolsFor(mesa).find((t) => t.id === toolId) || chatToolsFor(mesa)[0];
+  /* ── Opções: membros e fixadas ── */
+  function toolFixadasHTML(mesa) {
+    const pinned = (MESA_MESSAGES[mesa.id] || []).filter((m) => m.pinned);
+    if (!pinned.length) return '<p class="tool-empty">Nada fixado.</p>';
+    return `<ul class="tool-pins">${pinned.map((m) => {
+      const s = messageSpeaker(m);
+      const text = m.kind === 'cena' ? (m.data?.title || m.body) : (m.kind === 'imagem' ? (m.data?.title || 'Imagem') : m.body);
+      return `<li><button type="button" data-chat-jump="${escapeHtml(m.id)}" style="--who:${safeChatColor(s.color, s.id || s.name)}"><span class="chat-who">${escapeHtml(s.name)}</span>${escapeHtml(String(text || '').slice(0, 140))}</button></li>`;
+    }).join('')}</ul>`;
+  }
+
+  function notifyOptionsHTML(mesa) {
+    const prefs = notifyPrefs();
+    const supported = 'Notification' in window;
+    const denied = supported && Notification.permission === 'denied';
+    return `
+      <label class="tool-toggle"><input type="checkbox" data-notify="sound" ${prefs.sound ? 'checked' : ''}> Som de nova mensagem</label>
+      <label class="tool-toggle ${supported ? '' : 'is-off'}"><input type="checkbox" data-notify="system" ${prefs.system && supported && !denied ? 'checked' : ''} ${supported ? '' : 'disabled'}> Avisos do celular e do computador</label>
+      ${!supported ? '<p class="tool-empty">No iPhone, adicione o site à Tela de Início para receber avisos.</p>' : ''}
+      ${denied ? '<p class="tool-empty">Os avisos estão bloqueados nas configurações do navegador.</p>' : ''}
+      <label class="tool-toggle"><input type="checkbox" data-notify-mute ${prefs.muted && prefs.muted[mesa.id] ? 'checked' : ''}> Silenciar esta mesa</label>`;
+  }
+
+  function toolOpcoesHTML(mesa) {
+    const online = new Set(chatState.online.map(([id]) => id));
+    const members = MESA_MEMBERS[mesa.id] || [];
+    return `
+      <p class="chat-tool__sub">Membros</p>
+      <ul class="tool-members">
+        ${members.map((m) => `
+          <li class="${online.has(m.userId) ? 'is-online' : ''}">
+            <span class="tool-members__dot" aria-hidden="true"></span>
+            <span class="tool-members__name">${escapeHtml(m.displayName || 'Jogador')}${m.userId === auth.user?.id ? ' <small>(você)</small>' : ''}</span>
+            <small>${escapeHtml(mesaRoleLabel(m.role))}</small>
+          </li>`).join('')}
+      </ul>
+      ${mesa.role === 'mestre' ? `<a class="chat-link" href="#/Mesas/${encodeURIComponent(mesa.id)}/membros">convite e senha</a>` : ''}
+      <p class="chat-tool__sub">Fixadas</p>
+      ${toolFixadasHTML(mesa)}
+      <p class="chat-tool__sub">Notificações</p>
+      ${notifyOptionsHTML(mesa)}`;
+  }
+
+  function chatToolHTML(mesa, toolId) {
+    const tool = chatToolsFor(mesa).find((t) => t.id === toolId && !t.soon) || chatToolsFor(mesa)[0];
     const body = {
-      dados: () => toolDadosHTML(mesa, speaker),
-      ficha: () => toolFichaHTML(mesa, speaker),
-      iniciativa: () => toolIniciativaHTML(mesa),
-      fixadas: () => toolFixadasHTML(mesa),
-      notas: () => toolNotesHTML(mesa, 'pessoal'),
+      dados: () => toolDadosHTML(mesa),
+      ficha: () => toolFichaHTML(mesa),
+      notas: () => toolNotasHTML(mesa),
       npcs: () => toolNpcsHTML(mesa),
       acervo: () => toolAcervoHTML(mesa),
       cena: () => toolCenaHTML(mesa),
-      mestre: () => toolNotesHTML(mesa, 'mestre')
+      mestre: () => toolMestreHTML(mesa),
+      opcoes: () => toolOpcoesHTML(mesa)
     }[tool.id]();
     return `<p class="chat-tool__title">${escapeHtml(tool.label)}</p><div class="chat-tool__body" data-tool-body="${tool.id}">${body}</div>`;
+  }
+
+  function chatRailHTML(mesa, tool) {
+    const tools = chatToolsFor(mesa);
+    const button = (t) => t.soon
+      ? `<button type="button" class="chat-rail__btn is-soon" title="${escapeHtml(t.label)}" aria-label="${escapeHtml(t.label)}" aria-disabled="true" tabindex="-1">${t.icon}</button>`
+      : `<button type="button" class="chat-rail__btn ${t.id === tool.id && tool.open ? 'is-active' : ''}" data-chat-tool="${t.id}" title="${escapeHtml(t.label)}" aria-label="${escapeHtml(t.label)}" aria-pressed="${t.id === tool.id && tool.open}">${t.icon}</button>`;
+    const main = tools.filter((t) => !t.master && !t.bottom);
+    const master = tools.filter((t) => t.master);
+    const bottom = tools.filter((t) => t.bottom);
+    return `
+      ${main.map(button).join('')}
+      ${master.length ? `<span class="chat-rail__sep" aria-hidden="true"></span>${master.map(button).join('')}` : ''}
+      <span class="chat-rail__spacer" aria-hidden="true"></span>
+      ${bottom.map(button).join('')}`;
   }
 
   function mesaChatPanel(mesa) {
@@ -6624,7 +6805,6 @@
     chatState.mesaId = mesa.id;
     chatState.speakerKey = speaker.key;
     const tool = activeChatTool(mesa);
-    const tools = chatToolsFor(mesa);
     const master = mesa.role === 'mestre';
     return `
       <section class="chat ${observer ? 'chat--observer' : ''}" data-chat="${escapeHtml(mesa.id)}">
@@ -6643,6 +6823,13 @@
               <button type="button" class="chat-button chat-button--primary" data-attach-send>Enviar</button>
               <button type="button" class="chat-button" data-attach-cancel aria-label="Descartar imagem">×</button>
             </div>
+            <div class="chat__fmt" role="toolbar" aria-label="Formatação">
+              <button type="button" data-chat-wrap="action" title="Ação: **texto**"><b>Ação</b></button>
+              <button type="button" data-chat-wrap="speech" title="Fala: -- texto --">— Fala —</button>
+              <button type="button" data-chat-wrap="thought" title="Pensamento: ((texto))"><i>“Pensamento”</i></button>
+              <button type="button" data-chat-wrap="spoiler" title="Spoiler: ||texto||">Spoiler</button>
+              <button type="button" data-chat-wrap="turn" title="Passar a vez: >>">Passar a vez »</button>
+            </div>
             <div class="chat__input">
               <div class="chat-speaker">
                 <button type="button" class="chat-speaker__toggle" data-chat-speaker-toggle aria-haspopup="true" aria-expanded="false" title="Falando como">${chatSpeakerButtonHTML(speaker)}</button>
@@ -6656,10 +6843,8 @@
         </div>
         ${observer ? '' : `
         <aside class="chat-side ${tool.open ? '' : 'is-collapsed'}" data-chat-side>
-          <nav class="chat-rail" aria-label="Ferramentas">
-            ${tools.map((t) => `<button type="button" class="chat-rail__btn ${t.id === tool.id && tool.open ? 'is-active' : ''}" data-chat-tool="${t.id}" title="${escapeHtml(t.label)}" aria-label="${escapeHtml(t.label)}" aria-pressed="${t.id === tool.id && tool.open}">${t.icon}</button>`).join('')}
-          </nav>
-          <div class="chat-tool" data-chat-tool-panel>${tool.open ? chatToolHTML(mesa, tool.id, speaker) : ''}</div>
+          <nav class="chat-rail" aria-label="Ferramentas">${chatRailHTML(mesa, tool)}</nav>
+          <div class="chat-tool" data-chat-tool-panel>${tool.open ? chatToolHTML(mesa, tool.id) : ''}</div>
         </aside>`}
       </section>`;
   }
@@ -6673,38 +6858,6 @@
     return (value % max) + 1;
   }
 
-  function rollGroups(pool, mod) {
-    const groups = Object.entries(pool)
-      .filter(([, n]) => n > 0)
-      .map(([sides, n]) => ({ sides: Number(sides), rolls: Array.from({ length: n }, () => randomInt(Number(sides))) }));
-    const total = groups.reduce((sum, g) => sum + g.rolls.reduce((a, b) => a + b, 0), 0) + Number(mod || 0);
-    const expr = groups.map((g) => `${g.rolls.length}d${g.sides}`).join(' + ') + (mod ? ` ${mod > 0 ? '+' : '−'} ${Math.abs(mod)}` : '');
-    return { groups, mod: Number(mod || 0), total, expr };
-  }
-
-  /* "2d6+1d4-1", "d20", "4d6 + 2" → { pool, mod } ou null. */
-  function parseDiceExpr(text) {
-    const clean = String(text || '').replace(/\s+/g, '').toLowerCase();
-    if (!clean || !/^[+-]?(\d*d\d+|\d+)([+-](\d*d\d+|\d+))*$/.test(clean)) return null;
-    const pool = {};
-    let mod = 0;
-    let count = 0;
-    for (const [, sign, term] of clean.matchAll(/([+-]?)(\d*d\d+|\d+)/g)) {
-      const k = sign === '-' ? -1 : 1;
-      if (term.includes('d')) {
-        const [n, sides] = term.split('d');
-        const qty = Number(n || 1);
-        const faces = Number(sides);
-        if (k < 0 || faces < 2 || faces > 1000 || qty < 1) return null;
-        pool[faces] = (pool[faces] || 0) + qty;
-        count += qty;
-      } else {
-        mod += k * Number(term);
-      }
-    }
-    return count && count <= 60 ? { pool, mod } : null;
-  }
-
   function arcanoTest(attr, dice) {
     const d6s = Array.from({ length: dice }, () => randomInt(6));
     const destiny = randomInt(12);
@@ -6713,6 +6866,218 @@
       test: { attr, dice, d6s, destiny, reading: destinyReading(destiny) }
     };
   }
+
+  /* ── Calculadora de rolagem ──────────────────────
+     Números, dados (NdM), + − × ÷, % (porcentagem) e parênteses.
+     "2d6 + 1d8 × 2 − 3", "(1d20 + 5) ÷ 2", "1d100 × 50%". */
+  const ROLL_MAX_DICE = 100;
+  function formatRollNumber(n) {
+    return Number(n).toLocaleString('pt-BR', { maximumFractionDigits: 2 });
+  }
+  function evaluateRoll(input) {
+    const src = String(input || '')
+      .toLowerCase()
+      .replace(/×/g, '*').replace(/÷/g, '/').replace(/−/g, '-')
+      .replace(/(\d|\))\s*x\s*(?=[\d(])/g, '$1*')
+      .replace(/,/g, '.')
+      .trim();
+    if (!src) return { error: 'vazio' };
+    const tokens = [];
+    const re = /\s*(\d*d\d+|\d+(?:\.\d+)?|[()+\-*/%])/y;
+    let pos = 0;
+    while (pos < src.length) {
+      re.lastIndex = pos;
+      const m = re.exec(src);
+      if (!m) return { error: 'invalido' };
+      tokens.push(m[1]);
+      pos = re.lastIndex;
+      while (pos < src.length && /\s/.test(src[pos])) pos++;
+    }
+    let i = 0;
+    let diceCount = 0;
+    const groups = [];
+    const peek = () => tokens[i];
+    const take = () => tokens[i++];
+    const fail = (why) => { throw new Error(why); };
+
+    function primary() {
+      const t = take();
+      if (t === undefined) fail('fim');
+      if (t === '(') {
+        const inner = expr();
+        if (take() !== ')') fail('parenteses');
+        return { v: inner.v, s: `(${inner.s})` };
+      }
+      if (/^\d*d\d+$/.test(t)) {
+        const [n, sides] = t.split('d');
+        const qty = Number(n || 1);
+        const faces = Number(sides);
+        if (qty < 1 || faces < 2 || faces > 1000) fail('dado');
+        diceCount += qty;
+        if (diceCount > ROLL_MAX_DICE) fail('muitos');
+        const rolls = Array.from({ length: qty }, () => randomInt(faces));
+        groups.push({ sides: faces, rolls });
+        const sum = rolls.reduce((a, b) => a + b, 0);
+        return { v: sum, s: rolls.length > 1 ? `(${rolls.join('+')})` : String(sum), dice: `${qty}d${faces}` };
+      }
+      if (/^\d/.test(t)) return { v: Number(t), s: formatRollNumber(Number(t)) };
+      return fail('token');
+    }
+    function factor() {
+      if (peek() === '-') { take(); const f = factor(); return { v: -f.v, s: `−${f.s}` }; }
+      if (peek() === '+') { take(); return factor(); }
+      let p = primary();
+      while (peek() === '%') { take(); p = { v: p.v / 100, s: `${p.s}%` }; }
+      return p;
+    }
+    function term() {
+      let left = factor();
+      while (peek() === '*' || peek() === '/') {
+        const op = take();
+        const right = factor();
+        if (op === '/' && right.v === 0) fail('zero');
+        left = { v: op === '*' ? left.v * right.v : left.v / right.v, s: `${left.s} ${op === '*' ? '×' : '÷'} ${right.s}` };
+      }
+      return left;
+    }
+    function expr() {
+      let left = term();
+      while (peek() === '+' || peek() === '-') {
+        const op = take();
+        const right = term();
+        left = { v: op === '+' ? left.v + right.v : left.v - right.v, s: `${left.s} ${op === '+' ? '+' : '−'} ${right.s}` };
+      }
+      return left;
+    }
+    try {
+      const out = expr();
+      if (i < tokens.length) fail('sobra');
+      const pretty = tokens.join(' ')
+        .replace(/\s*\*\s*/g, ' × ').replace(/\s*\/\s*/g, ' ÷ ').replace(/\s+-\s+/g, ' − ')
+        .replace(/\(\s+/g, '(').replace(/\s+\)/g, ')').replace(/\s+%/g, '%').replace(/^-\s*/, '−');
+      const total = Math.round(out.v * 100) / 100;
+      return { expr: pretty, groups, total, calc: out.s };
+    } catch (err) {
+      return { error: err.message || 'invalido' };
+    }
+  }
+
+  /* ── Notificações de mensagens: som e aviso do sistema ── */
+  const NOTIFY_KEY = 'arcano.notify';
+  const MESA_UNREAD = {};
+  let notifyChannel = null;
+  let notifyAudio = null;
+  let notifySW = null;
+
+  function notifyPrefs() {
+    return { sound: true, system: false, muted: {}, ...storageGet(NOTIFY_KEY, {}) };
+  }
+  function setNotifyPrefs(prefs) {
+    storageSet(NOTIFY_KEY, prefs);
+  }
+
+  // O navegador só deixa tocar som depois de um toque ou clique na página.
+  document.addEventListener('pointerdown', () => {
+    try {
+      notifyAudio = notifyAudio || new (window.AudioContext || window.webkitAudioContext)();
+      if (notifyAudio.state === 'suspended') notifyAudio.resume();
+    } catch { /* sem áudio */ }
+  }, { once: true, capture: true });
+
+  function playChime() {
+    try {
+      if (!notifyAudio) return;
+      const t = notifyAudio.currentTime;
+      [660, 990].forEach((freq, n) => {
+        const osc = notifyAudio.createOscillator();
+        const gain = notifyAudio.createGain();
+        const at = t + n * 0.11;
+        osc.type = 'sine';
+        osc.frequency.value = freq;
+        gain.gain.setValueAtTime(0.0001, at);
+        gain.gain.exponentialRampToValueAtTime(0.09, at + 0.02);
+        gain.gain.exponentialRampToValueAtTime(0.0001, at + 0.38);
+        osc.connect(gain).connect(notifyAudio.destination);
+        osc.start(at);
+        osc.stop(at + 0.4);
+      });
+    } catch { /* sem áudio */ }
+  }
+
+  async function registerNotifyWorker() {
+    if (notifySW || !('serviceWorker' in navigator)) return notifySW;
+    try {
+      notifySW = await navigator.serviceWorker.register('sw.js');
+      navigator.serviceWorker.addEventListener('message', (event) => {
+        if (event.data && event.data.type === 'open' && event.data.hash) location.hash = event.data.hash;
+      });
+    } catch (err) {
+      console.warn('[O Arcano] Sem service worker:', err);
+    }
+    return notifySW;
+  }
+
+  async function showSystemNotification(title, body, hash, tag) {
+    if (!('Notification' in window) || Notification.permission !== 'granted') return;
+    const reg = notifySW || await registerNotifyWorker();
+    const options = { body, tag, renotify: true, icon: 'assets/images/Logo.png', data: { hash } };
+    if (reg && reg.showNotification) {
+      reg.showNotification(title, options);
+      return;
+    }
+    try {
+      const n = new Notification(title, options);
+      n.onclick = () => { window.focus(); location.hash = hash; n.close(); };
+    } catch { /* celular sem service worker */ }
+  }
+
+  function refreshUnreadTitle() {
+    const total = Object.values(MESA_UNREAD).reduce((a, b) => a + b, 0);
+    const base = document.title.replace(/^\(\d+\)\s*/, '');
+    document.title = total ? `(${total}) ${base}` : base;
+  }
+
+  function clearMesaUnread(mesaId) {
+    if (MESA_UNREAD[mesaId]) {
+      delete MESA_UNREAD[mesaId];
+      refreshUnreadTitle();
+    }
+  }
+
+  function messagePreview(msg) {
+    if (msg.kind === 'rolagem') return msg.data && msg.data.secret ? 'rolou dados em segredo' : `rolou ${msg.data?.expr || 'dados'}`;
+    if (msg.kind === 'imagem') return 'enviou uma imagem';
+    if (msg.kind === 'cena') return `abriu a cena ${msg.data?.title || ''}`.trim();
+    return String(msg.body || '').replace(/\*\*|\(\(|\)\)|\|\||~~|--|>>/g, '').replace(/\s+/g, ' ').trim().slice(0, 140);
+  }
+
+  function onAnyMesaMessage(msg) {
+    if (!msg || !auth.user || msg.user_id === auth.user.id) return;
+    const prefs = notifyPrefs();
+    if (prefs.muted && prefs.muted[msg.mesa_id]) return;
+    const viewing = chatState.mesaId === msg.mesa_id && !!document.querySelector(`[data-chat="${CSS.escape(msg.mesa_id)}"]`);
+    if (viewing && !document.hidden) return;
+    MESA_UNREAD[msg.mesa_id] = (MESA_UNREAD[msg.mesa_id] || 0) + 1;
+    refreshUnreadTitle();
+    if (prefs.sound) playChime();
+    if (prefs.system && document.hidden) {
+      const mesa = mesaById(msg.mesa_id);
+      const s = messageSpeaker(msg);
+      showSystemNotification(`${s.name} · ${mesa ? mesa.name : 'Mesa'}`, messagePreview(msg), `#/Mesas/${msg.mesa_id}/chat`, `mesa-${msg.mesa_id}`);
+    }
+  }
+
+  function startMessageNotifications() {
+    if (!sb || !auth.user || notifyChannel) return;
+    notifyChannel = sb.channel('arcano-notify')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'mesa_messages' }, (payload) => onAnyMesaMessage(payload.new))
+      .subscribe();
+    if (notifyPrefs().system) registerNotifyWorker();
+  }
+
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden && chatState.mesaId && document.querySelector(`[data-chat="${CSS.escape(chatState.mesaId)}"]`)) clearMesaUnread(chatState.mesaId);
+  });
 
   /* ── Envio ───────────────────────────────────── */
   async function sendChatMessage(mesaId, row) {
@@ -6725,8 +7090,8 @@
     return data;
   }
 
-  async function sendChatRoll(mesa, result, { secret = false } = {}) {
-    const speaker = speakerPayload(currentSpeaker(mesa));
+  async function sendChatRoll(mesa, result, { secret = false, speaker: forced = null } = {}) {
+    const speaker = forced || speakerPayload(currentSpeaker(mesa));
     if (!secret) return sendChatMessage(mesa.id, { kind: 'rolagem', speaker, data: { ...result } });
     const label = result.test ? { test: { attr: result.test.attr, dice: result.test.dice } } : { expr: result.expr };
     const msg = await sendChatMessage(mesa.id, { kind: 'rolagem', speaker, data: { ...label, secret: true, revealed: false } });
@@ -6768,9 +7133,9 @@
       const rest = (command[2] || '').trim();
       if (name === 'r' || name === 'gr') {
         if (name === 'gr' && !master) return { error: 'Só o Mestre rola em segredo.' };
-        const parsed = parseDiceExpr(rest || 'd20');
-        if (!parsed) return { error: 'Não entendi os dados. Exemplo: /r 2d6+1' };
-        return { roll: rollGroups(parsed.pool, parsed.mod), secret: name === 'gr' };
+        const roll = evaluateRoll(rest || '1d20');
+        if (roll.error) return { error: 'Não entendi a conta. Exemplo: /r 2d6 + 1d8 × 2 − 3' };
+        return { roll, secret: name === 'gr' };
       }
       if (name === 'cena') {
         if (!master) return { error: 'Só o Mestre abre cenas.' };
@@ -6888,6 +7253,7 @@
         Object.values(state).flat().forEach((p) => { if (p && p.user) names.set(p.user, p.name || 'Jogador'); });
         chatState.online = [...names.entries()];
         renderChatPresence();
+        chatState.renderTool?.('opcoes');
       })
       .on('broadcast', { event: 'typing' }, ({ payload }) => {
         if (!payload || payload.user === auth.user?.id) return;
@@ -6943,6 +7309,7 @@
     log.querySelector('.chat-empty')?.remove();
     const nearBottom = log.scrollHeight - log.scrollTop - log.clientHeight < 140;
     log.insertAdjacentHTML('beforeend', mesaMessageHTML(mesaId, row, list[list.length - 2]));
+    if (row.kind === 'rolagem' && !(row.data && row.data.levelUp)) animateRollNode(log.lastElementChild);
     if (nearBottom || row.user_id === auth.user?.id) log.scrollTop = log.scrollHeight;
   }
 
@@ -6992,42 +7359,49 @@
     chatFitFrame = requestAnimationFrame(fitChatHeight);
   }
 
-  async function loadMesaNotes(mesaId, kind) {
-    const key = `${mesaId}|${kind}`;
+  /* Notas pessoais: todos da mesa leem; cada um escreve a sua. */
+  async function loadMesaNotesAll(mesaId) {
+    const { data, error } = await sb.from('mesa_notes').select('user_id,body').eq('mesa_id', mesaId).eq('kind', 'pessoal');
+    if (error) { console.error('Erro ao carregar notas:', error); MESA_NOTES[`${mesaId}|all`] = {}; return; }
+    const map = {};
+    (data || []).forEach((row) => { map[row.user_id] = row.body || ''; });
+    if (auth.user && map[auth.user.id] == null) map[auth.user.id] = '';
+    MESA_NOTES[`${mesaId}|all`] = map;
+  }
+
+  /* Notas privadas do Mestre (gerais ou de um NPC). */
+  async function loadPrivateNote(mesaId, kind, target = '') {
+    const key = notesKey(mesaId, auth.user?.id, kind, target);
     if (Object.prototype.hasOwnProperty.call(MESA_NOTES, key)) return;
-    const { data, error } = await sb.from('mesa_notes').select('body').eq('mesa_id', mesaId).eq('user_id', auth.user.id).eq('kind', kind).maybeSingle();
-    if (error) { console.error('Erro ao carregar notas:', error); return; }
+    const { data, error } = await sb.from('mesa_notes').select('body').eq('mesa_id', mesaId).eq('user_id', auth.user.id).eq('kind', kind).eq('target', target).maybeSingle();
+    if (error) { console.error('Erro ao carregar notas:', error); MESA_NOTES[key] = ''; return; }
     MESA_NOTES[key] = data ? data.body : '';
   }
 
-  async function saveMesaInitiative(mesaId, ini) {
-    MESA_STATE[mesaId] = ini;
-    const { error } = await sb.from('mesa_state').upsert({ mesa_id: mesaId, initiative: ini, updated_at: new Date().toISOString() }, { onConflict: 'mesa_id' });
-    if (error) toast('Iniciativa não salva: ' + error.message);
-  }
-
-  function initiativeRoll(mesa, key) {
-    const [type, id] = key.split(':');
-    if (type === 'c') {
-      const c = characterById(id);
-      if (!c) return null;
-      const { mod } = raceDataFor(c.raceId);
-      const awk = normalizeAwakening(c.magic);
-      const A = attrModsView(c, mod, awkIsNonMage(awk) ? awk.bonusAttr : '');
-      const dice = Math.max(1, A['Destreza'].dice || 1);
-      const value = randomInt(12) + Array.from({ length: dice }, () => randomInt(6)).reduce((a, b) => a + b, 0);
-      return { id: key, name: c.name, value, color: safeChatColor(c.identity?.chatColor, c.id) };
-    }
-    const n = (MESA_NPCS[mesa.id] || []).find((x) => x.id === id);
-    if (!n) return null;
-    return { id: key, name: n.title, value: randomInt(6) + randomInt(12), color: chatColorFor(n.id) };
-  }
-
-  function sortInitiative(ini) {
-    const current = ini.entries[ini.turn];
-    ini.entries.sort((a, b) => b.value - a.value || a.name.localeCompare(b.name, 'pt-BR'));
-    ini.turn = current ? Math.max(0, ini.entries.indexOf(current)) : 0;
-    return ini;
+  /* Rolagem chegando ao chat: os dados giram e o total aparece no fim. */
+  function animateRollNode(node) {
+    if (!node || document.hidden || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    const dice = [...node.querySelectorAll('.chat-roll__dice .chat-die')];
+    if (!dice.length) return;
+    const finals = dice.map((d) => d.textContent);
+    const sides = dice.map((d) => {
+      if (d.classList.contains('chat-die--destiny')) return 12;
+      const m = /d(\d+)/.exec(d.getAttribute('title') || '');
+      return m ? Number(m[1]) : 6;
+    });
+    node.classList.add('is-rolling');
+    const started = performance.now();
+    const tick = () => {
+      if (performance.now() - started > 700) {
+        dice.forEach((d, i) => { d.textContent = finals[i]; });
+        node.classList.remove('is-rolling');
+        node.classList.add('is-rolled');
+        return;
+      }
+      dice.forEach((d, i) => { d.textContent = String(1 + Math.floor(Math.random() * sides[i])); });
+      setTimeout(tick, 55);
+    };
+    tick();
   }
 
   function attachMesaChat() {
@@ -7038,6 +7412,7 @@
     const mesa = mesaById(mesaId);
     if (!mesa) return;
     document.body.classList.add('is-mesa-chat');
+    clearMesaUnread(mesaId);
     fitChatHeight();
     if (!chatResizeBound) {
       chatResizeBound = true;
@@ -7069,7 +7444,21 @@
     let notesTimer = null;
 
     const currentTool = () => activeChatTool(mesa);
-    const renderTool = () => {
+    const ensureToolData = (tool) => {
+      if (tool.id === 'notas' && !MESA_NOTES[`${mesaId}|all`]) {
+        loadMesaNotesAll(mesaId).then(() => chatState.renderTool('notas'));
+      }
+      if (tool.id === 'mestre') {
+        const key = notesKey(mesaId, auth.user?.id, 'mestre');
+        if (!Object.prototype.hasOwnProperty.call(MESA_NOTES, key)) loadPrivateNote(mesaId, 'mestre').then(() => chatState.renderTool('mestre'));
+      }
+      if (tool.id === 'npcs' && chatState.npcSel) {
+        const id = chatState.npcSel.split(':')[1];
+        const key = notesKey(mesaId, auth.user?.id, 'npc', id);
+        if (!Object.prototype.hasOwnProperty.call(MESA_NOTES, key)) loadPrivateNote(mesaId, 'npc', id).then(() => chatState.renderTool('npcs'));
+      }
+    };
+    const renderTool = ({ animate = false } = {}) => {
       if (!panel) return;
       const tool = currentTool();
       side.classList.toggle('is-collapsed', !tool.open);
@@ -7078,22 +7467,26 @@
         b.classList.toggle('is-active', on);
         b.setAttribute('aria-pressed', String(on));
       });
-      panel.innerHTML = tool.open ? chatToolHTML(mesa, tool.id, currentSpeaker(mesa)) : '';
-      if (tool.open && (tool.id === 'notas' || tool.id === 'mestre')) {
-        const kind = tool.id === 'mestre' ? 'mestre' : 'pessoal';
-        loadMesaNotes(mesaId, kind).then(() => {
-          if (currentTool().id === tool.id) panel.innerHTML = chatToolHTML(mesa, tool.id, currentSpeaker(mesa));
-        });
+      panel.innerHTML = tool.open ? chatToolHTML(mesa, tool.id) : '';
+      if (animate && tool.open) {
+        panel.classList.remove('is-opening'); void panel.offsetWidth; panel.classList.add('is-opening');
       }
+      if (tool.open) ensureToolData(tool);
       fitChatHeight();
     };
     const openTool = (id) => {
       storageSet(toolStoreKey, { id, open: true });
-      renderTool();
+      renderTool({ animate: true });
     };
     chatState.renderTool = (only) => {
       if (document.querySelector('[data-chat]') !== root) return;
-      if (!only || currentTool().id === only) renderTool();
+      const tool = currentTool();
+      if (!tool.open) return;
+      if (!only || tool.id === only) {
+        // Não redesenha por cima de quem está digitando numa nota.
+        if (panel.contains(document.activeElement) && document.activeElement.closest('[data-chat-notes], input, textarea')) return;
+        renderTool();
+      }
     };
 
     const setSpeaker = (key) => {
@@ -7102,26 +7495,81 @@
       const speaker = currentSpeaker(mesa);
       if (toggle) toggle.innerHTML = chatSpeakerButtonHTML(speaker);
       if (menu) menu.innerHTML = chatSpeakerMenuHTML(mesa, speaker);
-      const id = currentTool().id;
-      if (id === 'dados' || id === 'ficha') renderTool();
     };
     const closeMenu = () => { if (menu) { menu.hidden = true; toggle?.setAttribute('aria-expanded', 'false'); } };
 
-    const syncPool = () => {
-      const pool = root.querySelector('[data-chat-pool]');
-      if (pool) pool.innerHTML = chatPoolHTML();
-      root.querySelectorAll('[data-chat-die-count]').forEach((b) => {
-        const n = chatState.pool[b.dataset.chatDieCount] || 0;
-        b.textContent = n ? `×${n}` : '';
-      });
+    /* Dados: a conta digitada é a fonte da verdade; os botões só a editam. */
+    const syncDice = ({ fromInput = false } = {}) => {
+      const input = root.querySelector('[data-dice-expr]');
+      if (input && !fromInput) input.value = chatState.expr;
+      if (input) {
+        const check = chatState.expr.trim() ? evaluateRoll(chatState.expr) : null;
+        input.classList.toggle('is-invalid', !!(check && check.error));
+      }
+      const stage = root.querySelector('[data-dice-stage]');
+      if (stage && !stage.classList.contains('is-rolling')) stage.innerHTML = diceStageHTML();
     };
-    chatState.pool = {};
-    syncPool();
+    const addDie = (sides) => {
+      const expr = chatState.expr.trim();
+      const last = new RegExp(`(\\d*)d${sides}$`, 'i').exec(expr);
+      if (last) chatState.expr = expr.slice(0, last.index) + `${Number(last[1] || 1) + 1}d${sides}`;
+      else chatState.expr = !expr || /[+\-−×÷*/(]$/.test(expr) ? `${expr}${expr ? ' ' : ''}1d${sides}` : `${expr} + 1d${sides}`;
+      chatState.stageSides = sides;
+      chatState.stageResult = null;
+    };
+    const removeDie = (sides) => {
+      const expr = chatState.expr;
+      const re = new RegExp(`(\\s*[+\\-−]\\s*)?(\\d*)d${sides}(?!\\d)`, 'gi');
+      let match = null;
+      let m;
+      while ((m = re.exec(expr))) match = m;
+      if (!match) return;
+      const qty = Number(match[2] || 1);
+      const replacement = qty > 1 ? `${match[1] || ''}${qty - 1}d${sides}` : '';
+      chatState.expr = (expr.slice(0, match.index) + replacement + expr.slice(match.index + match[0].length)).replace(/^\s*[+]\s*/, '').trim();
+    };
+    const addKey = (key) => {
+      const expr = chatState.expr.trim();
+      if (key === '+1' || key === '−1') {
+        const m = /\s*([+\-−])\s*(\d+)$/.exec(expr);
+        const delta = key === '+1' ? 1 : -1;
+        if (m && !/d\d*$/i.test(expr.slice(0, m.index + m[0].length - m[2].length))) {
+          const value = (m[1] === '+' ? 1 : -1) * Number(m[2]) + delta;
+          const head = expr.slice(0, m.index);
+          chatState.expr = value === 0 ? head : `${head} ${value > 0 ? '+' : '−'} ${Math.abs(value)}`;
+        } else {
+          // Depois de um operador entra só o número (× −1); senão soma ou subtrai 1.
+          if (/[+\-−×÷*/(]$/.test(expr)) chatState.expr = `${expr} ${delta > 0 ? '' : '−'}1`;
+          else chatState.expr = expr ? `${expr} ${delta > 0 ? '+' : '−'} 1` : String(delta);
+        }
+        return;
+      }
+      chatState.expr = key === '(' || key === ')' || key === '%' ? `${expr}${key === '(' && expr && !/[(+\-−×÷]$/.test(expr) ? ' × ' : ''}${key}` : `${expr} ${key} `;
+    };
+    chatState.expr = chatState.expr || '';
 
-    const fichaChar = () => {
-      const speaker = currentSpeaker(mesa);
-      return speaker.type === 'character' ? characterById(speaker.id) : null;
+    const rollOnStage = (result) => {
+      const stage = root.querySelector('[data-dice-stage]');
+      chatState.stageResult = result;
+      chatState.stageSides = result.groups.length ? result.groups[0].sides : (chatState.stageSides || 20);
+      if (!stage || window.matchMedia('(prefers-reduced-motion: reduce)').matches) { syncDice(); return; }
+      const sides = chatState.stageSides;
+      stage.classList.add('is-rolling');
+      const started = performance.now();
+      const spin = () => {
+        if (!stage.isConnected) return;
+        if (performance.now() - started > 750) {
+          stage.classList.remove('is-rolling');
+          stage.innerHTML = diceStageHTML();
+          stage.classList.remove('is-landed'); void stage.offsetWidth; stage.classList.add('is-landed');
+          return;
+        }
+        stage.querySelector('[data-stage-die]').innerHTML = dieIconSVG(sides, 132, 1 + Math.floor(Math.random() * sides));
+        setTimeout(spin, 60);
+      };
+      spin();
     };
+
     const saveFicha = (c) => {
       clearTimeout(fichaTimer);
       fichaTimer = setTimeout(() => {
@@ -7134,28 +7582,52 @@
       if (error) toast('NPC não salvo: ' + error.message);
     };
     const npcById = (id) => (MESA_NPCS[mesaId] || []).find((n) => n.id === id);
+    const condTarget = (key) => {
+      const [type, id] = String(key || '').split(':');
+      return type === 'c' ? { c: characterById(id) } : { n: npcById(id) };
+    };
+    const charSpeaker = (c) => ({ type: 'character', id: c.id, name: c.name, image: c.image || '', color: safeChatColor(c.identity?.chatColor, c.id) });
+
+    const saveNote = (editor) => {
+      const kind = editor.dataset.chatNotes;
+      const target = editor.dataset.noteTarget || '';
+      const html = sanitizeHtml(editor.innerHTML).trim();
+      if (kind === 'pessoal') {
+        const all = MESA_NOTES[`${mesaId}|all`] || (MESA_NOTES[`${mesaId}|all`] = {});
+        all[auth.user.id] = html;
+      } else {
+        MESA_NOTES[notesKey(mesaId, auth.user.id, kind, target)] = html;
+      }
+      const status = root.querySelector('[data-notes-status]');
+      if (status) status.textContent = '…';
+      clearTimeout(notesTimer);
+      notesTimer = setTimeout(async () => {
+        const { error } = await sb.from('mesa_notes').upsert(
+          { mesa_id: mesaId, user_id: auth.user.id, kind, target, body: html, updated_at: new Date().toISOString() },
+          { onConflict: 'mesa_id,user_id,kind,target' }
+        );
+        const now = root.querySelector('[data-notes-status]');
+        if (now) now.textContent = error ? 'Não salvou' : 'Salvo';
+      }, 700);
+    };
 
     root.addEventListener('contextmenu', (event) => {
       const die = event.target.closest('[data-chat-die]');
       if (!die) return;
       event.preventDefault();
-      const sides = die.dataset.chatDie;
-      chatState.pool[sides] = Math.max(0, (chatState.pool[sides] || 0) - 1);
-      syncPool();
+      removeDie(die.dataset.chatDie);
+      syncDice();
+    });
+
+    // Botões de formatação não podem roubar a seleção do editor.
+    root.addEventListener('mousedown', (event) => {
+      if (event.target.closest('[data-fmt], [data-fmt-color]')) event.preventDefault();
     });
 
     root.addEventListener('click', async (event) => {
       const target = event.target;
       const spoiler = target.closest('.chat-spoiler');
       if (spoiler) { spoiler.classList.add('is-open'); return; }
-
-      const pressed = target.closest('[data-chat-pool-dec]');
-      if (pressed) {
-        const sides = pressed.dataset.chatPoolDec;
-        chatState.pool[sides] = Math.max(0, (chatState.pool[sides] || 0) - 1);
-        syncPool();
-        return;
-      }
 
       const touchedMsg = target.closest('[data-mesa-msg]');
       if (touchedMsg && !target.closest('button, a, input, textarea, select, .chat-edit') && window.matchMedia('(hover: none)').matches) {
@@ -7168,9 +7640,9 @@
       const toolBtn = target.closest('[data-chat-tool]');
       if (toolBtn) {
         const tool = currentTool();
-        if (tool.open && tool.id === toolBtn.dataset.chatTool) storageSet(toolStoreKey, { id: tool.id, open: false });
-        else storageSet(toolStoreKey, { id: toolBtn.dataset.chatTool, open: true });
-        renderTool();
+        const closing = tool.open && tool.id === toolBtn.dataset.chatTool;
+        storageSet(toolStoreKey, { id: toolBtn.dataset.chatTool, open: !closing });
+        renderTool({ animate: !closing });
         return;
       }
 
@@ -7183,10 +7655,11 @@
       if (pick) { setSpeaker(pick.dataset.chatSpeaker); closeMenu(); textarea?.focus(); return; }
       const swatch = target.closest('[data-chat-color]');
       if (swatch) {
-        const c = fichaChar();
+        const speaker = currentSpeaker(mesa);
+        const c = speaker.type === 'character' ? characterById(speaker.id) : null;
         if (!c) return;
         c.identity = { ...(c.identity || {}), chatColor: swatch.dataset.chatColor };
-        setSpeaker(currentSpeaker(mesa).key);
+        setSpeaker(speaker.key);
         try { await persistCharacterState(c); } catch (err) { console.error(err); toast('Cor não salva.'); }
         return;
       }
@@ -7207,64 +7680,63 @@
 
       /* Dados */
       const die = target.closest('[data-chat-die]');
-      if (die) {
-        const sides = die.dataset.chatDie;
-        chatState.pool[sides] = Math.min(60, (chatState.pool[sides] || 0) + 1);
-        syncPool();
-        return;
-      }
+      if (die) { addDie(Number(die.dataset.chatDie)); syncDice(); return; }
+      const calcKey = target.closest('[data-calc-key]');
+      if (calcKey) { addKey(calcKey.dataset.calcKey); chatState.stageResult = null; syncDice(); return; }
       if (target.closest('[data-chat-clear]')) {
-        chatState.pool = {};
-        root.querySelector('[data-chat-mod]').value = '0';
-        syncPool();
+        chatState.expr = '';
+        chatState.stageResult = null;
+        chatState.stageSides = 0;
+        syncDice();
         return;
       }
       const rollBtn = target.closest('[data-chat-roll]');
       if (rollBtn) {
-        if (!chatPoolText()) { root.querySelector('.chat-tray__dice')?.classList.add('is-nudge'); setTimeout(() => root.querySelector('.chat-tray__dice')?.classList.remove('is-nudge'), 400); return; }
-        const mod = Math.max(-99, Math.min(99, parseInt(root.querySelector('[data-chat-mod]').value, 10) || 0));
+        const result = evaluateRoll(chatState.expr);
+        if (result.error) {
+          const input = root.querySelector('[data-dice-expr]');
+          input?.classList.add('is-invalid', 'is-nudge');
+          setTimeout(() => input?.classList.remove('is-nudge'), 400);
+          return;
+        }
         const secret = !!root.querySelector('[data-chat-secret]')?.checked;
         rollBtn.disabled = true;
+        rollOnStage(result);
         try {
-          await sendChatRoll(mesa, rollGroups(chatState.pool, mod), { secret });
-          chatState.pool = {};
-          root.querySelector('[data-chat-mod]').value = '0';
-          syncPool();
+          await sendChatRoll(mesa, result, { secret });
         } catch (err) { console.error(err); toast('Rolagem não enviada: ' + (err.message || err)); }
         finally { rollBtn.disabled = false; }
         return;
       }
       const test = target.closest('[data-chat-test]');
       if (test) {
-        const secret = !!root.querySelector('[data-chat-secret]')?.checked;
+        const c = characterById(test.dataset.testChar);
         test.disabled = true;
-        try { await sendChatRoll(mesa, arcanoTest(test.dataset.chatTest, Math.max(1, parseInt(test.dataset.chatTestDice, 10) || 1)), { secret }); }
-        catch (err) { console.error(err); toast('Teste não enviado: ' + (err.message || err)); }
+        try {
+          await sendChatRoll(mesa, arcanoTest(test.dataset.chatTest, Math.max(1, parseInt(test.dataset.chatTestDice, 10) || 1)), { speaker: c ? charSpeaker(c) : null });
+        } catch (err) { console.error(err); toast('Teste não enviado: ' + (err.message || err)); }
         finally { test.disabled = false; }
         return;
       }
 
-      /* Medidores: HP/mana da ficha e HP dos NPCs (shift = 5) */
+      /* Fichas: lista → detalhe (Combate, Condição, Edição) */
+      const fichaOpen = target.closest('[data-ficha-open]');
+      if (fichaOpen) { chatState.fichaSel = fichaOpen.dataset.fichaOpen; chatState.fichaSub = 'combate'; renderTool(); return; }
+      if (target.closest('[data-ficha-back]')) { chatState.fichaSel = ''; renderTool(); return; }
+      const fichaSub = target.closest('[data-ficha-sub]');
+      if (fichaSub) { chatState.fichaSub = fichaSub.dataset.fichaSub; renderTool(); return; }
+
+      /* Medidores (shift = 5) */
       const step = target.closest('[data-meter-step]');
       if (step) {
         const meter = step.closest('.tool-meter');
         const delta = Number(step.dataset.meterStep) * (event.shiftKey ? 5 : 1);
-        if (meter.dataset.fichaHp || meter.dataset.fichaMana) {
-          const c = fichaChar();
+        const charBox = meter.closest('[data-char]');
+        if (charBox) {
+          const c = characterById(charBox.dataset.char);
           if (!c) return;
           ensureVitals(c);
-          const slot = meter.dataset.fichaMana ? c.vitals.mana : c.vitals.hp[meter.dataset.fichaHp];
-          if (!slot) return;
-          slot.cur = Math.max(0, Math.min(slot.max, slot.cur + delta));
-          meter.querySelector('b').innerHTML = `${slot.cur}<small>/${slot.max}</small>`;
-          meter.querySelector('.tool-meter__bar').style.width = `${slot.max ? (slot.cur / slot.max) * 100 : 0}%`;
-          saveFicha(c);
-        } else if (meter.dataset.npccharHp) {
-          const [cid, part] = meter.dataset.npccharHp.split('|');
-          const c = characterById(cid);
-          if (!c) return;
-          ensureVitals(c);
-          const slot = c.vitals.hp[part];
+          const slot = meter.dataset.mana ? c.vitals.mana : c.vitals.hp[meter.dataset.hpPart];
           if (!slot) return;
           slot.cur = Math.max(0, Math.min(slot.max, slot.cur + delta));
           meter.querySelector('b').innerHTML = `${slot.cur}<small>/${slot.max}</small>`;
@@ -7277,117 +7749,67 @@
           const cur = Math.max(0, Math.min(cb.max, cb.cur + delta));
           meter.querySelector('b').innerHTML = `${cur}<small>/${cb.max}</small>`;
           meter.querySelector('.tool-meter__bar').style.width = `${(cur / cb.max) * 100}%`;
-          meter.closest('[data-npc-combat]')?.classList.toggle('is-down', cur === 0);
           await saveNpcCombat(npc, { cur, max: cb.max });
         }
         return;
       }
-      const statusRemove = target.closest('[data-ficha-status-remove]');
-      if (statusRemove) {
-        const c = fichaChar();
-        if (!c) return;
-        c.statuses = (c.statuses || []).filter((_, i) => i !== Number(statusRemove.dataset.fichaStatusRemove));
-        saveFicha(c);
-        renderTool();
-        return;
-      }
-      const condRemove = target.closest('[data-npc-cond-remove]');
+      const condRemove = target.closest('[data-cond-remove]');
       if (condRemove) {
-        const npc = npcById(condRemove.closest('[data-npc-combat]').dataset.npcCombat);
-        if (!npc) return;
-        const cb = npcCombat(npc);
-        await saveNpcCombat(npc, { conds: cb.conds.filter((_, i) => i !== Number(condRemove.dataset.npcCondRemove)) });
+        const { c, n } = condTarget(condRemove.closest('[data-cond-target]').dataset.condTarget);
+        const index = Number(condRemove.dataset.condRemove);
+        if (c) { c.statuses = (c.statuses || []).filter((_, i) => i !== index); saveFicha(c); }
+        else if (n) await saveNpcCombat(n, { conds: npcCombat(n).conds.filter((_, i) => i !== index) });
         renderTool();
-        return;
-      }
-      const charVisible = target.closest('[data-npcchar-visible]');
-      if (charVisible) {
-        const c = characterById(charVisible.dataset.npccharVisible);
-        if (!c) return;
-        const { error } = await sb.from('characters').update({ npc_visible: !c.npcVisible }).eq('id', c.id);
-        if (error) { toast('Erro: ' + error.message); return; }
-        c.npcVisible = !c.npcVisible;
-        charVisible.textContent = c.npcVisible ? 'visível' : 'oculto';
-        return;
-      }
-      const visible = target.closest('[data-npc-visible]');
-      if (visible) {
-        const npc = npcById(visible.dataset.npcVisible);
-        if (!npc) return;
-        const { error } = await sb.from('mesa_npcs').update({ visible: !npc.visible, updated_at: new Date().toISOString() }).eq('id', npc.id);
-        if (error) { toast('Erro: ' + error.message); return; }
-        npc.visible = !npc.visible;
-        visible.textContent = npc.visible ? 'visível' : 'oculto';
         return;
       }
 
-      /* Iniciativa (Mestre) */
-      if (target.closest('[data-ini-add]')) {
-        const who = root.querySelector('[data-ini-who]').value;
-        const valueText = root.querySelector('[data-ini-value]').value;
-        let entry;
-        if (who) {
-          entry = initiativeRoll(mesa, who);
-          if (entry && valueText !== '') entry.value = Number(valueText);
-        } else {
-          const name = root.querySelector('[data-ini-name]').value.trim();
-          if (!name) { root.querySelector('[data-ini-name]').focus(); return; }
-          entry = { id: `x:${Date.now()}`, name, value: valueText !== '' ? Number(valueText) : randomInt(6) + randomInt(12), color: chatColorFor(name) };
+      /* Notas: formatação */
+      const fmt = target.closest('[data-fmt]');
+      const fmtColor = target.closest('[data-fmt-color]');
+      if (fmt || fmtColor) {
+        const editor = root.querySelector('.note-editor[contenteditable="true"]');
+        if (!editor) return;
+        if (!editor.contains(document.getSelection()?.anchorNode)) editor.focus();
+        if (fmt) document.execCommand(fmt.dataset.fmt, false, null);
+        else document.execCommand('foreColor', false, fmtColor.dataset.fmtColor);
+        saveNote(editor);
+        return;
+      }
+      const notesView = target.closest('[data-notes-view]');
+      if (notesView) {
+        chatState.notesView = notesView.dataset.notesView;
+        await loadMesaNotesAll(mesaId);
+        renderTool();
+        return;
+      }
+
+      /* NPCs (Mestre) */
+      const npcOpen = target.closest('[data-npc-open]');
+      if (npcOpen) { chatState.npcSel = npcOpen.dataset.npcOpen; renderTool(); return; }
+      if (target.closest('[data-npc-back]')) { chatState.npcSel = ''; renderTool(); return; }
+      const npcVisible = target.closest('[data-npc-toggle-visible]');
+      if (npcVisible) {
+        const { c, n } = condTarget(npcVisible.dataset.npcToggleVisible);
+        if (c) {
+          const { error } = await sb.from('characters').update({ npc_visible: !c.npcVisible }).eq('id', c.id);
+          if (error) { toast('Erro: ' + error.message); return; }
+          c.npcVisible = !c.npcVisible;
+        } else if (n) {
+          const { error } = await sb.from('mesa_npcs').update({ visible: !n.visible, updated_at: new Date().toISOString() }).eq('id', n.id);
+          if (error) { toast('Erro: ' + error.message); return; }
+          n.visible = !n.visible;
         }
-        if (!entry) return;
-        const ini = mesaInitiative(mesaId);
-        ini.entries = ini.entries.filter((e) => e.id !== entry.id).concat(entry);
-        await saveMesaInitiative(mesaId, sortInitiative({ ...ini }));
         renderTool();
-        renderChatPresence();
-        return;
-      }
-      if (target.closest('[data-ini-roll-all]')) {
-        const keys = [
-          ...CHARACTERS.filter((c) => c.mesaId === mesaId).map((c) => `c:${c.id}`),
-          ...(MESA_NPCS[mesaId] || []).map((n) => `n:${n.id}`)
-        ];
-        const entries = keys.map((k) => initiativeRoll(mesa, k)).filter(Boolean);
-        await saveMesaInitiative(mesaId, sortInitiative({ round: 1, turn: 0, entries }));
-        renderTool();
-        renderChatPresence();
-        return;
-      }
-      const iniRemove = target.closest('[data-ini-remove]');
-      if (iniRemove) {
-        const ini = mesaInitiative(mesaId);
-        const index = ini.entries.findIndex((e) => e.id === iniRemove.dataset.iniRemove);
-        ini.entries.splice(index, 1);
-        if (ini.turn >= ini.entries.length) ini.turn = 0;
-        await saveMesaInitiative(mesaId, { ...ini });
-        renderTool();
-        renderChatPresence();
-        return;
-      }
-      if (target.closest('[data-ini-next]') || target.closest('[data-ini-prev]')) {
-        const ini = { ...mesaInitiative(mesaId) };
-        const forward = !!target.closest('[data-ini-next]');
-        if (!ini.entries.length) return;
-        if (forward) {
-          ini.turn += 1;
-          if (ini.turn >= ini.entries.length) { ini.turn = 0; ini.round += 1; }
-        } else {
-          ini.turn -= 1;
-          if (ini.turn < 0) { ini.turn = ini.entries.length - 1; ini.round = Math.max(1, ini.round - 1); }
-        }
-        await saveMesaInitiative(mesaId, ini);
-        renderTool();
-        renderChatPresence();
-        return;
-      }
-      if (target.closest('[data-ini-clear]')) {
-        await saveMesaInitiative(mesaId, emptyInitiative());
-        renderTool();
-        renderChatPresence();
         return;
       }
 
       /* Acervo e cena (Mestre) */
+      if (target.closest('[data-acervo-toggle]')) {
+        chatState.acervoOpen = !chatState.acervoOpen;
+        renderTool();
+        if (chatState.acervoOpen) root.querySelector('[data-acervo-file]')?.click();
+        return;
+      }
       if (target.closest('[data-acervo-add]')) {
         const fileInput = root.querySelector('[data-acervo-file]');
         const file = fileInput?.files && fileInput.files[0];
@@ -7400,6 +7822,7 @@
           const { data, error } = await sb.from('mesa_images').insert({ mesa_id: mesaId, title, url: up.url, path: up.path }).select().single();
           if (error) { await removeBanner(up.path); throw error; }
           (MESA_IMAGES[mesaId] || (MESA_IMAGES[mesaId] = [])).unshift(data);
+          chatState.acervoOpen = false;
           renderTool();
         } catch (err) { console.error(err); toast('Imagem não guardada: ' + (err.message || err)); button.disabled = false; }
         return;
@@ -7465,6 +7888,7 @@
         const { error } = await sb.from('mesa_messages').update({ pinned: !msg.pinned }).eq('id', msg.id);
         if (error) { toast('Erro: ' + error.message); return; }
         updateMesaMessage(mesaId, { ...msg, pinned: !msg.pinned });
+        chatState.renderTool('opcoes');
         return;
       }
       const keep = target.closest('[data-chat-keep]');
@@ -7551,32 +7975,26 @@
       }
       if (event.key === 'Escape') { closeMenu(); return; }
       if (event.key !== 'Enter') return;
-      const statusInput = event.target.closest('[data-ficha-status-input]');
-      if (statusInput) {
-        event.preventDefault();
-        const c = fichaChar();
-        const name = statusInput.value.trim();
-        if (!c || !name) return;
-        c.statuses = [...(c.statuses || []), { name }];
-        saveFicha(c);
-        renderTool();
-        root.querySelector('[data-ficha-status-input]')?.focus();
-        return;
-      }
-      const condInput = event.target.closest('[data-npc-cond-input]');
+      const condInput = event.target.closest('[data-cond-input]');
       if (condInput) {
         event.preventDefault();
         const name = condInput.value.trim();
-        const npc = npcById(condInput.closest('[data-npc-combat]').dataset.npcCombat);
-        if (!npc || !name) return;
-        await saveNpcCombat(npc, { conds: [...npcCombat(npc).conds, name] });
+        const { c, n } = condTarget(condInput.closest('[data-cond-target]').dataset.condTarget);
+        if (!name) return;
+        if (c) { c.statuses = [...(c.statuses || []), { name }]; saveFicha(c); }
+        else if (n) await saveNpcCombat(n, { conds: [...npcCombat(n).conds, name] });
         renderTool();
-        root.querySelector(`[data-npc-combat="${CSS.escape(npc.id)}"] [data-npc-cond-input]`)?.focus();
+        root.querySelector('[data-cond-input]')?.focus();
         return;
       }
-      if (event.target.closest('[data-ini-name], [data-ini-value]')) {
+      if (event.target.closest('[data-dice-expr]')) {
         event.preventDefault();
-        root.querySelector('[data-ini-add]')?.click();
+        root.querySelector('[data-chat-roll]')?.click();
+        return;
+      }
+      if (event.target.closest('[data-npc-name]')) {
+        event.preventDefault();
+        event.target.blur();
         return;
       }
       if (event.target.closest('[data-chat-avulso-name]')) {
@@ -7585,32 +8003,71 @@
       }
     });
 
-    root.addEventListener('change', (event) => {
-      const who = event.target.closest('[data-ini-who]');
-      if (who) root.querySelector('[data-ini-name]').hidden = who.value !== '';
+    root.addEventListener('change', async (event) => {
+      const notifyBox = event.target.closest('[data-notify], [data-notify-mute]');
+      if (notifyBox) {
+        const prefs = notifyPrefs();
+        if (notifyBox.hasAttribute('data-notify-mute')) {
+          prefs.muted = { ...(prefs.muted || {}) };
+          if (notifyBox.checked) prefs.muted[mesaId] = true; else delete prefs.muted[mesaId];
+        } else if (notifyBox.dataset.notify === 'sound') {
+          prefs.sound = notifyBox.checked;
+          if (prefs.sound) playChime();
+        } else if (notifyBox.dataset.notify === 'system') {
+          prefs.system = false;
+          if (notifyBox.checked && 'Notification' in window) {
+            const permission = await Notification.requestPermission();
+            prefs.system = permission === 'granted';
+            if (prefs.system) {
+              await registerNotifyWorker();
+              showSystemNotification('O Arcano', 'Avisos ativados para as suas mesas.', `#/Mesas/${mesaId}/chat`, 'arcano-teste');
+            } else {
+              toast('O navegador não permitiu os avisos.');
+            }
+          }
+        }
+        setNotifyPrefs(prefs);
+        renderTool();
+        return;
+      }
       const acervoFile = event.target.closest('[data-acervo-file]');
       if (acervoFile && acervoFile.files[0]) {
         const title = root.querySelector('[data-acervo-title]');
         if (title && !title.value) title.value = prettyFileTitle(acervoFile.files[0]);
         acervoFile.closest('label').firstChild.textContent = acervoFile.files[0].name.slice(0, 24);
       }
+      const npcName = event.target.closest('[data-npc-name]');
+      if (npcName) {
+        const name = npcName.value.trim().slice(0, 80);
+        const { c, n } = condTarget(npcName.dataset.npcName);
+        if (!name) { npcName.value = c ? c.name : (n ? n.title : ''); return; }
+        try {
+          if (c && name !== c.name) {
+            c.name = name;
+            const saved = await updateCharacter(c);
+            Object.assign(c, saved);
+          } else if (n && name !== n.title) {
+            const { error } = await sb.from('mesa_npcs').update({ title: name, updated_at: new Date().toISOString() }).eq('id', n.id);
+            if (error) throw error;
+            n.title = name;
+          }
+          setSpeaker(chatState.speakerKey);
+          renderTool();
+        } catch (err) { toast('Nome não salvo: ' + (err.message || err)); }
+      }
     });
 
-    /* Notas: salvam sozinhas */
+    /* Notas salvam sozinhas; expressão de dados edita o monte. */
     root.addEventListener('input', (event) => {
-      const notes = event.target.closest('[data-chat-notes]');
-      if (notes) {
-        const kind = notes.dataset.chatNotes;
-        const key = `${mesaId}|${kind}`;
-        MESA_NOTES[key] = notes.value;
-        const status = root.querySelector('[data-notes-status]');
-        if (status) status.textContent = '…';
-        clearTimeout(notesTimer);
-        notesTimer = setTimeout(async () => {
-          const { error } = await sb.from('mesa_notes').upsert({ mesa_id: mesaId, user_id: auth.user.id, kind, body: MESA_NOTES[key], updated_at: new Date().toISOString() }, { onConflict: 'mesa_id,user_id,kind' });
-          const now = root.querySelector('[data-notes-status]');
-          if (now) now.textContent = error ? 'Não salvou' : 'Salvo';
-        }, 800);
+      const editor = event.target.closest('[data-chat-notes]');
+      if (editor) { saveNote(editor); return; }
+      const expr = event.target.closest('[data-dice-expr]');
+      if (expr) {
+        chatState.expr = expr.value;
+        chatState.stageResult = null;
+        chatState.stageSides = 0;
+        syncDice({ fromInput: true });
+        return;
       }
       const cenaField = event.target.closest('[data-cena-title], [data-cena-body], [data-cena-image]');
       if (cenaField) {
@@ -7667,6 +8124,32 @@
     }
     menu.addEventListener('click', (event) => {
       if (event.target.closest('[data-chat-avulso-add]')) addAvulso();
+    });
+
+    // Formatação: envolve o trecho selecionado (ou abre o par e põe o cursor no meio).
+    const CHAT_WRAPS = { action: ['**', '**'], speech: ['-- ', ' --'], thought: ['((', '))'], spoiler: ['||', '||'] };
+    form.querySelector('.chat__fmt')?.addEventListener('pointerdown', (event) => {
+      if (event.target.closest('[data-chat-wrap]')) event.preventDefault();
+    });
+    form.querySelector('.chat__fmt')?.addEventListener('click', (event) => {
+      const button = event.target.closest('[data-chat-wrap]');
+      if (!button) return;
+      const kind = button.dataset.chatWrap;
+      const value = textarea.value;
+      if (kind === 'turn') {
+        if (!/>>\s*$/.test(value)) textarea.value = `${value.replace(/\s+$/, '')}${value.trim() ? '\n' : ''}>>`;
+        textarea.setSelectionRange(textarea.value.length, textarea.value.length);
+      } else {
+        const [open, close] = CHAT_WRAPS[kind];
+        const start = textarea.selectionStart ?? value.length;
+        const end = textarea.selectionEnd ?? value.length;
+        const picked = value.slice(start, end);
+        textarea.value = value.slice(0, start) + open + picked + close + value.slice(end);
+        const caret = picked ? start + open.length + picked.length + close.length : start + open.length;
+        textarea.setSelectionRange(caret, caret);
+      }
+      textarea.focus();
+      textarea.dispatchEvent(new Event('input', { bubbles: true }));
     });
 
     // Tocar em Enviar não tira o foco: o teclado continua aberto entre mensagens.
@@ -9167,6 +9650,7 @@
                   <label class="dossier-field char-create__name"><span>Nome</span><input type="text" id="charName" class="create-form__input" placeholder="Nome da persona" maxlength="120" required value="${escapeHtml(c.name || '')}"></label>
                   ${owners.length ? `<label class="dossier-field"><span>Jogador</span><select id="charOwner" class="create-form__input char-select">${owners.map((m) => `<option value="${escapeHtml(m.userId)}" ${m.userId === ownerId ? 'selected' : ''}>${escapeHtml(m.displayName || 'Jogador')}${m.role === 'mestre' ? ' (Mestre)' : ''}</option>`).join('')}</select></label>` : ''}
                   <label class="dossier-field"><span>Raça</span><select id="charRace" class="create-form__input char-select"><option value="">— Sem raça —</option>${races.map((r) => `<option value="${escapeHtml(r.id)}" ${r.id === selectedRaceId ? 'selected' : ''}>${escapeHtml(r.title)}</option>`).join('')}</select></label>
+                  <div class="dossier-field char-color-field"><span>Cor primária</span><span class="char-color"><input type="color" id="charColor" value="${escapeHtml(safeChatColor(idn.chatColor, c.id || c.name || 'nova'))}" aria-label="Cor primária">${CHAT_COLORS.map((col) => `<button type="button" class="char-color__swatch" data-char-color="${col}" style="--swatch:${col}" aria-label="Usar ${col}"></button>`).join('')}</span><small>Cor do nome e das ações no chat.</small></div>
                   <label class="dossier-field"><span>Nível</span><input type="number" id="charLevel" class="create-form__input" min="1" max="99" value="${escapeHtml(String(idn.level || 1))}"></label>
                   <label class="dossier-field"><span>Movimento</span><input type="text" id="charMovement" class="create-form__input" maxlength="20" value="${escapeHtml(idn.movement || idn.movimento || '9m')}" placeholder="9m"></label>
                   <label class="dossier-field char-create__wide"><span>Papel</span><input type="text" id="charPapel" class="create-form__input" maxlength="160" value="${escapeHtml(idn.papel || '')}" placeholder="Ex.: Mercenária errante"></label>
@@ -9384,6 +9868,7 @@
 
     if (auth.canRead && sb) {
       await loadMesas();
+      startMessageNotifications();
       if (mesaRoute) {
         if (!(await prepareMesaRoute(mesaRoute))) return;
       }
@@ -12586,6 +13071,10 @@
     const banner = bindBannerDrop({ initialUrl: existing?.image || '' });
     const editor = bindEditor();
     const skills = bindSimpleListBuilder('charSkills');
+    form.querySelector('.char-color')?.addEventListener('click', (event) => {
+      const swatch = event.target.closest('[data-char-color]');
+      if (swatch) document.getElementById('charColor').value = swatch.dataset.charColor;
+    });
     const points = bindAttributePointBuy();
 
     form.querySelectorAll('[data-char-form-section]').forEach((button) => {
@@ -12798,6 +13287,7 @@
         identity: {
           ...(existing?.identity || {}),
           level: Math.max(1, parseInt(levelInput && levelInput.value, 10) || 1),
+          chatColor: (document.getElementById('charColor')?.value || existing?.identity?.chatColor || ''),
           movement: (movementInput && movementInput.value.trim()) || '9m',
           daAttr: CHAR_ATTRIBUTES.includes(daAttrInput && daAttrInput.value) ? daAttrInput.value : 'Destreza',
           papel: document.getElementById('charPapel').value.trim(),
