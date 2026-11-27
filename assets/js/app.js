@@ -189,6 +189,550 @@
 
   /* Unidades de custo — a magia não cobra necessariamente MP. */
   const COST_UNITS = ['MP', 'HP'];
+
+  /* ── USO EM COMBATE ─────────────────────────────
+     Um formato só para magias, itens e habilidades de bestas. O grid de combate
+     lê estes campos; o texto livre continua sendo a regra escrita para a mesa.
+     Guardado em fields.Combate (magias e itens) e em ability.combat (bestas). */
+  /* COMBATE:PARSER:START */
+  const COMBAT_ATTRS = ['Força', 'Destreza', 'Resistência', 'Inteligência', 'Sabedoria', 'Carisma'];
+  const COMBAT_USES = { ataque: 'Ataque contra a DA', efeito: 'Efeito sem rolagem', nenhum: 'Não usa no grid' };
+  const COMBAT_ACTIONS = { acao: 'Gasta a ação', livre: 'Livre', movimento: 'Gasta o movimento' };
+  const COMBAT_TARGETS = { inimigos: 'Inimigos', aliados: 'Aliados', todos: 'Qualquer criatura', proprio: 'Só o próprio' };
+  const COMBAT_SHAPES = {
+    alvo: 'Alvo único', quadrado: 'Quadrado', raio: 'Raio', cone: 'Cone', linha: 'Linha', cena: 'Toda a cena'
+  };
+  const COMBAT_DAMAGE_TYPES = { fisico: 'Físico', magico: 'Mágico', cura: 'Cura' };
+  const COMBAT_MOD_STATS = [
+    'Força', 'Destreza', 'Resistência', 'Inteligência', 'Sabedoria', 'Carisma',
+    'Movimento', 'DA', 'Iniciativa', 'Resultado Final', 'Ataques extras', 'Ações extras'
+  ];
+  const COMBAT_EFFECTS = [
+    'Atordoamento', 'Cegueira', 'Condutividade', 'Corte de Cura', 'Dano por Tempo', 'Iluminação',
+    'Escurecimento', 'Marcar Alvo', 'Desorientação', 'Pânico', 'Consumo de Mana', 'Propagação',
+    'Imobilização', 'Silêncio', 'Veneno', 'Queimadura', 'Combustão Direta', 'Dano de Fogo Arcano'
+  ];
+  const COMBAT_LEVELS = ['', 'I', 'II', 'III', 'IV', 'V'];
+  const COMBAT_COST_UNITS = ['MP', 'HP', 'Carga'];
+  /* Atributo do ataque mágico, pela Forma de Uso (regra Combate em Grid). */
+  const COMBAT_USEFORM_ATTR = {
+    'Técnica': 'Inteligência', 'Tecnologia': 'Inteligência',
+    'Instinto': 'Sabedoria', 'Tradição': 'Sabedoria', 'Anomalia': 'Carisma'
+  };
+
+  const cbNorm = (s) => String(s ?? '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+  const cbInt = (v, min = 0, max = 999) => {
+    const n = parseInt(v, 10);
+    return Math.max(min, Math.min(max, Number.isFinite(n) ? n : 0));
+  };
+  const cbPick = (v, dict, fallback) => (Object.prototype.hasOwnProperty.call(dict, v) ? v : fallback);
+  const cbDice = (v) => {
+    const m = String(v || '').replace(/\s+/g, '').match(/^(\d{1,2})d(\d{1,3})$/i);
+    return m ? `${parseInt(m[1], 10)}d${parseInt(m[2], 10)}` : '';
+  };
+
+  function emptyCombat(kind = 'magia') {
+    return {
+      v: 1, uso: 'ataque', acao: 'acao', alvos: 'inimigos', atributo: '',
+      alcance: 1, forma: 'alvo', tamanho: 1, largura: 1,
+      dano: [], mods: [], efeitos: [],
+      custo: kind === 'magia' ? null : { valor: 0, unidade: 'MP' },
+      nota: ''
+    };
+  }
+
+  /* Garante o formato; aceita null e devolve null quando não há nada. */
+  function normalizeCombat(raw) {
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+    const forma = cbPick(raw.forma, COMBAT_SHAPES, 'alvo');
+    const out = {
+      v: 1,
+      uso: cbPick(raw.uso, COMBAT_USES, 'ataque'),
+      acao: cbPick(raw.acao, COMBAT_ACTIONS, 'acao'),
+      alvos: cbPick(raw.alvos, COMBAT_TARGETS, 'inimigos'),
+      atributo: COMBAT_ATTRS.includes(raw.atributo) ? raw.atributo : '',
+      alcance: cbInt(raw.alcance, 0, 200),
+      forma,
+      tamanho: forma === 'alvo' || forma === 'cena' ? 1 : Math.max(1, cbInt(raw.tamanho, 1, 200)),
+      largura: forma === 'quadrado' || forma === 'linha' ? Math.max(1, cbInt(raw.largura, 1, 200)) : 1,
+      dano: (Array.isArray(raw.dano) ? raw.dano : []).map((d) => {
+        const dados = cbDice(d && d.dados);
+        if (!dados) return null;
+        return {
+          dados,
+          bonus: cbInt(d.bonus, -99, 99),
+          tipo: cbPick(d.tipo, COMBAT_DAMAGE_TYPES, 'fisico'),
+          elemento: String(d.elemento || '').trim().slice(0, 40)
+        };
+      }).filter(Boolean).slice(0, 6),
+      mods: (Array.isArray(raw.mods) ? raw.mods : []).map((m) => {
+        if (!m || !COMBAT_MOD_STATS.includes(m.stat)) return null;
+        const valor = cbInt(m.valor, -99, 99);
+        if (!valor) return null;
+        return { stat: m.stat, valor, turnos: cbInt(m.turnos, 0, 99) };
+      }).filter(Boolean).slice(0, 8),
+      efeitos: (Array.isArray(raw.efeitos) ? raw.efeitos : []).map((e) => {
+        if (!e || !COMBAT_EFFECTS.includes(e.nome)) return null;
+        return { nome: e.nome, nivel: COMBAT_LEVELS.includes(e.nivel) ? e.nivel : '', turnos: cbInt(e.turnos, 0, 99) };
+      }).filter(Boolean).slice(0, 8),
+      custo: null,
+      nota: String(raw.nota || '').trim().slice(0, 400)
+    };
+    if (raw.custo && typeof raw.custo === 'object') {
+      const valor = cbInt(raw.custo.valor, 0, 9999);
+      if (valor) out.custo = { valor, unidade: COMBAT_COST_UNITS.includes(raw.custo.unidade) ? raw.custo.unidade : 'MP' };
+    }
+    return out;
+  }
+
+  /* Lê um alcance escrito ("4q", "Corpo a corpo", "Cone de 5q", "Linha de 10q por 3q"). */
+  function combatParseRange(text) {
+    const t = cbNorm(text).trim();
+    const out = { alcance: 1, forma: 'alvo', tamanho: 1, largura: 1, alvos: '', ok: true };
+    if (!t) { out.ok = false; return out; }
+    let m;
+    if (/corpo a corpo|toque|adjacente/.test(t)) return out;
+    if (/^proprio|^pessoal|^si mesmo/.test(t)) { out.alcance = 0; out.alvos = 'proprio'; return out; }
+    if (/toda a cena|cena inteira/.test(t)) { out.alcance = 0; out.forma = 'cena'; return out; }
+    if ((m = t.match(/raio de (\d+)/))) {
+      out.forma = 'raio'; out.tamanho = parseInt(m[1], 10);
+      const at = t.match(/a (?:ate )?(\d+)\s*q/);
+      out.alcance = at ? parseInt(at[1], 10) : 0;
+      return out;
+    }
+    if ((m = t.match(/cone de (\d+)/))) { out.alcance = 0; out.forma = 'cone'; out.tamanho = parseInt(m[1], 10); return out; }
+    if ((m = t.match(/linha de (\d+)\s*q?(?:\s*(?:por|x|×)\s*(\d+))?/))) {
+      out.alcance = 0; out.forma = 'linha'; out.tamanho = parseInt(m[1], 10); out.largura = m[2] ? parseInt(m[2], 10) : 1;
+      return out;
+    }
+    if ((m = t.match(/^(\d+)\s*(?:q|m|quadrados?|metros?)?$/))) { out.alcance = parseInt(m[1], 10); return out; }
+    if ((m = t.match(/(\d+)\s*(?:q|m)\b/))) { out.alcance = parseInt(m[1], 10); out.ok = false; return out; }
+    out.ok = false;
+    return out;
+  }
+
+  const CB_ELEMENTS = ['fogo', 'gelo', 'eletrico', 'raio', 'veneno', 'acido', 'sombra', 'luz', 'sangue', 'arcano',
+    'corte', 'perfuracao', 'impacto', 'esmagamento', 'necrotico', 'sonico', 'psiquico'];
+  const CB_ELEMENT_LABEL = { eletrico: 'elétrico', perfuracao: 'perfuração', acido: 'ácido', necrotico: 'necrótico', sonico: 'sônico', psiquico: 'psíquico' };
+
+  /* Lê o primeiro dano escrito ("3d6 físico de corte", "4d6 de dano de fogo").
+     Danos seguintes ou condicionais viram dúvida para revisão. */
+  function combatParseDamage(text, defaultType = 'fisico') {
+    const raw = String(text || '');
+    const t = cbNorm(raw);
+    const re = /(\d{1,2})d(\d{1,3})(\s*\+\s*(\d{1,2})(?!\s*d))?/g;
+    const found = [];
+    let m;
+    while ((m = re.exec(t))) found.push({ m, index: m.index });
+    if (!found.length) return { dano: [], doubts: [] };
+    const first = found[0];
+    const tail = t.slice(first.index, first.index + 60);
+    let tipo = defaultType;
+    if (/\bfisic/.test(tail)) tipo = 'fisico';
+    else if (/\bmagic/.test(tail)) tipo = 'magico';
+    else if (/\bcura|recupera|restaura/.test(tail)) tipo = 'cura';
+    const el = CB_ELEMENTS.filter((k) => new RegExp(`\\b${k}`).test(tail));
+    const elemento = el.length ? el.map((k) => CB_ELEMENT_LABEL[k] || k).join(' ') : '';
+    const dano = [{
+      dados: `${parseInt(first.m[1], 10)}d${parseInt(first.m[2], 10)}`,
+      bonus: first.m[4] ? parseInt(first.m[4], 10) : 0,
+      tipo,
+      elemento
+    }];
+    const doubts = [];
+    if (found.length > 1) doubts.push('Tem mais de um dano no texto; só o primeiro entrou. Os outros parecem condicionais.');
+    if (/\+\s*dados? de/.test(t)) doubts.push('O dano soma dados de atributo; confira na revisão.');
+    return { dano, doubts };
+  }
+
+  function combatParseEffects(text) {
+    const t = cbNorm(text);
+    const out = [];
+    COMBAT_EFFECTS.forEach((nome) => {
+      const n = cbNorm(nome);
+      const idx = t.indexOf(n);
+      if (idx < 0) return;
+      const after = t.slice(idx + n.length, idx + n.length + 40);
+      const lv = after.match(/^\s+(i{1,3}|iv|v)\b/);
+      const turns = after.match(/por (\d+)(?:\s*-\s*\d+)? turnos?/);
+      out.push({ nome, nivel: lv ? lv[1].toUpperCase() : '', turnos: turns ? parseInt(turns[1], 10) : 0 });
+    });
+    return out;
+  }
+
+  function combatParseAttr(text) {
+    const t = cbNorm(text);
+    const m = t.match(/(?:ataque|teste) de (forca|destreza|resistencia|inteligencia|sabedoria|carisma)/);
+    if (!m) return '';
+    return COMBAT_ATTRS.find((a) => cbNorm(a) === m[1]) || '';
+  }
+
+  /* Converte uma magia já cadastrada (campos do formulário de magia). */
+  function combatFromSpell(fields, subtype) {
+    const f = fields || {};
+    const doubts = [];
+    const cb = emptyCombat('magia');
+    const scopes = Array.isArray(f.Escopos) ? f.Escopos : [];
+    const scopeText = scopes.map((s) => `${s.tipo}: ${s.detalhe}`).join(' \n');
+    const allText = [scopeText, f['Descrição'], f['Efeito Contínuo'], f['Efeito Adicional']].filter(Boolean).join(' \n');
+    const dmgScope = scopes.find((s) => s.tipo === 'Dano');
+    const cureScope = scopes.find((s) => s.tipo === 'Cura');
+    if (subtype === 'passiva') { cb.uso = 'efeito'; cb.alvos = 'proprio'; cb.alcance = 0; }
+    else if (dmgScope) cb.uso = 'ataque';
+    else cb.uso = 'efeito';
+    cb.atributo = COMBAT_USEFORM_ATTR[f['Forma de Uso']] || '';
+    if (cb.uso === 'ataque' && !cb.atributo) doubts.push('Sem Forma de Uso: escolha o atributo do ataque.');
+    if (subtype !== 'passiva') {
+      cb.alcance = cbInt(f.Alcance, 0, 200);
+      const L = cbInt(f.AreaLargura, 0, 200), A = cbInt(f.AreaAltura, 0, 200);
+      const dmgText = cbNorm(dmgScope ? dmgScope.detalhe : '');
+      if (/\bcone\b/.test(dmgText)) {
+        cb.forma = 'cone'; cb.tamanho = Math.max(L, A, 1); cb.alcance = 0;
+        if (L !== A) doubts.push(`Cone com área ${L}×${A}; usei ${cb.tamanho}q de comprimento.`);
+      } else if (L > 1 || A > 1) {
+        cb.forma = 'quadrado'; cb.tamanho = Math.max(1, L); cb.largura = Math.max(1, A);
+      } else if (L === 0 && A === 0) {
+        cb.forma = 'alvo';
+        if (cb.uso === 'efeito') { cb.alvos = 'proprio'; cb.alcance = 0; }
+      }
+    }
+    if (cb.uso === 'efeito') {
+      const buff = scopes.some((s) => s.tipo === 'Buff' || s.tipo === 'Cura');
+      if (buff && cb.alvos === 'inimigos') cb.alvos = cb.alcance === 0 ? 'proprio' : 'aliados';
+    }
+    if (dmgScope) {
+      const d = combatParseDamage(dmgScope.detalhe, 'magico');
+      cb.dano = d.dano; doubts.push(...d.doubts);
+      if (!d.dano.length) doubts.push('O escopo Dano não tem dados escritos (ex.: 4d6).');
+    }
+    if (cureScope) {
+      const c = combatParseDamage(cureScope.detalhe, 'cura');
+      c.dano.forEach((x) => { x.tipo = 'cura'; cb.dano.push(x); });
+    }
+    cb.efeitos = combatParseEffects(allText);
+    const extra = cbNorm(scopeText).match(/ate (duas|tres|quatro|cinco|\d+) conjurac/);
+    if (extra) {
+      const n = { duas: 2, tres: 3, quatro: 4, cinco: 5 }[extra[1]] || parseInt(extra[1], 10) || 1;
+      if (n > 1) {
+        cb.mods.push({ stat: 'Ações extras', valor: n - 1, turnos: 0 });
+        doubts.push(`Virou +${n - 1} ação extra (só para conjurar). Confira se vale para outras ações.`);
+      }
+    }
+    if (/\bnao pode (usar|conjurar)|menos de \d+ (hp|mp)/.test(cbNorm(allText))) {
+      cb.nota = 'Tem condição de uso: o site só mostra o aviso.';
+    }
+    return combatFinish(cb, doubts);
+  }
+
+  /* Converte um item (campos de dossiê + Campos adicionais). */
+  function combatFromItem(fields, subtype) {
+    const f = fields || {};
+    const extras = Array.isArray(f.Campos) ? f.Campos : [];
+    const get = (key) => {
+      const hit = extras.find((x) => cbNorm(x.key) === cbNorm(key));
+      return hit ? String(hit.value || '') : String(f[key] || '');
+    };
+    const doubts = [];
+    const dmgText = get('Dano');
+    const rangeText = get('Alcance');
+    const areaText = get('Área') || get('Area');
+    const effectText = [f.Efeito, get('Efeito passivo')].filter(Boolean).join(' \n');
+    const slot = cbNorm(f.Slot);
+    const isWeapon = !!dmgText || /mao/.test(slot);
+    if (!isWeapon && subtype === 'equipavel') {
+      return { combat: null, doubts: [] };
+    }
+    const cb = emptyCombat('item');
+    cb.custo = null;
+    const r = combatParseRange(rangeText || (isWeapon ? 'Corpo a corpo' : ''));
+    Object.assign(cb, { alcance: r.alcance, forma: r.forma, tamanho: r.tamanho, largura: r.largura });
+    if (r.alvos) cb.alvos = r.alvos;
+    if (rangeText && !r.ok) doubts.push(`Alcance "${rangeText}" não ficou claro.`);
+    if (areaText) {
+      const a = combatParseRange(areaText);
+      if (a.forma !== 'alvo') { cb.forma = a.forma; cb.tamanho = a.tamanho; cb.largura = a.largura; }
+      else doubts.push(`Área "${areaText}" não ficou clara.`);
+    }
+    const d = combatParseDamage(dmgText, 'fisico');
+    cb.dano = d.dano; doubts.push(...d.doubts);
+    if (subtype === 'consumivel') {
+      cb.uso = cb.dano.some((x) => x.tipo !== 'cura') ? 'ataque' : 'efeito';
+      if (cb.uso === 'efeito') {
+        const heal = combatParseDamage(effectText, 'cura');
+        if (/cura|recupera|restaura/.test(cbNorm(effectText)) && heal.dano.length) {
+          cb.dano = heal.dano.map((x) => ({ ...x, tipo: 'cura' }));
+        }
+        if (!rangeText) { cb.alcance = 0; cb.alvos = 'proprio'; }
+      }
+    } else {
+      cb.uso = 'ataque';
+      const ranged = cb.alcance > 1;
+      cb.atributo = combatParseAttr(effectText) || (ranged ? 'Destreza' : 'Força');
+      doubts.push(`Atributo sugerido: ${cb.atributo} (${ranged ? 'arma de distância' : 'corpo a corpo'}). Confirme.`);
+      if (!cb.dano.length) doubts.push('Sem dano escrito.');
+    }
+    cb.efeitos = combatParseEffects(effectText);
+    return combatFinish(cb, doubts);
+  }
+
+  /* Converte uma habilidade de besta (campos da linha de habilidade). */
+  function combatFromBeastAbility(ability) {
+    const a = ability || {};
+    const doubts = [];
+    if (a.kind === 'Passiva' || a.kind === 'Limitação') {
+      return { combat: null, doubts: [] };
+    }
+    const cb = emptyCombat('habilidade');
+    const r = combatParseRange(a.range);
+    Object.assign(cb, { alcance: r.alcance, forma: r.forma, tamanho: r.tamanho, largura: r.largura });
+    if (r.alvos) cb.alvos = r.alvos;
+    if (!r.ok) doubts.push(`Alcance "${a.range || '—'}" não ficou claro.`);
+    const text = [a.effect, a.limit].filter(Boolean).join(' \n');
+    const d = combatParseDamage(a.effect, /magic/.test(cbNorm(a.effect)) ? 'magico' : 'fisico');
+    cb.dano = d.dano; doubts.push(...d.doubts);
+    const attr = combatParseAttr(a.effect);
+    cb.uso = (cb.dano.some((x) => x.tipo !== 'cura') || attr || /contra a da/.test(cbNorm(a.effect))) ? 'ataque' : 'efeito';
+    cb.atributo = attr;
+    if (cb.uso === 'ataque' && !attr) doubts.push('O texto não diz o atributo do ataque.');
+    if (cb.uso === 'efeito' && cb.alvos === 'inimigos' && cb.alcance === 0) cb.alvos = 'proprio';
+    if (a.kind === 'Reação') { cb.acao = 'livre'; doubts.push('Reação: o grid ainda não tem reações; o Mestre aplica à mão.'); }
+    const cost = cbNorm(a.cost).match(/(\d+)\s*(mp|hp)/);
+    cb.custo = cost ? { valor: parseInt(cost[1], 10), unidade: cost[2].toUpperCase() } : { valor: 0, unidade: 'MP' };
+    cb.efeitos = combatParseEffects(text);
+    return combatFinish(cb, doubts);
+  }
+  /* Ajustes finais comuns a toda conversão. */
+  function combatFinish(cb, doubts) {
+    const c = normalizeCombat(cb);
+    if (!c) return { combat: null, doubts };
+    if (c.uso !== 'ataque') c.atributo = '';
+    if (c.uso === 'efeito' && !c.dano.length && !c.mods.length && !c.efeitos.length && !c.nota) {
+      doubts.push('O grid não sabe o que este efeito faz; descreva em "O que o grid não faz sozinho".');
+    }
+    return { combat: c, doubts };
+  }
+  /* COMBATE:PARSER:END */
+
+  /* Uma linha curta: "Ataque · Força · 1q · Cone 5q · 3d6 físico corte". */
+  function combatSummaryParts(cb, opts = {}) {
+    const c = normalizeCombat(cb);
+    if (!c || c.uso === 'nenhum') return [];
+    const parts = [];
+    parts.push(c.uso === 'ataque' ? 'Ataque' : 'Efeito');
+    const attr = c.atributo || (c.uso === 'ataque' && opts.useForm ? COMBAT_USEFORM_ATTR[opts.useForm] : '');
+    if (c.uso === 'ataque' && attr) parts.push(attr);
+    if (c.alcance === 0) parts.push(c.forma === 'alvo' ? 'Próprio' : 'A partir de si');
+    else parts.push(c.alcance === 1 ? 'Corpo a corpo' : `Alcance ${c.alcance}q`);
+    if (c.forma === 'quadrado') parts.push(`Área ${c.tamanho}×${c.largura}q`);
+    else if (c.forma === 'linha') parts.push(`Linha ${c.tamanho}×${c.largura}q`);
+    else if (c.forma === 'raio' || c.forma === 'cone') parts.push(`${COMBAT_SHAPES[c.forma]} ${c.tamanho}q`);
+    else if (c.forma === 'cena') parts.push('Toda a cena');
+    c.dano.forEach((d) => parts.push(`${d.dados}${d.bonus ? (d.bonus > 0 ? `+${d.bonus}` : d.bonus) : ''} ${COMBAT_DAMAGE_TYPES[d.tipo].toLowerCase()}${d.elemento ? ` ${d.elemento}` : ''}`));
+    c.mods.forEach((m) => parts.push(`${m.valor > 0 ? '+' : ''}${m.valor} ${m.stat}${m.turnos ? ` (${m.turnos}t)` : ''}`));
+    c.efeitos.forEach((e) => parts.push(`${e.nome}${e.nivel ? ` ${e.nivel}` : ''}${e.turnos ? ` (${e.turnos}t)` : ''}`));
+    if (c.acao !== 'acao') parts.push(COMBAT_ACTIONS[c.acao]);
+    return parts;
+  }
+
+  function combatBadgeHTML(cb, opts = {}) {
+    const parts = combatSummaryParts(cb, opts);
+    if (!parts.length) return '';
+    return `<div class="combat-badge" title="Como o grid de combate usa isto"><span class="combat-badge__ico" aria-hidden="true"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="14.5 17.5 3 6 3 3 6 3 17.5 14.5"/><line x1="13" x2="19" y1="19" y2="13"/><line x1="16" x2="20" y1="16" y2="20"/></svg></span>${parts.map((p) => `<span>${cbEsc(p)}</span>`).join('')}</div>`;
+  }
+  const cbEsc = (s) => String(s ?? '').replace(/[&<>"']/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
+
+  const cbOptions = (dict, selected) => Object.entries(dict)
+    .map(([k, label]) => `<option value="${cbEsc(k)}" ${k === selected ? 'selected' : ''}>${cbEsc(label)}</option>`).join('');
+  const cbListOptions = (list, selected, blank) => (blank != null ? `<option value="">${cbEsc(blank)}</option>` : '') +
+    list.map((v) => `<option value="${cbEsc(v)}" ${v === selected ? 'selected' : ''}>${cbEsc(v)}</option>`).join('');
+
+  function combatDamageRowHTML(d = {}) {
+    return `<div class="combat-row" data-cb-row="dano">
+      <input type="text" class="create-form__input" data-cb-dados value="${cbEsc(d.dados || '')}" placeholder="3d6" maxlength="8" aria-label="Dados de dano" inputmode="text">
+      <input type="number" class="create-form__input combat-row__num" data-cb-bonus value="${d.bonus ? cbEsc(d.bonus) : ''}" placeholder="+0" min="-99" max="99" aria-label="Bônus fixo">
+      <select class="create-form__input char-select" data-cb-tipo aria-label="Tipo de dano">${cbOptions(COMBAT_DAMAGE_TYPES, d.tipo || 'fisico')}</select>
+      <input type="text" class="create-form__input" data-cb-elemento value="${cbEsc(d.elemento || '')}" placeholder="corte, fogo…" maxlength="40" aria-label="Natureza do dano">
+      <button type="button" class="combat-row__x" data-cb-remove aria-label="Remover dano">×</button>
+    </div>`;
+  }
+  function combatModRowHTML(m = {}) {
+    return `<div class="combat-row" data-cb-row="mods">
+      <select class="create-form__input char-select" data-cb-stat aria-label="O que muda">${cbListOptions(COMBAT_MOD_STATS, m.stat || 'Destreza')}</select>
+      <input type="number" class="create-form__input combat-row__num" data-cb-valor value="${m.valor != null ? cbEsc(m.valor) : ''}" placeholder="+1" min="-99" max="99" aria-label="Quanto muda">
+      <input type="number" class="create-form__input combat-row__num" data-cb-turnos value="${m.turnos ? cbEsc(m.turnos) : ''}" placeholder="turnos" min="0" max="99" aria-label="Por quantos turnos (vazio = enquanto durar)">
+      <button type="button" class="combat-row__x" data-cb-remove aria-label="Remover modificador">×</button>
+    </div>`;
+  }
+  function combatEffectRowHTML(e = {}) {
+    return `<div class="combat-row" data-cb-row="efeitos">
+      <select class="create-form__input char-select" data-cb-efeito aria-label="Efeito">${cbListOptions(COMBAT_EFFECTS, e.nome || COMBAT_EFFECTS[0])}</select>
+      <select class="create-form__input char-select combat-row__num" data-cb-nivel aria-label="Nível">${COMBAT_LEVELS.map((l) => `<option value="${l}" ${l === (e.nivel || '') ? 'selected' : ''}>${l ? `Nível ${l}` : 'Sem nível'}</option>`).join('')}</select>
+      <input type="number" class="create-form__input combat-row__num" data-cb-turnos value="${e.turnos ? cbEsc(e.turnos) : ''}" placeholder="turnos" min="0" max="99" aria-label="Por quantos turnos">
+      <button type="button" class="combat-row__x" data-cb-remove aria-label="Remover efeito">×</button>
+    </div>`;
+  }
+
+  /* Bloco do formulário. kind: 'magia' | 'item' | 'habilidade'. */
+  function combatFormHTML(cbRaw, kind = 'magia', opts = {}) {
+    const c = normalizeCombat(cbRaw) || emptyCombat(kind);
+    const showSize = c.forma !== 'alvo' && c.forma !== 'cena';
+    const showWidth = c.forma === 'quadrado' || c.forma === 'linha';
+    const attrBlank = kind === 'magia' ? 'Pela Forma de Uso' : 'Escolha…';
+    const off = c.uso === 'nenhum';
+    return `
+      <section class="combat-form ${opts.compact ? 'combat-form--compact' : ''}" data-combat-form data-kind="${cbEsc(kind)}">
+        <header class="combat-form__head">
+          <div><strong>Uso em combate</strong><span>Como o grid lê ${kind === 'magia' ? 'esta magia' : (kind === 'item' ? 'este item' : 'esta habilidade')}. 1 quadrado = 1 metro.</span></div>
+        </header>
+        <div class="combat-form__grid">
+          <label class="combat-field"><span>Uso</span><select class="create-form__input char-select" data-cb-uso>${cbOptions(COMBAT_USES, c.uso)}</select></label>
+          <label class="combat-field" data-cb-when="on" ${off ? 'hidden' : ''}><span>Custa</span><select class="create-form__input char-select" data-cb-acao>${cbOptions(COMBAT_ACTIONS, c.acao)}</select></label>
+          <label class="combat-field" data-cb-when="on" ${off ? 'hidden' : ''}><span>Alvos</span><select class="create-form__input char-select" data-cb-alvos>${cbOptions(COMBAT_TARGETS, c.alvos)}</select></label>
+          <label class="combat-field" data-cb-when="ataque" ${c.uso === 'ataque' ? '' : 'hidden'}><span>Atributo do ataque</span><select class="create-form__input char-select" data-cb-atributo>${cbListOptions(COMBAT_ATTRS, c.atributo, attrBlank)}</select></label>
+          <label class="combat-field" data-cb-when="on" ${off ? 'hidden' : ''}><span>Alcance (q)</span><input type="number" class="create-form__input" data-cb-alcance value="${cbEsc(c.alcance)}" min="0" max="200"><small>1 = corpo a corpo · 0 = próprio</small></label>
+          <label class="combat-field" data-cb-when="on" ${off ? 'hidden' : ''}><span>Área</span><select class="create-form__input char-select" data-cb-forma>${cbOptions(COMBAT_SHAPES, c.forma)}</select></label>
+          <label class="combat-field" data-cb-when="on" data-cb-size ${showSize && !off ? '' : 'hidden'}><span>${c.forma === 'linha' ? 'Comprimento' : (c.forma === 'quadrado' ? 'Largura' : 'Tamanho')} (q)</span><input type="number" class="create-form__input" data-cb-tamanho value="${cbEsc(c.tamanho)}" min="1" max="200"></label>
+          <label class="combat-field" data-cb-when="on" data-cb-width ${showWidth && !off ? '' : 'hidden'}><span>${c.forma === 'linha' ? 'Espessura' : 'Altura'} (q)</span><input type="number" class="create-form__input" data-cb-largura value="${cbEsc(c.largura)}" min="1" max="200"></label>
+          ${kind === 'magia' ? '' : `<label class="combat-field" data-cb-when="on" ${off ? 'hidden' : ''}><span>Custo</span><span class="combat-cost"><input type="number" class="create-form__input" data-cb-custo value="${c.custo && c.custo.valor ? cbEsc(c.custo.valor) : ''}" min="0" max="9999" placeholder="0"><select class="create-form__input char-select" data-cb-custo-unidade>${cbListOptions(COMBAT_COST_UNITS, (c.custo && c.custo.unidade) || 'MP')}</select></span></label>`}
+        </div>
+        <div class="combat-form__lists" data-cb-when="on" ${off ? 'hidden' : ''}>
+          <div class="combat-list" data-cb-list="dano">
+            <div class="combat-list__head"><span>Dano ou cura</span><button type="button" class="combat-list__add" data-cb-add="dano">+ Dano</button></div>
+            <div class="combat-list__rows">${c.dano.map(combatDamageRowHTML).join('')}</div>
+          </div>
+          <div class="combat-list" data-cb-list="mods">
+            <div class="combat-list__head"><span>Muda atributos ou o turno</span><button type="button" class="combat-list__add" data-cb-add="mods">+ Modificador</button></div>
+            <div class="combat-list__rows">${c.mods.map(combatModRowHTML).join('')}</div>
+          </div>
+          <div class="combat-list" data-cb-list="efeitos">
+            <div class="combat-list__head"><span>Efeitos da Lista de Efeitos</span><button type="button" class="combat-list__add" data-cb-add="efeitos">+ Efeito</button></div>
+            <div class="combat-list__rows">${c.efeitos.map(combatEffectRowHTML).join('')}</div>
+          </div>
+          <label class="combat-field combat-field--wide"><span>O que o grid não faz sozinho</span><input type="text" class="create-form__input" data-cb-nota value="${cbEsc(c.nota)}" maxlength="400" placeholder="Ex.: empurra 2q; o Mestre aplica"></label>
+        </div>
+      </section>`;
+  }
+
+  function syncCombatForm(root) {
+    if (!root) return;
+    const uso = root.querySelector('[data-cb-uso]')?.value || 'ataque';
+    root.querySelectorAll('[data-cb-when]').forEach((el) => {
+      const when = el.dataset.cbWhen;
+      let show = uso !== 'nenhum';
+      if (when === 'ataque') show = uso === 'ataque';
+      if (el.hasAttribute('data-cb-size') || el.hasAttribute('data-cb-width')) return;
+      el.hidden = !show;
+    });
+    const forma = root.querySelector('[data-cb-forma]')?.value || 'alvo';
+    const size = root.querySelector('[data-cb-size]');
+    const width = root.querySelector('[data-cb-width]');
+    if (size) {
+      size.hidden = uso === 'nenhum' || forma === 'alvo' || forma === 'cena';
+      const lab = size.querySelector('span');
+      if (lab) lab.textContent = `${forma === 'linha' ? 'Comprimento' : (forma === 'quadrado' ? 'Largura' : 'Tamanho')} (q)`;
+    }
+    if (width) {
+      width.hidden = uso === 'nenhum' || !(forma === 'quadrado' || forma === 'linha');
+      const lab = width.querySelector('span');
+      if (lab) lab.textContent = `${forma === 'linha' ? 'Espessura' : 'Altura'} (q)`;
+    }
+  }
+
+  function readCombatForm(root) {
+    if (!root) return null;
+    const q = (sel) => root.querySelector(sel);
+    const kind = root.dataset.kind || 'magia';
+    const raw = {
+      uso: q('[data-cb-uso]')?.value,
+      acao: q('[data-cb-acao]')?.value,
+      alvos: q('[data-cb-alvos]')?.value,
+      atributo: q('[data-cb-atributo]')?.value,
+      alcance: q('[data-cb-alcance]')?.value,
+      forma: q('[data-cb-forma]')?.value,
+      tamanho: q('[data-cb-tamanho]')?.value,
+      largura: q('[data-cb-largura]')?.value,
+      nota: q('[data-cb-nota]')?.value,
+      dano: [...root.querySelectorAll('[data-cb-row="dano"]')].map((r) => ({
+        dados: r.querySelector('[data-cb-dados]')?.value,
+        bonus: r.querySelector('[data-cb-bonus]')?.value,
+        tipo: r.querySelector('[data-cb-tipo]')?.value,
+        elemento: r.querySelector('[data-cb-elemento]')?.value
+      })),
+      mods: [...root.querySelectorAll('[data-cb-row="mods"]')].map((r) => ({
+        stat: r.querySelector('[data-cb-stat]')?.value,
+        valor: r.querySelector('[data-cb-valor]')?.value,
+        turnos: r.querySelector('[data-cb-turnos]')?.value
+      })),
+      efeitos: [...root.querySelectorAll('[data-cb-row="efeitos"]')].map((r) => ({
+        nome: r.querySelector('[data-cb-efeito]')?.value,
+        nivel: r.querySelector('[data-cb-nivel]')?.value,
+        turnos: r.querySelector('[data-cb-turnos]')?.value
+      }))
+    };
+    if (kind !== 'magia') raw.custo = { valor: q('[data-cb-custo]')?.value, unidade: q('[data-cb-custo-unidade]')?.value };
+    return normalizeCombat(raw);
+  }
+
+  /* Dados digitados errado ("3d", "d6") ficam marcados antes de salvar. */
+  function combatFormErrors(root) {
+    if (!root) return [];
+    const bad = [];
+    root.querySelectorAll('[data-cb-dados]').forEach((el) => {
+      const ok = !el.value.trim() || !!cbDice(el.value);
+      el.classList.toggle('is-invalid', !ok);
+      if (!ok) bad.push(el);
+    });
+    return bad;
+  }
+
+  /* Uso em combate de uma entrada do livro: o salvo ou, se ainda não houver,
+     o convertido do texto (marcado como derived). */
+  function combatOfEntry(entry) {
+    const f = (entry && entry.fields) || {};
+    const saved = normalizeCombat(f.Combate);
+    if (saved) return { combat: saved, derived: false, doubts: [] };
+    const tab = String((entry && entry.tab) || '');
+    let r = { combat: null, doubts: [] };
+    if (/^magias$/i.test(tab)) r = combatFromSpell(f, entry.subtype);
+    else if (/^itens$/i.test(tab) && entry.subtype && entry.subtype !== 'item') r = combatFromItem(f, entry.subtype);
+    return { combat: r.combat, derived: true, doubts: r.doubts };
+  }
+  function combatSectionHTML(entry, opts = {}) {
+    const info = combatOfEntry(entry);
+    const badge = combatBadgeHTML(info.combat, opts);
+    if (!badge) return '';
+    return `<div class="combat-read">${badge}${info.derived ? '<small class="combat-read__note">Lido do texto. Ao editar, o Mestre confirma e salva.</small>' : ''}</div>`;
+  }
+
+  let combatFormsBound = false;
+  function bindCombatForms() {
+    if (combatFormsBound) return;
+    combatFormsBound = true;
+    document.addEventListener('click', (e) => {
+      const add = e.target.closest('[data-cb-add]');
+      if (add) {
+        e.preventDefault();
+        const list = add.closest('[data-cb-list]');
+        const rows = list && list.querySelector('.combat-list__rows');
+        if (!rows) return;
+        const type = add.dataset.cbAdd;
+        const html = type === 'dano' ? combatDamageRowHTML({}) : (type === 'mods' ? combatModRowHTML({}) : combatEffectRowHTML({}));
+        rows.insertAdjacentHTML('beforeend', html);
+        rows.lastElementChild?.querySelector('input, select')?.focus();
+        return;
+      }
+      const rm = e.target.closest('[data-cb-remove]');
+      if (rm && rm.closest('[data-combat-form]')) {
+        e.preventDefault();
+        rm.closest('[data-cb-row]')?.remove();
+      }
+    });
+    document.addEventListener('change', (e) => {
+      if (!e.target.closest('[data-cb-uso], [data-cb-forma]')) return;
+      syncCombatForm(e.target.closest('[data-combat-form]'));
+    });
+  }
+
   const safeCostUnit = (unit) => COST_UNITS.includes(unit) ? unit : 'MP';
 
   /* Escopos: novo formato fields.Escopos = [{tipo, detalhe}].
@@ -536,7 +1080,7 @@
       fields: [
         { key: 'Porte', type: 'select', options: RACE_SIZES, placeholder: 'Porte médio' },
         { key: 'Longevidade', type: 'text', placeholder: 'Ex.: 80–110 anos' },
-        { key: 'Deslocamento', type: 'text', placeholder: 'Ex.: 9 metros' },
+        { key: 'Deslocamento', type: 'text', placeholder: 'Ex.: 1 metro' },
         { key: 'Alimentação', type: 'text', placeholder: 'Ex.: Onívora' },
         { key: 'Constituição', type: 'text', placeholder: 'Ex.: Semicorpórea, mineral, orgânica' },
         { key: 'Sentidos', type: 'text', placeholder: 'Ex.: Visão térmica em 12 metros' },
@@ -1036,7 +1580,8 @@
           duration: String(ability.duration || (fromMagic && fromMagic.duration) || '').trim(),
           effect: String(ability.effect || (fromMagic && fromMagic.effect) || '').trim(),
           limit: String(ability.limit || (fromMagic && fromMagic.limit) || '').trim(),
-          summary: String((fromMagic && fromMagic.summary) || ability.summary || '').trim()
+          summary: String((fromMagic && fromMagic.summary) || ability.summary || '').trim(),
+          combat: source === 'magic' ? null : normalizeCombat(ability.combat)
         };
       })
       .filter(Boolean);
@@ -3931,6 +4476,8 @@
           </div>
         </div>
 
+        ${combatFormHTML(f.Combate || (editing ? combatFromSpell(f, type).combat : null), 'magia')}
+
         <div class="create-form__field">
           <div class="spell-effects-builder" id="spellEffectsBuilder">
             <div class="spell-effects-builder__head">
@@ -4205,6 +4752,14 @@
         fields['Efeitos Adicionais'] = spellEffects;
         fields['Efeito Adicional'] = legacyEffectText;
         summary = efeito;
+      }
+
+      const combatRoot = form.querySelector('[data-combat-form]');
+      if (combatFormErrors(combatRoot).length) missing.push('dados de dano no formato 3d6');
+      fields.Combate = readCombatForm(combatRoot);
+      if (editing && existing && existing.fields) {
+        /* Mantém campos que este formulário não edita (Era, Linhagem…). */
+        fields = { ...existing.fields, ...fields };
       }
 
       if (missing.length) {
@@ -4526,6 +5081,7 @@
             <section class="spell-book-section">
               <h2>Efeito mecânico</h2>
               ${bookScopeNotes}
+              ${combatSectionHTML(e, { useForm: arcane.useForm })}
             </section>
             ${bookHowWorks}
             <section class="spell-book-section">
@@ -4794,7 +5350,8 @@
       const itemFields = e.fields || {};
       const baseFields = itemBaseFieldEntries(itemFields);
       const extraFields = normalizeItemExtraFields(itemFields.Campos);
-      if (!baseFields.length && !extraFields.length) return '';
+      const combatRead = combatSectionHTML(e);
+      if (!baseFields.length && !extraFields.length && !combatRead) return '';
       return `
         <aside class="entry__dossier-side">
           <header class="entry__dossier-head">
@@ -4827,6 +5384,7 @@
               </dl>
             </div>
           ` : ''}
+          ${combatRead ? `<div class="item-extra-view"><span class="section__eyebrow">NO GRID</span>${combatRead}</div>` : ''}
         </aside>
       `;
     }
@@ -6007,27 +6565,27 @@
     const sys = MESA_SYSTEMS[mesa.system] || { name: mesa.system, href: '#/' };
     const base = `#/Mesas/${encodeURIComponent(mesa.id)}`;
     const characters = CHARACTERS.filter((c) => c.mesaId === mesa.id && !c.isNpc);
-    const npcChars = CHARACTERS.filter((c) => c.mesaId === mesa.id && c.isNpc);
     const npcs = MESA_NPCS[mesa.id] || [];
     const members = MESA_MEMBERS[mesa.id] || [];
-    const counts = { fichas: characters.length, npcs: npcs.length + npcChars.length, membros: members.length };
+    const isChat = !['fichas', 'npcs', 'membros'].includes(tabId);
     const panel = tabId === 'fichas' ? mesaFichasPanel(mesa, characters)
       : tabId === 'npcs' ? mesaNpcsPanel(mesa, npcs)
       : tabId === 'membros' ? mesaMembersPanel(mesa, members)
       : mesaChatPanel(mesa);
+    const page = MESA_TABS.find((t) => t.id === tabId);
 
+    // No chat a barra some: o painel de ferramentas já leva a fichas, NPCs e membros.
+    // As páginas completas (criar ficha, convite, senha) ganham só uma volta ao chat.
     return `
+      ${isChat ? '' : `
       <header class="mesa-bar" style="--hue:${theme.hue}">
-        <a href="#/Mesas" class="mesa-bar__back" aria-label="Voltar às mesas" title="Mesas"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 18l-6-6 6-6"/></svg></a>
+        <a href="${base}" class="mesa-bar__back" aria-label="Voltar ao chat" title="Voltar ao chat"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 18l-6-6 6-6"/></svg></a>
         <div class="mesa-bar__id" ${mesa.description ? `title="${escapeHtml(mesa.description)}"` : ''}>
-          <strong>${escapeHtml(mesa.name)}</strong>
-          <span><a href="${sys.href}">${escapeHtml(sys.name)}</a> · ${escapeHtml(mesaRoleLabel(mesa.role))}</span>
+          <strong>${escapeHtml(page ? page.label : '')}</strong>
+          <span>${escapeHtml(mesa.name)} · <a href="${sys.href}">${escapeHtml(sys.name)}</a></span>
         </div>
-        <nav class="mesa-bar__tabs" aria-label="Abas da mesa">
-          ${MESA_TABS.map((t) => `
-            <a href="${base}/${t.id}" class="${t.id === tabId ? 'is-active' : ''}" ${t.id === tabId ? 'aria-current="page"' : ''}>${t.label}${counts[t.id] ? `<b>${counts[t.id]}</b>` : ''}</a>`).join('')}
-        </nav>
-      </header>
+        <a href="${base}" class="mesa-bar__chat">Voltar ao chat</a>
+      </header>`}
       <div class="mesa-panel" data-mesa-panel="${escapeHtml(tabId)}" data-mesa-id="${escapeHtml(mesa.id)}">
         ${panel}
       </div>`;
@@ -6284,6 +6842,7 @@
         </li>`;
     }
     if (kind === 'rolagem') return chatRollHTML(mesaId, msg);
+    if (kind === 'combate') return chatCombatHTML(mesaId, msg);
     if (kind === 'imagem') return chatImageHTML(mesaId, msg);
 
     const tone = msg.tone && msg.tone !== 'normal' ? ` chat-tone--${msg.tone}` : '';
@@ -6374,7 +6933,7 @@
   const CHAT_TOOLS = [
     { id: 'dados', label: 'Dados', icon: TOOL_ICON('<path d="M12 2l8.5 5v10L12 22l-8.5-5V7z"/><path d="M12 22V12M3.5 7L12 12l8.5-5"/>') },
     { id: 'ficha', label: 'Fichas', icon: TOOL_ICON('<path d="M6 3h9l3 3v15H6z"/><path d="M9 10h6M9 14h6M9 18h4"/>') },
-    { id: 'combate', label: 'Combate · em breve', soon: true, icon: TOOL_ICON('<path d="M14.5 17.5L3 6V3h3l11.5 11.5"/><path d="M13 19l6-6M16 16l4 4M19 21l2-2"/>') },
+    { id: 'combate', label: 'Combate', icon: TOOL_ICON('<path d="M14.5 17.5L3 6V3h3l11.5 11.5"/><path d="M13 19l6-6M16 16l4 4M19 21l2-2"/>') },
     { id: 'notas', label: 'Notas', icon: TOOL_ICON('<path d="M20 4c-6 0-12 4-14 12l-2 4"/><path d="M8 14c4 0 7-2 9-6"/>') },
     { id: 'npcs', label: 'NPCs', master: true, icon: TOOL_ICON('<circle cx="12" cy="10" r="6"/><path d="M9 21v-3h6v3M10 10h.01M14 10h.01"/>') },
     { id: 'acervo', label: 'Acervo', master: true, icon: TOOL_ICON('<rect x="3" y="4" width="18" height="16" rx="1"/><circle cx="9" cy="10" r="2"/><path d="M21 16l-5-5-9 9"/>') },
@@ -6752,7 +7311,23 @@
   function toolOpcoesHTML(mesa) {
     const online = new Set(chatState.online.map(([id]) => id));
     const members = MESA_MEMBERS[mesa.id] || [];
+    const base = `#/Mesas/${encodeURIComponent(mesa.id)}`;
+    const sys = MESA_SYSTEMS[mesa.system] || { name: mesa.system, href: '#/' };
+    const owner = mesa.ownerId === auth.user?.id;
     return `
+      <div class="tool-mesa">
+        <strong>${escapeHtml(mesa.name)}</strong>
+        <span><a href="${sys.href}">${escapeHtml(sys.name)}</a> · ${escapeHtml(mesaRoleLabel(mesa.role))}</span>
+      </div>
+      <a class="chat-button chat-button--primary tool-home" href="#/">
+        <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M3 11l9-7 9 7"/><path d="M5 10v10h14V10"/></svg>
+        Voltar ao início
+      </a>
+      <div class="tool-row tool-row--wrap">
+        <a class="chat-button" href="#/Mesas">Minhas mesas</a>
+        <a class="chat-button" href="${base}/fichas">Página de fichas</a>
+        ${mesa.role === 'mestre' ? `<a class="chat-button" href="${base}/npcs">Página de NPCs</a>` : ''}
+      </div>
       <p class="chat-tool__sub">Membros</p>
       <ul class="tool-members">
         ${members.map((m) => `
@@ -6762,7 +7337,7 @@
             <small>${escapeHtml(mesaRoleLabel(m.role))}</small>
           </li>`).join('')}
       </ul>
-      ${mesa.role === 'mestre' ? `<a class="chat-link" href="#/Mesas/${encodeURIComponent(mesa.id)}/membros">convite e senha</a>` : ''}
+      <a class="chat-link" href="${base}/membros">${mesa.role === 'mestre' ? (owner ? 'convite, senha e apagar mesa' : 'convite e membros') : 'sair da mesa'}</a>
       <p class="chat-tool__sub">Fixadas</p>
       ${toolFixadasHTML(mesa)}
       <p class="chat-tool__sub">Notificações</p>
@@ -6773,6 +7348,7 @@
     const tool = chatToolsFor(mesa).find((t) => t.id === toolId && !t.soon) || chatToolsFor(mesa)[0];
     const body = {
       dados: () => toolDadosHTML(mesa),
+      combate: () => toolCombateHTML(mesa),
       ficha: () => toolFichaHTML(mesa),
       notas: () => toolNotasHTML(mesa),
       npcs: () => toolNpcsHTML(mesa),
@@ -6799,6 +7375,1802 @@
       ${bottom.map(button).join('')}`;
   }
 
+  /* ══════════════════════════════════════════════
+     COMBATE EM GRID (mesa)
+     Uma linha em mesa_combates por combate aberto. O Mestre edita mapa e peças
+     direto na tabela; jogadores agem por RPC (mover, correr, agir, fim do turno,
+     iniciativa). 1 quadrado = 1 metro. Regras: Sistemas › Combate em Grid.
+     map.cells: um caractere por quadrado — ' ' fora, '0' chão, '1' parede,
+     '2' terreno difícil. map.revealed: '1' onde o Mestre revelou a névoa.
+     ══════════════════════════════════════════════ */
+  const MESA_COMBATS = {};
+  const COMBAT_DEFAULT_W = 24;
+  const COMBAT_DEFAULT_H = 16;
+  const COMBAT_MAX_SIDE = 80;
+  const COMBAT_SIZES = [1, 2, 3, 4, 6];
+  const COMBAT_FOG_MODES = { ambos: 'Visão das peças e revelado à mão', visao: 'Só a visão das peças', manual: 'Só o revelado à mão', nenhuma: 'Sem névoa' };
+  const COMBAT_BRUSHES = [
+    { id: 'chao', label: 'Chão', hint: 'Área jogável' },
+    { id: 'parede', label: 'Parede', hint: 'Bloqueia passagem e visão. Só o Mestre vê o vermelho.' },
+    { id: 'dificil', label: 'Difícil', hint: 'Cada quadrado custa 2q' },
+    { id: 'apagar', label: 'Apagar', hint: 'Volta a ficar fora do mapa' },
+    { id: 'revelar', label: 'Revelar', hint: 'Tira a névoa' },
+    { id: 'esconder', label: 'Esconder', hint: 'Devolve a névoa' }
+  ];
+  const DUNGEON_SIZES = { pequena: { w: 24, h: 16, rooms: 5 }, media: { w: 36, h: 24, rooms: 8 }, grande: { w: 52, h: 34, rooms: 13 } };
+  const combatUi = {
+    brush: '', zoom: 0, view: 'grid', selected: '', placing: '', reach: null, hover: null,
+    saveTimer: null, painting: false, imgCache: {}, act: null, fitted: '', pointers: new Map(), pinch: null
+  };
+
+  const CI = (d, size = 16) => `<svg viewBox="0 0 24 24" width="${size}" height="${size}" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
+  const COMBAT_ICONS = {
+    sword: CI('<path d="M14.5 17.5L3 6V3h3l11.5 11.5"/><path d="M13 19l6-6M16 16l4 4M19 21l2-2"/>'),
+    run: CI('<circle cx="14" cy="4.5" r="1.8"/><path d="M8 21l3-6 3 2v5M6 12l3-4 4 1 3 3 3 1"/>'),
+    flag: CI('<path d="M5 21V4M5 4h11l-2 4 2 4H5"/>'),
+    plus: CI('<path d="M12 5v14M5 12h14"/>'),
+    minus: CI('<path d="M5 12h14"/>'),
+    fit: CI('<path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/>'),
+    dice: CI('<rect x="4" y="4" width="16" height="16" rx="3"/><circle cx="9" cy="9" r="1"/><circle cx="15" cy="15" r="1"/><circle cx="15" cy="9" r="1"/><circle cx="9" cy="15" r="1"/>'),
+    x: CI('<path d="M18 6L6 18M6 6l12 12"/>'),
+    check: CI('<path d="M20 6L9 17l-5-5"/>'),
+    shield: CI('<path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/>'),
+    map: CI('<path d="M9 4L3 6v14l6-2 6 2 6-2V4l-6 2z"/><path d="M9 4v14M15 6v14"/>')
+  };
+
+  function combatOf(mesaId) {
+    const c = MESA_COMBATS[mesaId];
+    return c && c.status !== 'encerrado' ? c : null;
+  }
+  const isCombatMaster = (mesa) => !!mesa && mesa.role === 'mestre';
+
+  function normalizeCombatRow(row) {
+    if (!row) return null;
+    const map = row.map && typeof row.map === 'object' ? { ...row.map } : {};
+    map.w = Math.max(4, Math.min(COMBAT_MAX_SIDE, parseInt(map.w, 10) || COMBAT_DEFAULT_W));
+    map.h = Math.max(4, Math.min(COMBAT_MAX_SIDE, parseInt(map.h, 10) || COMBAT_DEFAULT_H));
+    const n = map.w * map.h;
+    map.cells = String(map.cells || '').padEnd(n, ' ').slice(0, n);
+    map.revealed = String(map.revealed || '').padEnd(n, '0').slice(0, n);
+    map.fog = COMBAT_FOG_MODES[map.fog] ? map.fog : 'ambos';
+    map.vision = Math.max(1, Math.min(60, parseInt(map.vision, 10) || 12));
+    map.bg = map.bg && map.bg.url ? { x: 0, y: 0, scale: 100, opacity: 100, ...map.bg } : null;
+    const pieces = (Array.isArray(row.pieces) ? row.pieces : []).filter((p) => p && p.id);
+    const turn = row.turn && typeof row.turn === 'object' ? row.turn : {};
+    return {
+      ...row, map, pieces,
+      turn: { round: 1, index: 0, order: [], moveLeft: 0, actions: 1, attacks: 0, actionUsed: false, oa: [], ...turn }
+    };
+  }
+
+  async function loadMesaCombat(mesaId) {
+    if (!sb) return null;
+    const { data, error } = await sb.from('mesa_combates').select('*').eq('mesa_id', mesaId)
+      .in('status', ['preparando', 'ativo']).order('created_at', { ascending: false }).limit(1);
+    if (error) { console.error('Erro ao carregar o combate:', error); return null; }
+    MESA_COMBATS[mesaId] = normalizeCombatRow((data || [])[0] || null);
+    return MESA_COMBATS[mesaId];
+  }
+
+  /* ── Geometria ── */
+  const cellIdx = (map, x, y) => y * map.w + x;
+  const cellAt = (map, x, y) => (x < 0 || y < 0 || x >= map.w || y >= map.h) ? ' ' : map.cells[cellIdx(map, x, y)];
+  const pieceSize = (p) => (COMBAT_SIZES.includes(Number(p.size)) ? Number(p.size) : 1);
+  const placed = (p) => Number.isInteger(p.x) && Number.isInteger(p.y);
+  const pieceSide = (p) => (p.owner ? 'j' : 'm');
+  const pieceCenter = (p) => ({ x: p.x + (pieceSize(p) - 1) / 2, y: p.y + (pieceSize(p) - 1) / 2 });
+  function pieceCovers(p, x, y) {
+    const s = pieceSize(p);
+    return placed(p) && x >= p.x && y >= p.y && x < p.x + s && y < p.y + s;
+  }
+  /* Quadrados vazios entre duas peças (0 = encostadas, inclusive na diagonal). */
+  function pieceGap(a, b) {
+    const as = pieceSize(a), bs = pieceSize(b);
+    return Math.max(0, b.x - (a.x + as), a.x - (b.x + bs), b.y - (a.y + as), a.y - (b.y + bs));
+  }
+  /* Distância em quadrados de uma peça até um quadrado (1 = encostado). */
+  function pieceDistToCell(p, x, y) {
+    const s = pieceSize(p);
+    const dx = Math.max(0, p.x - x, x - (p.x + s - 1));
+    const dy = Math.max(0, p.y - y, y - (p.y + s - 1));
+    return Math.max(dx, dy);
+  }
+  function pieceAtCell(cb, x, y, filter) {
+    for (let i = cb.pieces.length - 1; i >= 0; i--) {
+      const p = cb.pieces[i];
+      if (pieceCovers(p, x, y) && (!filter || filter(p))) return p;
+    }
+    return null;
+  }
+  /* A peça cabe com o canto em (x,y)? Fora do mapa, parede e outras peças de pé bloqueiam. */
+  function pieceFits(cb, p, x, y) {
+    const s = pieceSize(p);
+    for (let dy = 0; dy < s; dy++) {
+      for (let dx = 0; dx < s; dx++) {
+        const c = cellAt(cb.map, x + dx, y + dy);
+        if (c === ' ' || c === '1') return false;
+        if (cb.pieces.some((o) => o.id !== p.id && !o.down && pieceCovers(o, x + dx, y + dy))) return false;
+      }
+    }
+    return true;
+  }
+  function stepCost(cb, p, x, y) {
+    const s = pieceSize(p);
+    for (let dy = 0; dy < s; dy++) for (let dx = 0; dx < s; dx++) if (cellAt(cb.map, x + dx, y + dy) === '2') return 2;
+    return 1;
+  }
+  /* Quadrados alcançáveis com o movimento que sobra (diagonal custa 1, difícil 2). */
+  function reachableCells(cb, p, budget) {
+    const map = cb.map;
+    const best = new Map();
+    const key = (x, y) => `${x},${y}`;
+    const queue = [[p.x, p.y, 0]];
+    best.set(key(p.x, p.y), 0);
+    while (queue.length) {
+      let bi = 0;
+      for (let i = 1; i < queue.length; i++) if (queue[i][2] < queue[bi][2]) bi = i;
+      const [x, y, cost] = queue.splice(bi, 1)[0];
+      if (cost > (best.get(key(x, y)) ?? Infinity)) continue;
+      for (let dy = -1; dy <= 1; dy++) {
+        for (let dx = -1; dx <= 1; dx++) {
+          if (!dx && !dy) continue;
+          const nx = x + dx, ny = y + dy;
+          if (nx < 0 || ny < 0 || nx >= map.w || ny >= map.h) continue;
+          if (!pieceFits(cb, p, nx, ny)) continue;
+          const nc = cost + stepCost(cb, p, nx, ny);
+          if (nc > budget) continue;
+          if (nc < (best.get(key(nx, ny)) ?? Infinity)) { best.set(key(nx, ny), nc); queue.push([nx, ny, nc]); }
+        }
+      }
+    }
+    best.delete(key(p.x, p.y));
+    return best;
+  }
+  /* Linha de visão entre centros de quadrados: paredes no meio bloqueiam. */
+  function lineCells(x0, y0, x1, y1) {
+    const out = [];
+    let dx = Math.abs(x1 - x0), dy = Math.abs(y1 - y0);
+    const sx = x0 < x1 ? 1 : -1, sy = y0 < y1 ? 1 : -1;
+    let err = dx - dy, x = x0, y = y0;
+    while (!(x === x1 && y === y1)) {
+      const e2 = 2 * err;
+      if (e2 > -dy) { err -= dy; x += sx; }
+      if (e2 < dx) { err += dx; y += sy; }
+      if (x === x1 && y === y1) break;
+      out.push([x, y]);
+    }
+    return out;
+  }
+  const lineOfSight = (map, x0, y0, x1, y1) => !lineCells(x0, y0, x1, y1).some(([x, y]) => cellAt(map, x, y) === '1');
+  /* Quadrados que um conjunto de peças enxerga (Set de índices). */
+  function visionOf(cb, pieces) {
+    const map = cb.map;
+    const seen = new Set();
+    const r = map.vision;
+    pieces.filter((p) => placed(p) && !p.down).forEach((p) => {
+      const s = pieceSize(p);
+      for (let oy = 0; oy < s; oy++) {
+        for (let ox = 0; ox < s; ox++) {
+          const cx = p.x + ox, cy = p.y + oy;
+          for (let y = Math.max(0, cy - r); y <= Math.min(map.h - 1, cy + r); y++) {
+            for (let x = Math.max(0, cx - r); x <= Math.min(map.w - 1, cx + r); x++) {
+              const i = cellIdx(map, x, y);
+              if (seen.has(i)) continue;
+              if ((x - cx) ** 2 + (y - cy) ** 2 > r * r) continue;
+              if (lineOfSight(map, cx, cy, x, y)) seen.add(i);
+            }
+          }
+        }
+      }
+    });
+    return seen;
+  }
+  /* null = tudo visível. O Mestre recebe a visão somada de todos os jogadores. */
+  function visibleCellsFor(cb, mesa) {
+    const map = cb.map;
+    if (map.fog === 'nenhuma') return null;
+    const me = auth.user?.id;
+    const owners = isCombatMaster(mesa) ? cb.pieces.filter((p) => p.owner) : cb.pieces.filter((p) => p.owner && p.owner === me);
+    const set = (map.fog === 'visao' || map.fog === 'ambos') ? visionOf(cb, owners) : new Set();
+    if (map.fog === 'manual' || map.fog === 'ambos') {
+      for (let i = 0; i < map.revealed.length; i++) if (map.revealed[i] === '1') set.add(i);
+    }
+    return set;
+  }
+  /* O jogador só sabe de peças que vê (ou que são dele). */
+  function pieceSeenBy(mesa, cb, p, vis) {
+    if (isCombatMaster(mesa)) return true;
+    if (p.owner && p.owner === auth.user?.id) return true;
+    if (p.hidden || !placed(p)) return false;
+    if (!vis) return true;
+    const s = pieceSize(p);
+    for (let dy = 0; dy < s; dy++) for (let dx = 0; dx < s; dx++) if (vis.has(cellIdx(cb.map, p.x + dx, p.y + dy))) return true;
+    return false;
+  }
+
+  /* ── Peças: estado de combate tirado das fichas, NPCs e bestiário ── */
+  function parsePool(text) {
+    const parts = String(text || '').split('/').map((s) => parseInt(s, 10));
+    const max = Number.isFinite(parts[1]) ? parts[1] : (Number.isFinite(parts[0]) ? parts[0] : 0);
+    const cur = Number.isFinite(parts[0]) ? Math.min(parts[0], max || parts[0]) : max;
+    return max > 0 ? { cur, max } : null;
+  }
+  function hpFromBeastFields(fields) {
+    const parts = {};
+    beastHpPartsForView(fields || {}).forEach((part) => {
+      const m = String(part.hp || '').replace(',', '.').match(/\d+/);
+      const max = m ? parseInt(m[0], 10) : 0;
+      if (max > 0) parts[part.name] = { cur: max, max };
+    });
+    return Object.keys(parts).length ? parts : { Corpo: { cur: 10, max: 10 } };
+  }
+  function beastAttrDice(fields) {
+    const attrs = (fields && fields.Atributos) || {};
+    const out = {};
+    CHAR_ATTRIBUTES.forEach((a) => { out[a] = attrDiceForScore(Number(attrs[a]) || CHAR_ATTR_BASE, 0); });
+    return out;
+  }
+  function pieceMoveFromBeast(fields) {
+    return computedMovementFor('', beastAttrDice(fields).Destreza);
+  }
+  function combatPieceSources(mesa) {
+    const out = [];
+    CHARACTERS.filter((c) => c.mesaId === mesa.id).forEach((c) => out.push({
+      key: `c:${c.id}`, group: c.isNpc ? 'NPCs da mesa' : 'Fichas dos jogadores', name: c.name || 'Sem nome'
+    }));
+    (MESA_NPCS[mesa.id] || []).forEach((n) => out.push({ key: `n:${n.id}`, group: 'NPCs da mesa', name: n.title }));
+    entriesIn('Bestiario').forEach((e) => out.push({ key: `b:${e.id}`, group: 'Bestiário', name: e.title }));
+    return out;
+  }
+  function makeCombatPiece(mesa, key) {
+    const [kind, ref] = key.split(':');
+    const id = `p${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
+    const base = { id, ref, x: null, y: null, size: 1, hidden: false, hpVisible: false, initBonus: 0, down: false, mods: [], effects: [] };
+    if (kind === 'c') {
+      const c = CHARACTERS.find((x) => x.id === ref);
+      if (!c) return null;
+      const v = ensureVitals(c);
+      const awk = normalizeAwakening(c.magic);
+      const A = attrModsView(c, raceDataFor(c.raceId).mod, awkIsNonMage(awk) ? awk.bonusAttr : '');
+      const attrs = {};
+      CHAR_ATTRIBUTES.forEach((a) => { attrs[a] = A[a] ? A[a].dice : 1; });
+      const hp = {};
+      Object.entries(v.hp || {}).forEach(([part, slot]) => { if (Number(slot.max) > 0) hp[part] = { cur: Number(slot.cur) || 0, max: Number(slot.max) }; });
+      const da = daStateOf(c);
+      return {
+        ...base, kind: 'char', name: c.name || 'Sem nome', image: c.image || '', color: safeChatColor(c.identity?.chatColor, c.id),
+        owner: c.isNpc ? null : (c.userId || null), move: Math.max(1, parseInt(movementLabelOf(c, A), 10) || 1),
+        hpVisible: !c.isNpc, attrs, daAttr: daAttrOf(c), sheetDa: Number(da.value) || 0,
+        hp: Object.keys(hp).length ? hp : { Corpo: { cur: 10, max: 10 } },
+        mp: v.mana && Number(v.mana.max) > 0 ? { cur: Number(v.mana.cur) || 0, max: Number(v.mana.max) } : null,
+        df: totalDf(c), dm: totalDm(c)
+      };
+    }
+    const beastLike = (title, image, colorSeed, fields, extra) => ({
+      ...base, name: title, image: image || '', color: chatColorFor(colorSeed), owner: null,
+      move: pieceMoveFromBeast(fields), attrs: beastAttrDice(fields), daAttr: beastDaAttribute(fields) || 'Destreza',
+      hp: hpFromBeastFields(fields), mp: parsePool(fields && fields.Mana),
+      df: beastDefenseLevel(fields, 'DF'), dm: beastDefenseLevel(fields, 'DM'), ...extra
+    });
+    if (kind === 'n') {
+      const n = (MESA_NPCS[mesa.id] || []).find((x) => x.id === ref);
+      if (!n) return null;
+      return beastLike(n.title, n.image, n.id, n.fields || {}, { kind: 'npc', hidden: !n.visible });
+    }
+    if (kind === 'b') {
+      const e = entryById(ref);
+      if (!e) return null;
+      return beastLike(e.title, e.image, e.id, e.fields || {}, { kind: 'beast', hidden: true });
+    }
+    return null;
+  }
+  function hpTotals(p) {
+    if (p.hp && typeof p.hp === 'object') {
+      const parts = Object.values(p.hp);
+      return { cur: parts.reduce((s, x) => s + (Number(x.cur) || 0), 0), max: parts.reduce((s, x) => s + (Number(x.max) || 0), 0) };
+    }
+    return null;
+  }
+  const currentTurnPiece = (cb) => (cb && cb.status === 'ativo' && cb.turn.phase !== 'iniciativa')
+    ? cb.pieces.find((p) => p.id === (cb.turn.order || [])[cb.turn.index || 0]) || null : null;
+  const canControl = (mesa, p) => !!p && (isCombatMaster(mesa) || (p.owner && p.owner === auth.user?.id));
+  const initTotal = (p) => (Number(p.initRoll) || 0) + (Number(p.initBonus) || 0) + modSum(p, 'Iniciativa');
+  const modSum = (p, stat) => (Array.isArray(p.mods) ? p.mods : []).filter((m) => m.stat === stat).reduce((s, m) => s + (Number(m.valor) || 0), 0);
+  const pieceMove = (p) => Math.max(0, (Number(p.move) || 1) + modSum(p, 'Movimento') + modSum(p, 'Destreza'));
+  const pieceDa = (p) => (Number(p.da) || 0) + modSum(p, 'DA');
+  const attrDiceOf = (p, attr) => Math.max(1, (Number(p.attrs && p.attrs[attr]) || 1) + modSum(p, attr));
+  function turnFor(p) {
+    return {
+      moveLeft: pieceMove(p), actions: Math.max(0, 1 + modSum(p, 'Ações extras')),
+      attacks: Math.max(0, modSum(p, 'Ataques extras')), actionUsed: false, dashed: false, oa: []
+    };
+  }
+
+  /* ── Dados ── */
+  function rollDiceExpr(dados, bonus = 0) {
+    const m = String(dados || '').match(/^(\d+)d(\d+)$/i);
+    if (!m) return { rolls: [], total: Math.max(0, bonus), text: String(bonus) };
+    const rolls = Array.from({ length: Number(m[1]) }, () => randomInt(Number(m[2])));
+    const total = Math.max(0, rolls.reduce((s, v) => s + v, 0) + bonus);
+    return { rolls, total, text: `${rolls.join(' + ')}${bonus ? ` ${bonus > 0 ? '+' : '−'} ${Math.abs(bonus)}` : ''}` };
+  }
+  function halveDice(dados) {
+    const m = String(dados || '').match(/^(\d+)d(\d+)$/i);
+    return m ? `${Math.max(1, Math.floor(Number(m[1]) / 2))}d${m[2]}` : dados;
+  }
+
+  /* ── Ações disponíveis para uma peça ── */
+  function combatActionOptions(mesa, p) {
+    const out = [];
+    const push = (opt) => { if (opt.combat && opt.combat.uso !== 'nenhum') out.push(opt); };
+    const entryCost = (entry, combat) => {
+      const f = (entry && entry.fields) || {};
+      const valor = parseInt(f.Custo, 10);
+      if (Number.isFinite(valor) && valor > 0) return { valor, unidade: f.CustoUnidade === 'HP' ? 'HP' : 'MP' };
+      return combat && combat.custo ? combat.custo : null;
+    };
+    if (p.kind === 'char') {
+      const c = CHARACTERS.find((x) => x.id === p.ref);
+      if (c) {
+        (Array.isArray(c.inventory) ? c.inventory : []).filter((it) => it.equipped && it.refId).forEach((it, i) => {
+          const entry = entryById(it.refId);
+          if (!entry) return;
+          const info = combatOfEntry(entry);
+          push({ id: `w${i}:${it.refId}`, group: 'Armas e itens', name: it.name || entry.title, combat: info.combat, cost: info.combat && info.combat.custo, weapon: true });
+        });
+        (Array.isArray(c.spells) ? c.spells : []).filter((sp) => sp.refId).forEach((sp, i) => {
+          const entry = entryById(sp.refId);
+          if (!entry) return;
+          const info = combatOfEntry(entry);
+          push({ id: `s${i}:${sp.refId}`, group: 'Magias', name: sp.name || entry.title, combat: info.combat, cost: entryCost(entry, info.combat), useForm: (entry.fields || {})['Forma de Uso'] || '' });
+        });
+      }
+    } else {
+      const fields = p.kind === 'npc'
+        ? (((MESA_NPCS[mesa.id] || []).find((x) => x.id === p.ref) || {}).fields || {})
+        : ((entryById(p.ref) || {}).fields || {});
+      normalizeBeastAbilities(fields.Habilidades).forEach((a, i) => {
+        const info = combatOfAbility(a);
+        const linked = a.source === 'magic' && a.refId ? entryById(a.refId) : null;
+        push({ id: `h${i}`, group: 'Habilidades', name: a.name, combat: info.combat, cost: linked ? entryCost(linked, info.combat) : (info.combat && info.combat.custo), useForm: info.useForm || '' });
+      });
+    }
+    return out;
+  }
+  function optionAttr(opt) {
+    const c = opt.combat;
+    return c.atributo || (opt.useForm ? COMBAT_USEFORM_ATTR[opt.useForm] : '') || (c.alcance > 1 ? 'Destreza' : 'Força');
+  }
+
+  /* Quadrados da área, a partir da peça que age e do quadrado escolhido. */
+  function areaCells(cb, actor, combat, cx, cy) {
+    const map = cb.map;
+    const cells = [];
+    const add = (x, y) => { if (x >= 0 && y >= 0 && x < map.w && y < map.h && map.cells[cellIdx(map, x, y)] !== ' ') cells.push([x, y]); };
+    const o = pieceCenter(actor);
+    const n = Math.max(1, combat.tamanho), wdt = Math.max(1, combat.largura);
+    if (combat.forma === 'cena') {
+      for (let y = 0; y < map.h; y++) for (let x = 0; x < map.w; x++) add(x, y);
+      return cells;
+    }
+    if (combat.forma === 'quadrado') {
+      const x0 = cx - Math.floor((n - 1) / 2), y0 = cy - Math.floor((wdt - 1) / 2);
+      for (let y = y0; y < y0 + wdt; y++) for (let x = x0; x < x0 + n; x++) add(x, y);
+      return cells;
+    }
+    if (combat.forma === 'raio') {
+      const c = combat.alcance === 0 ? o : { x: cx, y: cy };
+      for (let y = Math.floor(c.y - n); y <= Math.ceil(c.y + n); y++) {
+        for (let x = Math.floor(c.x - n); x <= Math.ceil(c.x + n); x++) {
+          if ((x - c.x) ** 2 + (y - c.y) ** 2 <= n * n + 0.01 && lineOfSight(map, Math.round(c.x), Math.round(c.y), x, y)) add(x, y);
+        }
+      }
+      return cells.filter(([x, y]) => combat.alcance > 0 || !pieceCovers(actor, x, y));
+    }
+    const dx = cx - o.x, dy = cy - o.y;
+    const len = Math.hypot(dx, dy) || 1;
+    const ux = dx / len, uy = dy / len;
+    const s = pieceSize(actor);
+    for (let y = actor.y - n - s; y <= actor.y + n + s; y++) {
+      for (let x = actor.x - n - s; x <= actor.x + n + s; x++) {
+        if (pieceCovers(actor, x, y)) continue;
+        const vx = x - o.x, vy = y - o.y;
+        const along = vx * ux + vy * uy;
+        const across = Math.abs(-vx * uy + vy * ux);
+        const reach = along - (s - 1) / 2;
+        let inside = false;
+        if (combat.forma === 'cone') inside = reach > 0 && reach <= n + 0.01 && across <= along + 0.01;
+        if (combat.forma === 'linha') inside = reach > 0 && reach <= n + 0.01 && across <= wdt / 2;
+        if (inside && lineOfSight(map, Math.round(o.x), Math.round(o.y), x, y)) add(x, y);
+      }
+    }
+    return cells;
+  }
+  function targetAllowed(actor, target, combat) {
+    if (target.down && combat.uso === 'ataque') return false;
+    if (combat.alvos === 'proprio') return target.id === actor.id;
+    if (combat.alvos === 'inimigos') return pieceSide(target) !== pieceSide(actor);
+    if (combat.alvos === 'aliados') return pieceSide(target) === pieceSide(actor);
+    return true;
+  }
+  /* Cobertura: outra criatura de pé na linha entre o atacante e o alvo dá +2 na DA. */
+  function hasCover(cb, actor, target) {
+    const a = pieceCenter(actor), t = pieceCenter(target);
+    return lineCells(Math.round(a.x), Math.round(a.y), Math.round(t.x), Math.round(t.y))
+      .some(([x, y]) => cb.pieces.some((q) => q.id !== actor.id && q.id !== target.id && !q.down && pieceCovers(q, x, y)));
+  }
+  /* Arco ou besta disparados com um inimigo encostado perdem metade dos dados. */
+  function engagedInMelee(cb, actor) {
+    return cb.pieces.some((q) => q.id !== actor.id && !q.down && placed(q) && pieceSide(q) !== pieceSide(actor) && pieceGap(actor, q) === 0);
+  }
+
+  /* ── Escrita ── */
+  async function combatUpdate(mesaId, patch) {
+    const cb = combatOf(mesaId);
+    if (!cb) return;
+    Object.assign(cb, patch);
+    renderCombatAll(mesaId);
+    const { error } = await sb.from('mesa_combates').update(patch).eq('id', cb.id);
+    if (error) toast('Erro no combate: ' + error.message);
+  }
+  function combatSaveMapSoon(mesaId) {
+    clearTimeout(combatUi.saveTimer);
+    combatUi.saveTimer = setTimeout(() => {
+      const cb = combatOf(mesaId);
+      if (cb) sb.from('mesa_combates').update({ map: cb.map }).eq('id', cb.id).then(({ error }) => { if (error) toast('Erro ao salvar o mapa: ' + error.message); });
+    }, 450);
+  }
+  function combatSetPieces(mesaId, fn) {
+    const cb = combatOf(mesaId);
+    if (!cb) return;
+    const pieces = cb.pieces.map((p) => ({ ...p }));
+    fn(pieces);
+    combatUpdate(mesaId, { pieces });
+  }
+  async function combatRpc(mesaId, name, args) {
+    const { error } = await sb.rpc(name, args);
+    if (error) { toast(error.message); return false; }
+    await loadMesaCombat(mesaId);
+    renderCombatAll(mesaId);
+    return true;
+  }
+  async function combatChat(mesa, speakerPiece, data, body = '') {
+    try {
+      await sendChatMessage(mesa.id, {
+        kind: 'combate', body,
+        speaker: speakerPiece
+          ? { type: speakerPiece.kind === 'char' ? 'character' : 'avulso', id: speakerPiece.ref, name: speakerPiece.name, image: speakerPiece.image || '', color: speakerPiece.color || '' }
+          : { type: 'narrador', name: 'Combate' },
+        data
+      });
+    } catch (err) { console.error(err); }
+  }
+  async function createCombat(mesa) {
+    const n = COMBAT_DEFAULT_W * COMBAT_DEFAULT_H;
+    const row = {
+      mesa_id: mesa.id, status: 'preparando',
+      map: { w: COMBAT_DEFAULT_W, h: COMBAT_DEFAULT_H, cells: ' '.repeat(n), revealed: '0'.repeat(n), fog: 'ambos', vision: 12, bg: null },
+      pieces: [], turn: { round: 1, index: 0, order: [], moveLeft: 0, actions: 1, attacks: 0, actionUsed: false, oa: [] }
+    };
+    const { data, error } = await sb.from('mesa_combates').insert(row).select().single();
+    if (error) { toast('Não foi possível abrir o combate: ' + error.message); return; }
+    MESA_COMBATS[mesa.id] = normalizeCombatRow(data);
+    combatUi.brush = 'chao';
+    combatUi.view = 'grid';
+    combatUi.fitted = '';
+    renderCombatAll(mesa.id);
+  }
+  function rollDaFor(p) {
+    const dice = attrDiceOf(p, p.daAttr || 'Destreza');
+    let total = randomInt(12);
+    for (let i = 0; i < dice; i++) total += randomInt(6);
+    return total;
+  }
+  /* Passo 1: os jogadores passam a ver o grid e rolam iniciativa e DA. */
+  function callInitiative(mesa) {
+    const cb = combatOf(mesa.id);
+    if (!cb) return;
+    if (!cb.pieces.some(placed)) { toast('Ponha ao menos uma peça no mapa.'); return; }
+    const pieces = cb.pieces.map((p) => (placed(p) && !p.owner && !p.initRoll ? { ...p, initRoll: randomInt(100), da: p.da || rollDaFor(p) } : p));
+    combatUpdate(mesa.id, { pieces, status: 'ativo', turn: { ...cb.turn, phase: 'iniciativa', order: [], index: 0, round: 1 } });
+    combatChat(mesa, null, { event: 'iniciativa' }, 'O combate começou. Rolem iniciativa e DA.');
+  }
+  /* Passo 2: a ordem sai da iniciativa e a primeira peça age. */
+  function startRounds(mesa) {
+    const cb = combatOf(mesa.id);
+    if (!cb) return;
+    const missing = cb.pieces.filter((p) => placed(p) && !p.initRoll);
+    if (missing.length && !confirm(`${missing.map((p) => p.name).join(', ')} ainda não rolou. Rolar por eles e começar?`)) return;
+    const pieces = cb.pieces.map((p) => (placed(p) && !p.initRoll ? { ...p, initRoll: randomInt(100), da: p.da || rollDaFor(p) } : (placed(p) && !p.da ? { ...p, da: rollDaFor(p) } : p)));
+    const order = pieces.filter(placed).map((p) => ({ id: p.id, t: initTotal(p), r: Math.random() }))
+      .sort((a, b) => b.t - a.t || b.r - a.r).map((x) => x.id);
+    const first = pieces.find((p) => p.id === order[0]);
+    combatUpdate(mesa.id, { pieces, status: 'ativo', turn: { round: 1, index: 0, order, phase: 'rodadas', ...turnFor(first) } });
+  }
+
+  /* ── Desenho ── */
+  function combatImage(url, onload) {
+    if (!url) return null;
+    let img = combatUi.imgCache[url];
+    if (!img) {
+      img = new Image();
+      img.crossOrigin = 'anonymous';
+      img.onload = () => onload && onload();
+      img.src = url;
+      combatUi.imgCache[url] = img;
+    }
+    return img.complete && img.naturalWidth ? img : null;
+  }
+  /* Ajuste inicial: preenche a largura sem deixar o quadrado ilegível (rola na vertical).
+     whole = mapa inteiro na tela, nem que fique pequeno. */
+  function fitCombatZoom(mesaId, whole = false) {
+    const cb = combatOf(mesaId);
+    const scroll = document.querySelector('[data-combat-scroll]');
+    if (!cb || !scroll) return;
+    const availW = Math.max(160, scroll.clientWidth - 16);
+    const availH = Math.max(160, scroll.clientHeight - 16);
+    const byW = Math.floor(availW / cb.map.w);
+    const byBoth = Math.floor(Math.min(availW / cb.map.w, availH / cb.map.h));
+    const z = whole ? byBoth : Math.max(byBoth, Math.min(byW, 26));
+    combatUi.zoom = Math.max(whole ? 8 : 22, Math.min(48, z));
+    combatUi.fitted = `${mesaId}|${cb.map.w}x${cb.map.h}`;
+  }
+  function drawCombat(mesaId) {
+    const canvas = document.querySelector('[data-combat-canvas]');
+    const mesa = mesaById(mesaId);
+    const cb = combatOf(mesaId);
+    if (!canvas || !cb || !mesa) return;
+    if (!combatUi.zoom || combatUi.fitted !== `${mesaId}|${cb.map.w}x${cb.map.h}`) fitCombatZoom(mesaId);
+    const master = isCombatMaster(mesa);
+    const map = cb.map;
+    const cs = combatUi.zoom;
+    const dpr = Math.min(2, window.devicePixelRatio || 1);
+    const W = map.w * cs, H = map.h * cs;
+    if (canvas.width !== Math.round(W * dpr) || canvas.height !== Math.round(H * dpr)) {
+      canvas.width = Math.round(W * dpr); canvas.height = Math.round(H * dpr);
+      canvas.style.width = `${W}px`; canvas.style.height = `${H}px`;
+    }
+    const ctx = canvas.getContext('2d');
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, W, H);
+    const redraw = () => drawCombat(mesaId);
+    const bg = map.bg ? combatImage(map.bg.url, redraw) : null;
+    const visible = visibleCellsFor(cb, mesa);
+    const isVis = (i) => !visible || visible.has(i);
+
+    ctx.fillStyle = '#0b0915';
+    ctx.fillRect(0, 0, W, H);
+    if (bg) {
+      ctx.save();
+      ctx.globalAlpha = Math.max(0.1, Math.min(1, (Number(map.bg.opacity) || 100) / 100));
+      const scale = Math.max(10, Number(map.bg.scale) || 100) / 100;
+      ctx.drawImage(bg, (Number(map.bg.x) || 0) * cs, (Number(map.bg.y) || 0) * cs, W * scale, (W * scale) * (bg.naturalHeight / bg.naturalWidth));
+      ctx.restore();
+    }
+
+    for (let y = 0; y < map.h; y++) {
+      for (let x = 0; x < map.w; x++) {
+        const c = map.cells[cellIdx(map, x, y)];
+        const px = x * cs, py = y * cs;
+        if (c === ' ') {
+          ctx.fillStyle = master ? (bg ? 'rgba(5,4,10,0.6)' : '#0d0b18') : '#07060d';
+          ctx.fillRect(px, py, cs, cs);
+          if (master && !bg) { ctx.fillStyle = 'rgba(196,181,253,0.06)'; ctx.fillRect(px + cs / 2 - 1, py + cs / 2 - 1, 2, 2); }
+          continue;
+        }
+        if (!bg) { ctx.fillStyle = (x + y) % 2 ? '#1b1731' : '#1d1934'; ctx.fillRect(px, py, cs, cs); }
+        if (c === '2') {
+          ctx.fillStyle = 'rgba(180,120,40,0.28)'; ctx.fillRect(px, py, cs, cs);
+          ctx.fillStyle = 'rgba(230,180,90,0.45)';
+          for (let k = 0; k < 3; k++) ctx.fillRect(px + cs * (0.25 + k * 0.25) - 1, py + cs * (k % 2 ? 0.35 : 0.65) - 1, 2, 2);
+        }
+        if (c === '1') {
+          if (master) {
+            ctx.fillStyle = 'rgba(244,63,94,0.42)'; ctx.fillRect(px, py, cs, cs);
+            ctx.strokeStyle = 'rgba(244,63,94,0.55)'; ctx.lineWidth = 1;
+            ctx.beginPath(); ctx.moveTo(px, py + cs); ctx.lineTo(px + cs, py); ctx.stroke();
+          } else if (!bg) { ctx.fillStyle = '#100d1d'; ctx.fillRect(px, py, cs, cs); }
+        }
+        ctx.strokeStyle = 'rgba(196,181,253,0.14)';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(px + 0.5, py + 0.5, cs - 1, cs - 1);
+      }
+    }
+
+    // Alcance do movimento.
+    if (combatUi.reach) {
+      combatUi.reach.forEach((cost, k) => {
+        const [x, y] = k.split(',').map(Number);
+        ctx.fillStyle = cost > (cb.turn.moveLeft || 0) - 0 ? 'rgba(16,185,129,0.18)' : 'rgba(16,185,129,0.24)';
+        ctx.fillRect(x * cs + 2, y * cs + 2, cs - 4, cs - 4);
+        if (cs >= 26) {
+          ctx.fillStyle = 'rgba(110,231,183,0.85)'; ctx.font = `600 ${Math.round(cs * 0.28)}px Inter, sans-serif`;
+          ctx.textAlign = 'right'; ctx.textBaseline = 'bottom'; ctx.fillText(String(cost), x * cs + cs - 4, y * cs + cs - 3);
+        }
+      });
+    }
+
+    // Mira de ação: alcance (azul) e área (laranja).
+    const act = combatUi.act;
+    if (act && act.step === 'target') {
+      const actor = cb.pieces.find((p) => p.id === act.actor);
+      if (actor && act.opt.combat.alcance > 0) {
+        for (let y = 0; y < map.h; y++) for (let x = 0; x < map.w; x++) {
+          if (map.cells[cellIdx(map, x, y)] === ' ') continue;
+          if (pieceDistToCell(actor, x, y) <= act.opt.combat.alcance && !pieceCovers(actor, x, y)) {
+            ctx.fillStyle = 'rgba(96,165,250,0.13)'; ctx.fillRect(x * cs, y * cs, cs, cs);
+          }
+        }
+      }
+      (act.preview || []).forEach(([x, y]) => {
+        ctx.fillStyle = 'rgba(251,146,60,0.32)'; ctx.fillRect(x * cs + 1, y * cs + 1, cs - 2, cs - 2);
+      });
+    }
+
+    // Névoa.
+    if (visible) {
+      for (let y = 0; y < map.h; y++) {
+        for (let x = 0; x < map.w; x++) {
+          const i = cellIdx(map, x, y);
+          if (isVis(i) || map.cells[i] === ' ') continue;
+          ctx.fillStyle = master ? 'rgba(0,0,0,0.4)' : '#06050b';
+          ctx.fillRect(x * cs, y * cs, cs, cs);
+        }
+      }
+    }
+
+    // Peças.
+    const turnPiece = currentTurnPiece(cb);
+    const targeted = new Set(act && act.targets ? act.targets : []);
+    cb.pieces.forEach((p) => {
+      if (!placed(p) || !pieceSeenBy(mesa, cb, p, visible)) return;
+      const s = pieceSize(p);
+      const cx = (p.x + s / 2) * cs, cy = (p.y + s / 2) * cs, r = (s * cs) / 2 - 3;
+      ctx.save();
+      if (turnPiece && turnPiece.id === p.id) { ctx.shadowColor = '#fbbf24'; ctx.shadowBlur = 16; }
+      ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2);
+      ctx.fillStyle = '#221c3a'; ctx.fill();
+      ctx.restore();
+      const img = combatImage(p.image, redraw);
+      ctx.save();
+      ctx.beginPath(); ctx.arc(cx, cy, r - 2, 0, Math.PI * 2); ctx.clip();
+      if (img) {
+        const side = Math.min(img.naturalWidth, img.naturalHeight);
+        ctx.drawImage(img, (img.naturalWidth - side) / 2, (img.naturalHeight - side) / 4, side, side, cx - r, cy - r, r * 2, r * 2);
+      } else {
+        ctx.fillStyle = p.color || '#8b5cf6'; ctx.fillRect(cx - r, cy - r, r * 2, r * 2);
+        ctx.fillStyle = '#fff'; ctx.font = `600 ${Math.round(r)}px Inter, sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.fillText((p.name || '?').charAt(0).toUpperCase(), cx, cy + 1);
+      }
+      if (p.down) { ctx.fillStyle = 'rgba(10,8,20,0.55)'; ctx.fillRect(cx - r, cy - r, r * 2, r * 2); }
+      ctx.restore();
+      ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2);
+      const isSel = combatUi.selected === p.id || targeted.has(p.id);
+      ctx.lineWidth = isSel ? 3.5 : 2.2;
+      ctx.strokeStyle = targeted.has(p.id) ? '#fb923c' : (isSel ? '#f3eefe' : (p.color || '#8b5cf6'));
+      ctx.stroke();
+      if (p.hidden && master) {
+        ctx.setLineDash([4, 3]); ctx.strokeStyle = 'rgba(243,238,254,0.7)'; ctx.lineWidth = 1.5;
+        ctx.beginPath(); ctx.arc(cx, cy, r + 3, 0, Math.PI * 2); ctx.stroke(); ctx.setLineDash([]);
+      }
+      if (p.down) {
+        ctx.strokeStyle = '#f43f5e'; ctx.lineWidth = 3;
+        ctx.beginPath(); ctx.moveTo(cx - r * 0.55, cy - r * 0.55); ctx.lineTo(cx + r * 0.55, cy + r * 0.55);
+        ctx.moveTo(cx + r * 0.55, cy - r * 0.55); ctx.lineTo(cx - r * 0.55, cy + r * 0.55); ctx.stroke();
+      }
+      if ((p.effects || []).length) {
+        ctx.fillStyle = '#a855f7'; ctx.beginPath(); ctx.arc(cx + r * 0.72, cy - r * 0.72, Math.max(3, cs * 0.1), 0, Math.PI * 2); ctx.fill();
+      }
+      const showHp = master || p.hpVisible || p.owner === auth.user?.id;
+      const hp = showHp ? hpTotals(p) : null;
+      if (hp && hp.max) {
+        const bw = s * cs - 8, pct = Math.max(0, Math.min(1, hp.cur / hp.max));
+        ctx.fillStyle = 'rgba(0,0,0,0.7)'; ctx.fillRect(p.x * cs + 4, (p.y + s) * cs - 6, bw, 4);
+        ctx.fillStyle = pct > 0.5 ? '#10b981' : (pct > 0.25 ? '#f59e0b' : '#f43f5e');
+        ctx.fillRect(p.x * cs + 4, (p.y + s) * cs - 6, bw * pct, 4);
+      }
+    });
+
+    if (combatUi.hover && (combatUi.brush || combatUi.placing) && master) {
+      ctx.strokeStyle = '#fbbf24'; ctx.lineWidth = 2;
+      ctx.strokeRect(combatUi.hover.x * cs + 1, combatUi.hover.y * cs + 1, cs - 2, cs - 2);
+    }
+  }
+
+  /* ── Cabeçalho do grid ── */
+  function combatHudHTML(mesa, cb) {
+    const master = isCombatMaster(mesa);
+    const vis = master ? null : visibleCellsFor(cb, mesa);
+    const turnPiece = currentTurnPiece(cb);
+    const mine = turnPiece && canControl(mesa, turnPiece);
+    const me = auth.user?.id;
+    let status;
+    if (cb.status === 'preparando') status = '<span class="combat-pill combat-pill--prep">Preparando</span><span class="combat-hud__sub">só o Mestre vê o mapa</span>';
+    else if (cb.turn.phase === 'iniciativa') status = '<span class="combat-pill">Iniciativa</span><span class="combat-hud__sub">rolem iniciativa e DA</span>';
+    else if (turnPiece) {
+      const seen = pieceSeenBy(mesa, cb, turnPiece, vis);
+      status = `<span class="combat-pill">Rodada ${cb.turn.round}</span><span class="combat-hud__sub">vez de <b style="color:${escapeHtml(seen ? (turnPiece.color || 'inherit') : 'inherit')}">${escapeHtml(seen ? turnPiece.name : 'alguém que você não vê')}</b></span>`;
+    } else status = `<span class="combat-pill">Rodada ${cb.turn.round}</span>`;
+
+    // Ataques de oportunidade abertos para peças que eu controlo.
+    const oa = (cb.turn.oa || []).filter((e) => {
+      const by = cb.pieces.find((p) => p.id === e.by);
+      return by && canControl(mesa, by);
+    });
+    const oaHTML = oa.map((e) => {
+      const by = cb.pieces.find((p) => p.id === e.by);
+      const target = cb.pieces.find((p) => p.id === e.target);
+      if (!by || !target) return '';
+      return `<div class="combat-oa">
+        <span>${COMBAT_ICONS.sword}<b>${escapeHtml(by.name)}</b> pode atacar <b>${escapeHtml(target.name)}</b>, que saiu de perto.</span>
+        <span class="combat-oa__btns">
+          <button type="button" class="cbtn cbtn--primary" data-combat-oa="${escapeHtml(by.id)}" data-oa-target="${escapeHtml(target.id)}">Atacar</button>
+          <button type="button" class="cbtn" data-combat-oa-skip="${escapeHtml(by.id)}">Deixar</button>
+        </span>
+      </div>`;
+    }).join('');
+
+    const myUnrolled = cb.status === 'ativo' && cb.pieces.some((p) => p.owner === me && !p.initRoll && placed(p));
+    const actions = Number(cb.turn.actions ?? (cb.turn.actionUsed ? 0 : 1));
+    const attacks = Number(cb.turn.attacks || 0);
+    const acting = combatUi.act && combatUi.act.actor;
+    return `
+      <div class="combat-hud__row">
+        <div class="combat-hud__status">${status}</div>
+      </div>
+      ${myUnrolled ? `<div class="combat-hud__row"><button type="button" class="cbtn cbtn--primary cbtn--wide" data-combat-roll-init>${COMBAT_ICONS.dice}Rolar iniciativa e DA</button></div>` : ''}
+      ${master && cb.turn.phase === 'iniciativa' ? `<div class="combat-hud__row"><button type="button" class="cbtn cbtn--primary cbtn--wide" data-combat-rounds>${COMBAT_ICONS.flag}Começar a rodada 1</button></div>` : ''}
+      ${mine && !acting ? `
+        <div class="combat-hud__row combat-hud__turn">
+          <span class="combat-stat" title="Movimento que sobra"><b>${cb.turn.moveLeft}q</b><small>mover</small></span>
+          <span class="combat-stat ${actions > 0 ? '' : 'is-used'}"><b>${actions}</b><small>${actions === 1 ? 'ação' : 'ações'}</small></span>
+          ${attacks ? `<span class="combat-stat"><b>${attacks}</b><small>atq. extra</small></span>` : ''}
+          <span class="combat-hud__spacer"></span>
+          <button type="button" class="cbtn cbtn--primary" data-combat-act ${actions > 0 || attacks > 0 ? '' : 'disabled'}>${COMBAT_ICONS.sword}<span>Agir</span></button>
+          <button type="button" class="cbtn" data-combat-dash ${actions > 0 ? '' : 'disabled'} title="Troca uma ação por mais movimento">${COMBAT_ICONS.run}<span>Correr</span></button>
+          <button type="button" class="cbtn" data-combat-endturn>${COMBAT_ICONS.flag}<span>Fim do turno</span></button>
+        </div>` : ''}
+      ${oaHTML}`;
+  }
+
+  function combatStageHTML(mesa) {
+    const cb = combatOf(mesa.id);
+    if (!cb) return '';
+    return `
+      <div class="combat-hud" data-combat-hud>${combatHudHTML(mesa, cb)}</div>
+      <div class="combat-mapwrap">
+        <div class="combat-scroll" data-combat-scroll><canvas class="combat-canvas" data-combat-canvas aria-label="Mapa do combate"></canvas></div>
+        <div class="combat-zoom" role="group" aria-label="Zoom do mapa">
+          <button type="button" class="cbtn cbtn--icon" data-combat-zoom="1" aria-label="Aproximar">${COMBAT_ICONS.plus}</button>
+          <button type="button" class="cbtn cbtn--icon" data-combat-zoom="-1" aria-label="Afastar">${COMBAT_ICONS.minus}</button>
+          <button type="button" class="cbtn cbtn--icon" data-combat-fit aria-label="Mapa inteiro na tela">${COMBAT_ICONS.fit}</button>
+        </div>
+      </div>
+      <div class="combat-sheet" data-combat-sheet hidden></div>
+      <p class="combat-hint" data-combat-hint>${escapeHtml(combatHintText(mesa, cb))}</p>`;
+  }
+  function combatHintText(mesa, cb) {
+    const master = isCombatMaster(mesa);
+    const act = combatUi.act;
+    if (act && act.step === 'target') {
+      if (act.opt.combat.forma === 'alvo') return 'Toque no alvo. A área azul é o alcance.';
+      return act.opt.combat.alcance === 0 ? 'Toque para apontar a direção da área.' : 'Toque no centro da área, dentro do azul.';
+    }
+    if (combatUi.placing) return 'Toque num quadrado para pôr a peça.';
+    if (master && combatUi.brush) {
+      const b = COMBAT_BRUSHES.find((x) => x.id === combatUi.brush);
+      return `Pincel ${b ? b.label : ''}: toque e arraste no mapa. Toque de novo no pincel para soltar.`;
+    }
+    if (combatUi.selected && combatUi.reach) return 'Toque num quadrado verde para andar. O número é o custo.';
+    if (master && combatUi.selected) {
+      const sp = cb.pieces.find((p) => p.id === combatUi.selected);
+      if (sp) return `Toque num quadrado para levar ${sp.name} até lá, ou na peça de novo para soltar.`;
+    }
+    const t = currentTurnPiece(cb);
+    if (t && canControl(mesa, t)) return 'Sua vez: toque na sua peça para andar, ou em Agir.';
+    if (master) return cb.status === 'preparando' ? 'Pinte o chão, ponha as peças e chame a iniciativa.' : 'Toque numa peça para movê-la.';
+    if (cb.turn.phase === 'iniciativa') return 'Role iniciativa e DA para entrar na ordem.';
+    return 'Aguarde a sua vez.';
+  }
+
+  /* ── Folha de ação (escolher, mirar, rolar, aplicar) ── */
+  function combatSheetHTML(mesa, cb) {
+    const act = combatUi.act;
+    if (!act) return '';
+    const actor = cb.pieces.find((p) => p.id === act.actor);
+    if (!actor) return '';
+    const close = `<button type="button" class="cbtn cbtn--icon cbtn--ghost" data-act-cancel aria-label="Cancelar">${COMBAT_ICONS.x}</button>`;
+    if (act.step === 'pick') {
+      const opts = combatActionOptions(mesa, actor).filter((o) => act.mode !== 'oportunidade' || (o.combat.uso === 'ataque' && o.combat.forma === 'alvo'));
+      const groups = [...new Set(opts.map((o) => o.group))];
+      return `
+        <header class="combat-sheet__head"><div><strong>${act.mode === 'oportunidade' ? 'Ataque de oportunidade' : 'Agir'}</strong><small>${escapeHtml(actor.name)}</small></div>${close}</header>
+        <div class="combat-sheet__body">
+          ${opts.length ? groups.map((g) => `
+            <p class="combat-sheet__group">${escapeHtml(g)}</p>
+            <div class="combat-options">
+              ${opts.filter((o) => o.group === g).map((o) => {
+                const parts = combatSummaryParts(o.combat, { useForm: o.useForm }).slice(1, 5);
+                const cost = o.cost && o.cost.valor ? `${o.cost.valor} ${o.cost.unidade}` : '';
+                return `<button type="button" class="combat-option" data-act-pick="${escapeHtml(o.id)}">
+                  <span class="combat-option__name">${escapeHtml(o.name)}${cost ? `<em>${escapeHtml(cost)}</em>` : ''}</span>
+                  <span class="combat-option__meta">${parts.map((x) => `<i>${escapeHtml(x)}</i>`).join('')}</span>
+                </button>`;
+              }).join('')}
+            </div>`).join('') : `<p class="combat-sheet__empty">Nada para usar. ${actor.kind === 'char' ? 'Equipe uma arma ou aprenda uma magia na ficha.' : 'Cadastre habilidades com uso em combate na besta.'}</p>`}
+        </div>`;
+    }
+    const opt = act.opt;
+    const c = opt.combat;
+    const targets = act.targets.map((id) => cb.pieces.find((p) => p.id === id)).filter(Boolean);
+    const head = `<header class="combat-sheet__head"><div><strong>${escapeHtml(opt.name)}</strong><small>${escapeHtml(combatSummaryParts(c, { useForm: opt.useForm }).join(' · '))}</small></div>${close}</header>`;
+    if (act.step === 'target') {
+      return `${head}
+        <div class="combat-sheet__body">
+          <p class="combat-sheet__lead">${escapeHtml(targets.length ? (c.forma === 'alvo' ? 'Alvo escolhido. Toque em outro para trocar.' : 'Toque em outro ponto para mover a área.') : combatHintText(mesa, cb))}</p>
+          ${targets.length ? `<div class="combat-chips">${targets.map((t) => `<span>${escapeHtml(t.name)}</span>`).join('')}</div>` : '<p class="combat-sheet__empty">Nenhum alvo escolhido.</p>'}
+          ${act.warn ? `<p class="combat-sheet__warn">${escapeHtml(act.warn)}</p>` : ''}
+        </div>
+        <footer class="combat-sheet__foot">
+          <button type="button" class="cbtn" data-act-back>Voltar</button>
+          <button type="button" class="cbtn cbtn--primary" data-act-confirm ${targets.length ? '' : 'disabled'}>${c.uso === 'ataque' ? `${COMBAT_ICONS.dice}Rolar ataque` : (c.dano.length ? `${COMBAT_ICONS.dice}Continuar` : `${COMBAT_ICONS.check}Aplicar`)}</button>
+        </footer>`;
+    }
+    if (act.step === 'result') {
+      const r = act.roll;
+      const lines = act.results.map((res) => {
+        const t = cb.pieces.find((p) => p.id === res.target);
+        const name = t ? t.name : '?';
+        const parts = t && t.hp ? Object.keys(t.hp) : [];
+        const partPick = res.hit && act.needsDamage && parts.length > 1 && res.choosePart
+          ? `<select class="combat-select" data-act-part="${escapeHtml(res.target)}">${parts.map((pt) => `<option ${pt === res.part ? 'selected' : ''}>${escapeHtml(pt)}</option>`).join('')}</select>`
+          : (res.hit && res.part && parts.length > 1 ? `<small>${escapeHtml(res.partRoll || '')}${escapeHtml(res.part)}</small>` : '');
+        return `<li class="${res.hit ? 'is-hit' : 'is-miss'}">
+          <span class="combat-result__name">${escapeHtml(name)}</span>
+          ${c.uso === 'ataque' ? `<span class="combat-result__vs">DA ${res.da}${res.cover ? ' (+2 cobertura)' : ''}</span><b>${res.hit ? 'Acertou' : 'Errou'}</b>` : '<b>Atingido</b>'}
+          ${partPick}
+        </li>`;
+      }).join('');
+      return `${head}
+        <div class="combat-sheet__body">
+          ${r ? `<div class="combat-roll">
+            <span class="combat-roll__dice">${r.d6s.map((v) => `<i>${v}</i>`).join('')}<i class="is-destiny" title="Destino">${r.destiny}</i>${r.bonus ? `<em>${r.bonus > 0 ? '+' : '−'}${Math.abs(r.bonus)}</em>` : ''}</span>
+            <span class="combat-roll__total">${r.total}</span>
+            <small>${escapeHtml(`${r.attr} ${r.dice}d6 + Destino`)} · ${escapeHtml(destinyReading(r.destiny).title)}</small>
+          </div>` : ''}
+          <ul class="combat-results">${lines}</ul>
+          ${act.halved ? '<p class="combat-sheet__warn">Disparo com inimigo encostado: metade dos dados de dano.</p>' : ''}
+          ${act.warn ? `<p class="combat-sheet__warn">${escapeHtml(act.warn)}</p>` : ''}
+        </div>
+        <footer class="combat-sheet__foot">
+          ${act.needsDamage && act.results.some((x) => x.hit)
+            ? `<button type="button" class="cbtn cbtn--primary cbtn--wide" data-act-damage>${COMBAT_ICONS.dice}Rolar ${c.dano.every((d) => d.tipo === 'cura') ? 'cura' : 'dano'}</button>`
+            : `<button type="button" class="cbtn cbtn--primary cbtn--wide" data-act-apply>${act.results.some((x) => x.hit) ? `${COMBAT_ICONS.check}Aplicar` : 'Encerrar a ação'}</button>`}
+        </footer>`;
+    }
+    if (act.step === 'done') {
+      return `${head}
+        <div class="combat-sheet__body">
+          <ul class="combat-results">${(act.summary || []).map((l) => `<li class="${l.cls || ''}"><span class="combat-result__name">${escapeHtml(l.name)}</span><b>${escapeHtml(l.text)}</b></li>`).join('')}</ul>
+        </div>
+        <footer class="combat-sheet__foot"><button type="button" class="cbtn cbtn--primary cbtn--wide" data-act-cancel>Fechar</button></footer>`;
+    }
+    return '';
+  }
+
+  /* Rola o ataque contra cada alvo (um teste e um Destino para todos). */
+  function performAttackRoll(cb, act) {
+    const actor = cb.pieces.find((p) => p.id === act.actor);
+    const c = act.opt.combat;
+    const attr = optionAttr(act.opt);
+    const dice = attrDiceOf(actor, attr);
+    const d6s = Array.from({ length: dice }, () => randomInt(6));
+    const destiny = randomInt(12);
+    const bonus = modSum(actor, 'Resultado Final');
+    const total = d6s.reduce((s, v) => s + v, 0) + destiny + bonus;
+    act.roll = { attr, dice, d6s, destiny, bonus, total };
+    act.results = act.targets.map((id) => {
+      const t = cb.pieces.find((p) => p.id === id);
+      const cover = c.forma === 'alvo' && c.alcance > 1 && hasCover(cb, actor, t);
+      const da = pieceDa(t) + (cover ? 2 : 0);
+      return { target: id, da, cover, hit: total >= da, ...pickPart(t, destiny) };
+    });
+    act.needsDamage = c.dano.length > 0;
+    act.step = 'result';
+  }
+  function pickPart(t, destiny) {
+    const parts = t && t.hp ? Object.keys(t.hp) : [];
+    if (parts.length <= 1) return { part: parts[0] || '', choosePart: false };
+    if (destiny >= 10) return { part: parts[0], choosePart: true };
+    const roll = randomInt(parts.length);
+    return { part: parts[roll - 1], choosePart: false, partRoll: `d${parts.length} → ${roll}: ` };
+  }
+
+  /* Rola dano (ou cura) e grava tudo de uma vez. */
+  async function applyCombatAction(mesa, cb, act, withDamage) {
+    const actor = cb.pieces.find((p) => p.id === act.actor);
+    const c = act.opt.combat;
+    const updates = new Map();
+    const touch = (p) => {
+      if (!updates.has(p.id)) updates.set(p.id, { piece: p.id, hp: JSON.parse(JSON.stringify(p.hp || {})), mp: p.mp ? { ...p.mp } : null, mods: [...(p.mods || [])], effects: [...(p.effects || [])], down: !!p.down });
+      return updates.get(p.id);
+    };
+    const summary = [];
+    const chatLines = [];
+    let damageRolls = null;
+    if (withDamage && c.dano.length) {
+      damageRolls = c.dano.map((d) => {
+        const dados = act.halved && d.tipo !== 'cura' ? halveDice(d.dados) : d.dados;
+        return { ...d, dados, roll: rollDiceExpr(dados, d.bonus) };
+      });
+    }
+    act.results.forEach((res) => {
+      if (!res.hit) {
+        const t = cb.pieces.find((p) => p.id === res.target);
+        summary.push({ name: t ? t.name : '?', text: 'Errou', cls: 'is-miss' });
+        chatLines.push({ target: t ? t.name : '?', hit: false, da: res.da });
+        return;
+      }
+      const t = cb.pieces.find((p) => p.id === res.target);
+      if (!t) return;
+      const u = touch(t);
+      const texts = [];
+      let dealt = 0, healed = 0;
+      (damageRolls || []).forEach((d) => {
+        const part = res.part && u.hp[res.part] ? res.part : Object.keys(u.hp).sort((a, b) => (u.hp[b].cur || 0) - (u.hp[a].cur || 0))[0];
+        if (!part) return;
+        if (d.tipo === 'cura') {
+          // A cura vai para a parte mais ferida.
+          const hurt = Object.keys(u.hp).sort((a, b) => (u.hp[b].max - u.hp[b].cur) - (u.hp[a].max - u.hp[a].cur))[0];
+          const slot = u.hp[hurt];
+          const before = slot.cur;
+          slot.cur = Math.min(slot.max, slot.cur + d.roll.total);
+          healed += slot.cur - before;
+        } else {
+          const level = d.tipo === 'magico' ? (Number(t.dm) || 0) : (Number(t.df) || 0);
+          const pct = defPct(level);
+          const final = Math.max(0, Math.round(d.roll.total * (1 - pct / 100)));
+          u.hp[part].cur = Math.max(0, u.hp[part].cur - final);
+          dealt += final;
+          texts.push(`${final} ${COMBAT_DAMAGE_TYPES[d.tipo].toLowerCase()}${pct ? ` (−${pct}%)` : ''} em ${part}`);
+        }
+      });
+      if (healed) texts.push(`+${healed} HP`);
+      c.mods.forEach((m) => u.mods.push({ stat: m.stat, valor: m.valor, turnos: m.turnos, from: act.opt.name }));
+      c.efeitos.forEach((e) => {
+        u.effects = u.effects.filter((x) => x.nome !== e.nome);
+        u.effects.push({ nome: e.nome, nivel: e.nivel, turnos: e.turnos, from: act.opt.name });
+      });
+      if (c.mods.length) texts.push(c.mods.map((m) => `${m.valor > 0 ? '+' : ''}${m.valor} ${m.stat}`).join(', '));
+      if (c.efeitos.length) texts.push(c.efeitos.map((e) => `${e.nome}${e.nivel ? ` ${e.nivel}` : ''}`).join(', '));
+      const tot = Object.values(u.hp).reduce((s, x) => s + (Number(x.cur) || 0), 0);
+      if (tot <= 0 && !u.down) { u.down = true; texts.push('caiu'); }
+      if (!texts.length) texts.push(c.uso === 'ataque' ? 'Acertou' : 'Atingido');
+      summary.push({ name: t.name, text: texts.join(' · '), cls: 'is-hit' });
+      chatLines.push({ target: t.name, hit: true, da: res.da, part: res.part, dealt, healed, text: texts.join(' · ') });
+    });
+    // Custo da magia ou habilidade.
+    if (act.opt.cost && act.opt.cost.valor) {
+      const u = touch(actor);
+      if (act.opt.cost.unidade === 'MP' && u.mp) u.mp.cur = Math.max(0, u.mp.cur - act.opt.cost.valor);
+      if (act.opt.cost.unidade === 'HP') {
+        const part = Object.keys(u.hp).sort((a, b) => (u.hp[b].cur || 0) - (u.hp[a].cur || 0))[0];
+        if (part) u.hp[part].cur = Math.max(0, u.hp[part].cur - act.opt.cost.valor);
+      }
+    }
+    const mode = act.mode;
+    const ok = await combatRpc(mesa.id, 'combate_acao', { p_id: cb.id, p_actor: actor.id, p_mode: mode, p_updates: [...updates.values()] });
+    if (!ok) return;
+    act.step = 'done';
+    act.summary = summary;
+    combatChat(mesa, actor, {
+      action: act.opt.name, mode, uso: c.uso,
+      roll: act.roll || null,
+      damage: damageRolls ? damageRolls.map((d) => ({ dados: d.dados, rolls: d.roll.rolls, total: d.roll.total, tipo: d.tipo })) : null,
+      lines: chatLines, halved: !!act.halved,
+      cost: act.opt.cost && act.opt.cost.valor ? act.opt.cost : null
+    });
+    renderCombatAll(mesa.id);
+  }
+
+  /* Mensagem de combate no chat. */
+  function chatCombatHTML(mesaId, msg) {
+    const s = messageSpeaker(msg);
+    const d = msg.data || {};
+    const color = safeChatColor(s.color, s.id || s.name);
+    if (!d.action) {
+      return `<li class="chat-msg chat-msg--combat-note" data-mesa-msg="${escapeHtml(msg.id)}"><p class="chat-line">${COMBAT_ICONS.sword}<span>${chatInline(msg.body || '')}</span></p>${chatToolsHTML(mesaId, msg)}</li>`;
+    }
+    const r = d.roll;
+    return `
+      <li class="chat-msg chat-msg--combat" data-mesa-msg="${escapeHtml(msg.id)}" style="--who:${color}">
+        <p class="chat-combat__head"><span class="chat-who">${escapeHtml(s.name)}</span> <span>${d.mode === 'oportunidade' ? 'ataque de oportunidade com' : 'usou'}</span> <b>${escapeHtml(d.action)}</b>${d.cost ? ` <em>${escapeHtml(`${d.cost.valor} ${d.cost.unidade}`)}</em>` : ''}</p>
+        ${r ? `<p class="chat-combat__roll"><span>${escapeHtml(r.attr)} ${r.d6s.join(' + ')} + <b title="Destino">${r.destiny}</b>${r.bonus ? ` ${r.bonus > 0 ? '+' : '−'} ${Math.abs(r.bonus)}` : ''}</span><strong>${r.total}</strong></p>` : ''}
+        ${Array.isArray(d.damage) && d.damage.length ? `<p class="chat-combat__roll chat-combat__roll--dmg">${d.damage.map((x) => `<span>${escapeHtml(x.dados)}: ${x.rolls.join(' + ') || '0'}</span><strong>${x.total}</strong>`).join('')}${d.halved ? '<em>metade dos dados</em>' : ''}</p>` : ''}
+        <ul class="chat-combat__lines">${(d.lines || []).map((l) => `<li class="${l.hit ? 'is-hit' : 'is-miss'}"><span>${escapeHtml(l.target)}</span>${d.uso === 'ataque' ? `<small>DA ${l.da}</small>` : ''}<b>${escapeHtml(l.hit ? l.text : 'errou')}</b></li>`).join('')}</ul>
+        <span class="chat-time">${escapeHtml(chatTime(msg))}</span>
+        ${chatToolsHTML(mesaId, msg)}
+      </li>`;
+  }
+
+  /* Mostra ou esconde o grid no lugar do chat. */
+  function renderCombatStage(mesaId) {
+    const root = document.querySelector(`[data-chat="${CSS.escape(mesaId)}"]`);
+    if (!root) return;
+    const mesa = mesaById(mesaId);
+    const cb = combatOf(mesaId);
+    const stage = root.querySelector('[data-combat-stage]');
+    const toggle = root.querySelector('[data-combat-view]');
+    const show = !!cb && combatUi.view === 'grid';
+    root.classList.toggle('is-grid', show);
+    if (toggle) {
+      toggle.hidden = !cb;
+      toggle.innerHTML = cb ? `
+        <div class="combat-seg" role="tablist" aria-label="Vista">
+          <button type="button" role="tab" aria-selected="${show}" data-combat-view-set="grid" class="${show ? 'is-on' : ''}">${COMBAT_ICONS.map}<span>Grid</span></button>
+          <button type="button" role="tab" aria-selected="${!show}" data-combat-view-set="chat" class="${show ? '' : 'is-on'}">${TOOL_ICON('<path d="M4 5h16v11H8l-4 4z"/>')}<span>Chat</span></button>
+        </div>` : '';
+    }
+    if (!stage) return;
+    stage.hidden = !show;
+    if (!show) { stage.innerHTML = ''; return; }
+    stage.classList.toggle('is-painting', isCombatMaster(mesa) && !!combatUi.brush);
+    // No celular, quando a luta começa, o painel de ferramentas recolhe uma vez para o mapa respirar.
+    if (isCompactChat() && cb.status === 'ativo' && combatUi.collapsedFor !== cb.id) {
+      combatUi.collapsedFor = cb.id;
+      const side = root.querySelector('[data-chat-side]');
+      if (side && !side.classList.contains('is-collapsed')) {
+        storageSet(toolStoreKey, { ...activeChatTool(mesa), open: false });
+        side.classList.add('is-collapsed');
+        const panel = root.querySelector('[data-chat-tool-panel]');
+        if (panel) panel.innerHTML = '';
+        side.querySelectorAll('[data-chat-tool]').forEach((b) => { b.classList.remove('is-active'); b.setAttribute('aria-pressed', 'false'); });
+        fitChatHeight();
+      }
+    }
+    if (!stage.querySelector('[data-combat-canvas]')) stage.innerHTML = combatStageHTML(mesa);
+    else {
+      const hud = stage.querySelector('[data-combat-hud]');
+      if (hud) hud.innerHTML = combatHudHTML(mesa, cb);
+      const hint = stage.querySelector('[data-combat-hint]');
+      if (hint) hint.textContent = combatHintText(mesa, cb);
+    }
+    const sheet = stage.querySelector('[data-combat-sheet]');
+    if (sheet) {
+      const html = combatSheetHTML(mesa, cb);
+      sheet.hidden = !html;
+      if (sheet.dataset.sig !== html) { sheet.innerHTML = html; sheet.dataset.sig = html; }
+    }
+    drawCombat(mesaId);
+  }
+  function renderCombatAll(mesaId) {
+    const cb = combatOf(mesaId);
+    if (combatUi.selected && (!cb || !cb.pieces.some((p) => p.id === combatUi.selected))) { combatUi.selected = ''; combatUi.reach = null; }
+    if (combatUi.act && (!cb || !cb.pieces.some((p) => p.id === combatUi.act.actor))) combatUi.act = null;
+    renderCombatStage(mesaId);
+    chatState.renderTool?.('combate');
+  }
+
+  /* ── Painel "Combate" ── */
+  function combatOrderHTML(mesa, cb) {
+    const master = isCombatMaster(mesa);
+    const vis = master ? null : visibleCellsFor(cb, mesa);
+    const turnPiece = currentTurnPiece(cb);
+    const inRounds = cb.status === 'ativo' && cb.turn.phase !== 'iniciativa' && (cb.turn.order || []).length;
+    const list = inRounds
+      ? (cb.turn.order || []).map((id) => cb.pieces.find((p) => p.id === id)).filter(Boolean)
+      : cb.pieces.slice().sort((a, b) => initTotal(b) - initTotal(a));
+    const rows = list.filter((p) => pieceSeenBy(mesa, cb, p, vis)).map((p) => {
+      const hp = (master || p.hpVisible || p.owner === auth.user?.id) ? hpTotals(p) : null;
+      const pct = hp && hp.max ? Math.round((hp.cur / hp.max) * 100) : null;
+      const effects = (p.effects || []).map((e) => `${e.nome}${e.nivel ? ` ${e.nivel}` : ''}${e.turnos ? ` · ${e.turnos}t` : ''}`)
+        .concat((p.mods || []).map((m) => `${m.valor > 0 ? '+' : ''}${m.valor} ${m.stat}${m.turnos ? ` · ${m.turnos}t` : ''}`));
+      return `
+        <li class="${turnPiece && turnPiece.id === p.id ? 'is-turn' : ''} ${p.down ? 'is-down' : ''}" style="--who:${escapeHtml(p.color || '#8b5cf6')}">
+          <button type="button" class="combat-order__row" ${master ? `data-combat-select="${escapeHtml(p.id)}"` : 'tabindex="-1"'}>
+            ${chatAvatarHTML({ name: p.name, image: p.image })}
+            <span class="combat-order__name"><span class="chat-who">${escapeHtml(p.name)}</span>
+              <small>${[!placed(p) ? 'fora do mapa' : '', p.initRoll ? `inic. ${initTotal(p)}` : 'sem iniciativa', master && p.da ? `DA ${pieceDa(p)}` : '', p.hidden ? 'oculto' : '', p.down ? 'caído' : ''].filter(Boolean).join(' · ')}</small>
+              ${effects.length ? `<span class="combat-order__fx">${effects.map((e) => `<i>${escapeHtml(e)}</i>`).join('')}</span>` : ''}
+            </span>
+            ${pct != null ? `<span class="combat-order__hp" title="${hp.cur}/${hp.max}"><i style="width:${pct}%"></i></span>` : ''}
+          </button>
+        </li>`;
+    }).join('');
+    return `<ol class="combat-order">${rows || '<li class="tool-empty">Sem peças.</li>'}</ol>`;
+  }
+
+  function toolCombateHTML(mesa) {
+    const cb = combatOf(mesa.id);
+    const master = isCombatMaster(mesa);
+    if (!cb) {
+      return master
+        ? `<div class="combat-intro">
+             <p>O grid começa vazio. Você pinta a área jogável (ou gera uma masmorra), põe as peças e só depois os jogadores veem.</p>
+             <button type="button" class="cbtn cbtn--primary cbtn--wide" data-combat-new>${COMBAT_ICONS.sword}Preparar combate</button>
+           </div>`
+        : '<p class="tool-empty">Nenhum combate agora. O grid aparece aqui quando o Mestre começar a luta.</p>';
+    }
+    if (!master) {
+      const t = currentTurnPiece(cb);
+      return `
+        ${t && canControl(mesa, t) ? `<p class="combat-myturn">Sua vez. Use os botões em cima do mapa.</p>` : ''}
+        ${combatOrderHTML(mesa, cb)}`;
+    }
+    const sources = combatPieceSources(mesa);
+    const groups = [...new Set(sources.map((s) => s.group))];
+    const images = MESA_IMAGES[mesa.id] || [];
+    const sel = cb.pieces.find((p) => p.id === combatUi.selected);
+    const bg = cb.map.bg;
+    const prep = cb.status === 'preparando';
+    return `
+      <div class="combat-panel">
+        <div class="combat-panel__main">
+          ${prep ? `<button type="button" class="cbtn cbtn--primary" data-combat-call>${COMBAT_ICONS.dice}Chamar iniciativa</button>`
+            : (cb.turn.phase === 'iniciativa' ? `<button type="button" class="cbtn cbtn--primary" data-combat-rounds>${COMBAT_ICONS.flag}Começar a rodada 1</button>`
+              : `<button type="button" class="cbtn" data-combat-endturn>${COMBAT_ICONS.flag}Passar a vez</button>`)}
+          <button type="button" class="cbtn cbtn--danger" data-combat-close>${prep ? 'Descartar' : 'Encerrar'}</button>
+        </div>
+
+        <details class="combat-sec" ${prep ? 'open' : ''}>
+          <summary>Mapa</summary>
+          <div class="combat-sec__body">
+            <p class="combat-sec__label">Pincel</p>
+            <div class="combat-brushes" role="group" aria-label="Pincel">
+              ${COMBAT_BRUSHES.map((b) => `<button type="button" class="cbtn cbtn--toggle ${combatUi.brush === b.id ? 'is-on' : ''}" aria-pressed="${combatUi.brush === b.id}" data-combat-brush="${b.id}" title="${escapeHtml(b.hint)}">${escapeHtml(b.label)}</button>`).join('')}
+            </div>
+            <div class="combat-btnrow">
+              <button type="button" class="cbtn cbtn--sm" data-combat-fill="chao">Tudo chão</button>
+              <button type="button" class="cbtn cbtn--sm" data-combat-fill="revelar">Revelar tudo</button>
+              <button type="button" class="cbtn cbtn--sm" data-combat-fill="esconder">Esconder tudo</button>
+            </div>
+            <div class="combat-size">
+              <label>Largura <input type="number" inputmode="numeric" min="4" max="${COMBAT_MAX_SIDE}" value="${cb.map.w}" data-combat-w></label>
+              <label>Altura <input type="number" inputmode="numeric" min="4" max="${COMBAT_MAX_SIDE}" value="${cb.map.h}" data-combat-h></label>
+              <button type="button" class="cbtn" data-combat-resize>Aplicar</button>
+            </div>
+          </div>
+        </details>
+
+        <details class="combat-sec">
+          <summary>Gerar masmorra</summary>
+          <div class="combat-sec__body">
+            <div class="combat-size">
+              <label>Tamanho <select data-dungeon-size>${Object.keys(DUNGEON_SIZES).map((k) => `<option value="${k}" ${k === 'media' ? 'selected' : ''}>${k === 'pequena' ? 'Pequena' : (k === 'media' ? 'Média' : 'Grande')}</option>`).join('')}</select></label>
+              <label>Semente <input type="text" maxlength="24" value="${escapeHtml(cb.map.seed || '')}" placeholder="aleatória" data-dungeon-seed></label>
+            </div>
+            <label class="combat-check"><input type="checkbox" data-dungeon-rubble checked> Escombros (terreno difícil)</label>
+            <button type="button" class="cbtn cbtn--primary cbtn--wide" data-dungeon-go>Gerar</button>
+            <small class="combat-note">Troca o mapa inteiro e tira as peças do lugar. A mesma semente gera a mesma masmorra.</small>
+          </div>
+        </details>
+
+        <details class="combat-sec">
+          <summary>Imagem de fundo</summary>
+          <div class="combat-sec__body">
+            <label class="combat-label">Imagem do Acervo
+              <select data-combat-bg>
+                <option value="">Sem imagem</option>
+                ${images.map((img) => `<option value="${escapeHtml(img.id)}" ${bg && bg.url === img.url ? 'selected' : ''}>${escapeHtml(img.title || 'Imagem')}</option>`).join('')}
+              </select>
+            </label>
+            ${bg ? `
+              <div class="combat-size combat-size--4">
+                <label>X (q) <input type="number" step="0.5" value="${Number(bg.x) || 0}" data-bg="x"></label>
+                <label>Y (q) <input type="number" step="0.5" value="${Number(bg.y) || 0}" data-bg="y"></label>
+                <label>Escala % <input type="number" min="10" max="400" step="5" value="${Number(bg.scale) || 100}" data-bg="scale"></label>
+                <label>Opac. % <input type="number" min="10" max="100" step="5" value="${Number(bg.opacity) || 100}" data-bg="opacity"></label>
+              </div>
+              <button type="button" class="cbtn cbtn--sm" data-bg-reset>Encaixar no grid</button>` : '<small class="combat-note">Suba imagens na ferramenta Acervo para usar aqui.</small>'}
+          </div>
+        </details>
+
+        <details class="combat-sec">
+          <summary>Névoa de guerra</summary>
+          <div class="combat-sec__body">
+            <label class="combat-label">Modo
+              <select data-combat-fog>${Object.entries(COMBAT_FOG_MODES).map(([k, v]) => `<option value="${k}" ${cb.map.fog === k ? 'selected' : ''}>${escapeHtml(v)}</option>`).join('')}</select>
+            </label>
+            <label class="combat-label">Visão das peças (q)
+              <input type="number" inputmode="numeric" min="1" max="60" value="${cb.map.vision}" data-combat-vision>
+            </label>
+            <small class="combat-note">Você vê tudo. O escurecido é o que nenhum jogador enxerga.</small>
+          </div>
+        </details>
+
+        <details class="combat-sec" open>
+          <summary>Peças</summary>
+          <div class="combat-sec__body">
+            <div class="combat-add">
+              <select data-combat-source aria-label="Peça para adicionar">
+                ${groups.map((g) => `<optgroup label="${escapeHtml(g)}">${sources.filter((s) => s.group === g).map((s) => `<option value="${escapeHtml(s.key)}">${escapeHtml(s.name)}</option>`).join('')}</optgroup>`).join('')}
+              </select>
+              <button type="button" class="cbtn cbtn--primary" data-combat-add>${COMBAT_ICONS.plus}Pôr</button>
+            </div>
+            ${sel ? combatPieceEditorHTML(sel) : '<small class="combat-note">Toque numa peça na lista ou no mapa para editar.</small>'}
+          </div>
+        </details>
+        ${combatOrderHTML(mesa, cb)}
+      </div>`;
+  }
+  function combatPieceEditorHTML(p) {
+    const hp = p.hp || {};
+    return `
+      <div class="combat-piece" data-combat-piece="${escapeHtml(p.id)}">
+        <div class="combat-piece__head"><strong>${escapeHtml(p.name)}</strong><button type="button" class="cbtn cbtn--icon cbtn--ghost" data-combat-deselect aria-label="Fechar">${COMBAT_ICONS.x}</button></div>
+        <div class="combat-piece__grid">
+          <label>Tamanho <select data-cp="size">${COMBAT_SIZES.map((s) => `<option value="${s}" ${pieceSize(p) === s ? 'selected' : ''}>${s}×${s}</option>`).join('')}</select></label>
+          <label>Movimento <input type="number" inputmode="numeric" min="0" max="60" value="${Number(p.move) || 1}" data-cp="move"></label>
+          <label>Iniciativa <input type="number" inputmode="numeric" min="1" max="100" value="${p.initRoll || ''}" placeholder="1d100" data-cp="initRoll"></label>
+          <label>Bônus inic. <input type="number" inputmode="numeric" min="-50" max="100" value="${Number(p.initBonus) || 0}" data-cp="initBonus"></label>
+          <label>DA <input type="number" inputmode="numeric" min="0" max="200" value="${p.da || ''}" placeholder="rola ao começar" data-cp="da"></label>
+          <label>DF / DM <span class="combat-pair"><input type="number" min="0" max="6" value="${Number(p.df) || 0}" data-cp="df" aria-label="DF"><input type="number" min="0" max="6" value="${Number(p.dm) || 0}" data-cp="dm" aria-label="DM"></span></label>
+        </div>
+        <p class="combat-sec__label">HP por parte</p>
+        <div class="combat-hp">
+          ${Object.entries(hp).map(([part, slot]) => `<label><span>${escapeHtml(part)}</span><input type="number" inputmode="numeric" min="0" max="${slot.max}" value="${slot.cur}" data-cp-hp="${escapeHtml(part)}"><small>/${slot.max}</small></label>`).join('')}
+          ${p.mp ? `<label><span>MP</span><input type="number" inputmode="numeric" min="0" max="${p.mp.max}" value="${p.mp.cur}" data-cp-mp><small>/${p.mp.max}</small></label>` : ''}
+        </div>
+        ${(p.effects || []).length || (p.mods || []).length ? `
+          <p class="combat-sec__label">Efeitos ativos</p>
+          <div class="combat-chips combat-chips--x">
+            ${(p.effects || []).map((e, i) => `<span>${escapeHtml(`${e.nome}${e.nivel ? ` ${e.nivel}` : ''}${e.turnos ? ` · ${e.turnos}t` : ''}`)}<button type="button" data-cp-rmfx="${i}" aria-label="Tirar">×</button></span>`).join('')}
+            ${(p.mods || []).map((m, i) => `<span>${escapeHtml(`${m.valor > 0 ? '+' : ''}${m.valor} ${m.stat}${m.turnos ? ` · ${m.turnos}t` : ''}`)}<button type="button" data-cp-rmmod="${i}" aria-label="Tirar">×</button></span>`).join('')}
+          </div>` : ''}
+        <div class="combat-toggles">
+          <label class="combat-check"><input type="checkbox" data-cp="hidden" ${p.hidden ? 'checked' : ''}> Oculta dos jogadores</label>
+          <label class="combat-check"><input type="checkbox" data-cp="hpVisible" ${p.hpVisible ? 'checked' : ''}> Jogadores veem o HP</label>
+          <label class="combat-check"><input type="checkbox" data-cp="down" ${p.down ? 'checked' : ''}> Caída</label>
+        </div>
+        <div class="combat-btnrow">
+          <button type="button" class="cbtn cbtn--sm" data-combat-place>${placed(p) ? 'Mudar de lugar' : 'Pôr no mapa'}</button>
+          ${placed(p) ? '<button type="button" class="cbtn cbtn--sm" data-combat-unplace>Tirar do mapa</button>' : ''}
+          <button type="button" class="cbtn cbtn--sm cbtn--danger" data-combat-remove>Remover</button>
+        </div>
+      </div>`;
+  }
+
+  /* ── Gerador de masmorras (salas e corredores com semente) ── */
+  function seededRandom(seedText) {
+    let h = 1779033703 ^ String(seedText).length;
+    for (let i = 0; i < String(seedText).length; i++) { h = Math.imul(h ^ String(seedText).charCodeAt(i), 3432918353); h = (h << 13) | (h >>> 19); }
+    let a = h >>> 0;
+    return () => {
+      a |= 0; a = (a + 0x6D2B79F5) | 0;
+      let t = Math.imul(a ^ (a >>> 15), 1 | a);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+  function generateDungeon(sizeKey, seed, rubble) {
+    const cfg = DUNGEON_SIZES[sizeKey] || DUNGEON_SIZES.media;
+    const rnd = seededRandom(seed);
+    const ri = (a, b) => a + Math.floor(rnd() * (b - a + 1));
+    const { w, h } = cfg;
+    const grid = Array.from({ length: h }, () => Array(w).fill(' '));
+    const rooms = [];
+    for (let tries = 0; tries < cfg.rooms * 30 && rooms.length < cfg.rooms; tries++) {
+      const rw = ri(4, Math.max(5, Math.floor(w / 5))), rh = ri(3, Math.max(4, Math.floor(h / 4)));
+      const x = ri(1, w - rw - 2), y = ri(1, h - rh - 2);
+      if (rooms.some((r) => x < r.x + r.w + 2 && x + rw + 2 > r.x && y < r.y + r.h + 2 && y + rh + 2 > r.y)) continue;
+      rooms.push({ x, y, w: rw, h: rh, cx: x + Math.floor(rw / 2), cy: y + Math.floor(rh / 2) });
+    }
+    rooms.forEach((r) => { for (let y = r.y; y < r.y + r.h; y++) for (let x = r.x; x < r.x + r.w; x++) grid[y][x] = '0'; });
+    // Liga cada sala à mais próxima já ligada (árvore), com corredores em L.
+    const linked = [rooms[0]];
+    const dig = (x, y) => { if (x > 0 && y > 0 && x < w - 1 && y < h - 1) grid[y][x] = '0'; };
+    rooms.slice(1).forEach((r) => {
+      const near = linked.reduce((b, o) => (Math.abs(o.cx - r.cx) + Math.abs(o.cy - r.cy) < Math.abs(b.cx - r.cx) + Math.abs(b.cy - r.cy) ? o : b), linked[0]);
+      const horizFirst = rnd() < 0.5;
+      let x = r.cx, y = r.cy;
+      const tx = near.cx, ty = near.cy;
+      const stepX = () => { while (x !== tx) { dig(x, y); x += Math.sign(tx - x); } };
+      const stepY = () => { while (y !== ty) { dig(x, y); y += Math.sign(ty - y); } };
+      if (horizFirst) { stepX(); stepY(); } else { stepY(); stepX(); }
+      dig(x, y);
+      linked.push(r);
+    });
+    // Um laço extra deixa a masmorra menos linear.
+    if (rooms.length > 3) {
+      const a = rooms[ri(0, rooms.length - 1)], b = rooms[ri(0, rooms.length - 1)];
+      let x = a.cx, y = a.cy;
+      while (x !== b.cx) { dig(x, y); x += Math.sign(b.cx - x); }
+      while (y !== b.cy) { dig(x, y); y += Math.sign(b.cy - y); }
+    }
+    if (rubble) {
+      rooms.forEach((r) => {
+        if (rnd() < 0.5) return;
+        const n = ri(2, Math.max(2, Math.floor((r.w * r.h) / 6)));
+        for (let i = 0; i < n; i++) { const x = ri(r.x, r.x + r.w - 1), y = ri(r.y, r.y + r.h - 1); if (grid[y][x] === '0') grid[y][x] = '2'; }
+      });
+    }
+    // Paredes em volta de tudo que é chão.
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+      if (grid[y][x] !== ' ') continue;
+      for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+        const v = grid[y + dy] && grid[y + dy][x + dx];
+        if (v === '0' || v === '2') grid[y][x] = '1';
+      }
+    }
+    return { w, h, cells: grid.map((row) => row.join('')).join(''), start: rooms[0] ? { x: rooms[0].cx, y: rooms[0].cy } : null };
+  }
+
+  /* ── Eventos do grid e do painel ── */
+  function attachCombat(root, mesa) {
+    const mesaId = mesa.id;
+    const master = isCombatMaster(mesa);
+    if (master && !MESA_IMAGES[mesaId]) loadMesaImages(mesaId).then(() => chatState.renderTool?.('combate'));
+    loadMesaCombat(mesaId).then(() => renderCombatAll(mesaId));
+
+    const cellFromPoint = (clientX, clientY) => {
+      const canvas = root.querySelector('[data-combat-canvas]');
+      const cb = combatOf(mesaId);
+      if (!canvas || !cb) return null;
+      const rect = canvas.getBoundingClientRect();
+      const x = Math.floor((clientX - rect.left) / combatUi.zoom);
+      const y = Math.floor((clientY - rect.top) / combatUi.zoom);
+      return (x >= 0 && y >= 0 && x < cb.map.w && y < cb.map.h) ? { x, y } : null;
+    };
+    const paint = (cell) => {
+      const cb = combatOf(mesaId);
+      if (!cb || !cell) return false;
+      const i = cellIdx(cb.map, cell.x, cell.y);
+      const map = cb.map;
+      const setCh = (key, ch) => { if (map[key][i] === ch) return false; map[key] = map[key].slice(0, i) + ch + map[key].slice(i + 1); return true; };
+      switch (combatUi.brush) {
+        case 'chao': return setCh('cells', '0');
+        case 'parede': return setCh('cells', '1');
+        case 'dificil': return setCh('cells', '2');
+        case 'apagar': return setCh('cells', ' ');
+        case 'revelar': return setCh('revealed', '1');
+        case 'esconder': return setCh('revealed', '0');
+        default: return false;
+      }
+    };
+    const selectPiece = (p) => {
+      const cb = combatOf(mesaId);
+      combatUi.selected = p ? p.id : '';
+      combatUi.reach = null;
+      if (p && cb && placed(p) && cb.status === 'ativo') {
+        const turn = currentTurnPiece(cb);
+        if (turn && turn.id === p.id && canControl(mesa, p)) combatUi.reach = reachableCells(cb, p, cb.turn.moveLeft || 0);
+      }
+      renderCombatAll(mesaId);
+    };
+    const tryMove = async (cell) => {
+      const cb = combatOf(mesaId);
+      const p = cb && cb.pieces.find((x) => x.id === combatUi.selected);
+      if (!p || !cell) return false;
+      const turn = currentTurnPiece(cb);
+      const isTurn = turn && turn.id === p.id;
+      const cost = combatUi.reach ? combatUi.reach.get(`${cell.x},${cell.y}`) : undefined;
+      if (isTurn && cost != null) {
+        combatUi.reach = null;
+        const ok = await combatRpc(mesaId, 'combate_mover', { p_id: cb.id, p_piece: p.id, p_x: cell.x, p_y: cell.y, p_cost: cost });
+        const fresh = combatOf(mesaId);
+        const np = fresh && fresh.pieces.find((x) => x.id === p.id);
+        if (ok && np && fresh.turn.moveLeft > 0) { combatUi.reach = reachableCells(fresh, np, fresh.turn.moveLeft); renderCombatAll(mesaId); }
+        else { combatUi.selected = ''; renderCombatAll(mesaId); }
+        return true;
+      }
+      if (master) {
+        if (!pieceFits(cb, p, cell.x, cell.y)) { toast('A peça não cabe aí.'); return true; }
+        if (isTurn && cb.status === 'ativo' && !confirm('Esse quadrado está além do movimento do turno. Mover mesmo assim, sem gastar movimento?')) return true;
+        combatUi.reach = null;
+        combatSetPieces(mesaId, (list) => { const t = list.find((x) => x.id === p.id); if (t) { t.x = cell.x; t.y = cell.y; } });
+        return true;
+      }
+      return false;
+    };
+    /* Toque no mapa durante a mira de uma ação. */
+    const aimAt = (cell) => {
+      const cb = combatOf(mesaId);
+      const act = combatUi.act;
+      const actor = cb && cb.pieces.find((p) => p.id === act.actor);
+      if (!actor) return;
+      const c = act.opt.combat;
+      act.warn = '';
+      if (c.forma === 'alvo') {
+        const vis = visibleCellsFor(cb, mesa);
+        const t = pieceAtCell(cb, cell.x, cell.y, (p) => pieceSeenBy(mesa, cb, p, vis));
+        if (!t) return;
+        if (!targetAllowed(actor, t, c)) { act.warn = `${t.name} não é um alvo válido para isto.`; renderCombatStage(mesaId); return; }
+        const dist = t.id === actor.id ? 0 : pieceGap(actor, t) + 1;
+        // O ataque de oportunidade acontece no momento em que o alvo sai de perto.
+        const oaNow = act.mode === 'oportunidade' && act.fixedTarget === t.id;
+        if (!oaNow && dist > Math.max(1, c.alcance)) { act.warn = `${t.name} está a ${dist}q; o alcance é ${c.alcance}q.`; renderCombatStage(mesaId); return; }
+        const a = pieceCenter(actor), tc = pieceCenter(t);
+        if (!oaNow && dist > 1 && !lineOfSight(cb.map, Math.round(a.x), Math.round(a.y), Math.round(tc.x), Math.round(tc.y))) { act.warn = 'Uma parede bloqueia a visão até o alvo.'; renderCombatStage(mesaId); return; }
+        if (act.fixedTarget && act.fixedTarget !== t.id) return;
+        act.targets = [t.id];
+        act.preview = [];
+        renderCombatStage(mesaId);
+        return;
+      }
+      if (c.alcance > 0 && pieceDistToCell(actor, cell.x, cell.y) > c.alcance) { act.warn = `Fora do alcance de ${c.alcance}q.`; renderCombatStage(mesaId); return; }
+      const cells = areaCells(cb, actor, c, cell.x, cell.y);
+      act.preview = cells;
+      const vis = visibleCellsFor(cb, mesa);
+      act.targets = cb.pieces.filter((p) => placed(p) && pieceSeenBy(mesa, cb, p, vis) && targetAllowed(actor, p, c)
+        && cells.some(([x, y]) => pieceCovers(p, x, y))).map((p) => p.id);
+      renderCombatStage(mesaId);
+    };
+
+    /* Toque curto = ação; arrastar = rolar o mapa (no celular); dois dedos = zoom. */
+    let tap = null;
+    root.addEventListener('pointerdown', (e) => {
+      const canvas = e.target.closest('[data-combat-canvas]');
+      if (!canvas) return;
+      combatUi.pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (combatUi.pointers.size === 2) {
+        const [a, b] = [...combatUi.pointers.values()];
+        combatUi.pinch = { d: Math.hypot(a.x - b.x, a.y - b.y), zoom: combatUi.zoom };
+        tap = null; combatUi.painting = false;
+        return;
+      }
+      const cb = combatOf(mesaId);
+      const cell = cellFromPoint(e.clientX, e.clientY);
+      if (!cb || !cell) return;
+      if (master && combatUi.brush && !combatUi.placing) {
+        combatUi.painting = true;
+        canvas.setPointerCapture?.(e.pointerId);
+        if (paint(cell)) { drawCombat(mesaId); combatSaveMapSoon(mesaId); }
+        return;
+      }
+      tap = { x: e.clientX, y: e.clientY, id: e.pointerId };
+    });
+    root.addEventListener('pointermove', (e) => {
+      if (combatUi.pointers.has(e.pointerId)) combatUi.pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (combatUi.pinch && combatUi.pointers.size === 2) {
+        const [a, b] = [...combatUi.pointers.values()];
+        const d = Math.hypot(a.x - b.x, a.y - b.y);
+        const z = Math.max(12, Math.min(80, Math.round(combatUi.pinch.zoom * (d / combatUi.pinch.d))));
+        if (z !== combatUi.zoom) { combatUi.zoom = z; drawCombat(mesaId); }
+        return;
+      }
+      if (!e.target.closest('[data-combat-canvas]')) return;
+      if (tap && Math.hypot(e.clientX - tap.x, e.clientY - tap.y) > 8) tap = null;
+      const cell = cellFromPoint(e.clientX, e.clientY);
+      if (master && (combatUi.brush || combatUi.placing)) {
+        const prev = combatUi.hover;
+        combatUi.hover = cell;
+        if (combatUi.painting && cell && paint(cell)) { drawCombat(mesaId); combatSaveMapSoon(mesaId); return; }
+        if (!prev || !cell || prev.x !== cell.x || prev.y !== cell.y) drawCombat(mesaId);
+        return;
+      }
+      // Prévia da área ao passar o mouse durante a mira.
+      const act = combatUi.act;
+      if (act && act.step === 'target' && act.opt.combat.forma !== 'alvo' && cell && e.pointerType === 'mouse') {
+        const cb = combatOf(mesaId);
+        const actor = cb && cb.pieces.find((p) => p.id === act.actor);
+        if (actor && (act.opt.combat.alcance === 0 || pieceDistToCell(actor, cell.x, cell.y) <= act.opt.combat.alcance)) {
+          act.preview = areaCells(cb, actor, act.opt.combat, cell.x, cell.y);
+          drawCombat(mesaId);
+        }
+      }
+    });
+    const endPointer = (e) => {
+      combatUi.pointers.delete(e.pointerId);
+      if (combatUi.pointers.size < 2) combatUi.pinch = null;
+      combatUi.painting = false;
+    };
+    root.addEventListener('pointerup', (e) => {
+      const wasTap = tap && tap.id === e.pointerId && Math.hypot(e.clientX - tap.x, e.clientY - tap.y) <= 8;
+      endPointer(e);
+      if (!wasTap) { tap = null; return; }
+      tap = null;
+      handleTap(cellFromPoint(e.clientX, e.clientY));
+    });
+    root.addEventListener('pointercancel', (e) => { tap = null; endPointer(e); });
+    root.addEventListener('pointerleave', (e) => { if (e.target.closest && e.target.closest('[data-combat-canvas]') && combatUi.hover) { combatUi.hover = null; drawCombat(mesaId); } });
+    root.addEventListener('wheel', (e) => {
+      if (!e.target.closest('[data-combat-canvas]') || !(e.ctrlKey || e.metaKey)) return;
+      e.preventDefault();
+      combatUi.zoom = Math.max(12, Math.min(80, combatUi.zoom + (e.deltaY < 0 ? 3 : -3)));
+      drawCombat(mesaId);
+    }, { passive: false });
+
+    const handleTap = (cell) => {
+      const cb = combatOf(mesaId);
+      if (!cb || !cell) return;
+      if (combatUi.act && combatUi.act.step === 'target') { aimAt(cell); return; }
+      if (combatUi.placing && master) {
+        const p = cb.pieces.find((x) => x.id === combatUi.placing);
+        combatUi.placing = '';
+        combatUi.hover = null;
+        if (p && pieceFits(cb, p, cell.x, cell.y)) combatSetPieces(mesaId, (list) => { const t = list.find((x) => x.id === p.id); if (t) { t.x = cell.x; t.y = cell.y; } });
+        else { toast('A peça não cabe aí.'); renderCombatAll(mesaId); }
+        return;
+      }
+      const vis = visibleCellsFor(cb, mesa);
+      const piece = pieceAtCell(cb, cell.x, cell.y, (p) => pieceSeenBy(mesa, cb, p, vis));
+      if (combatUi.selected && (!piece || piece.id === combatUi.selected)) {
+        if (piece && piece.id === combatUi.selected) { selectPiece(null); return; }
+        tryMove(cell);
+        return;
+      }
+      if (piece && canControl(mesa, piece)) selectPiece(piece);
+      else if (piece) toast(piece.name);
+    };
+
+    const startAction = (mode, fixedTarget) => {
+      const cb = combatOf(mesaId);
+      let actor;
+      if (mode === 'oportunidade') actor = cb.pieces.find((p) => p.id === fixedTarget.by);
+      else actor = currentTurnPiece(cb);
+      if (!actor || !canControl(mesa, actor)) return;
+      combatUi.selected = ''; combatUi.reach = null; combatUi.brush = '';
+      const turnMode = mode === 'oportunidade' ? 'oportunidade' : ((cb.turn.actions ?? 1) > 0 ? 'acao' : 'extra');
+      combatUi.act = { actor: actor.id, step: 'pick', mode: turnMode, targets: [], preview: [], fixedTarget: fixedTarget ? fixedTarget.target : '' };
+      renderCombatAll(mesaId);
+    };
+
+    root.addEventListener('click', async (e) => {
+      const t = e.target;
+      const hit = (sel) => t.closest(sel);
+      const cb = combatOf(mesaId);
+      let el;
+      if ((el = hit('[data-combat-view-set]'))) { combatUi.view = el.dataset.combatViewSet; renderCombatStage(mesaId); fitChatHeight(); return; }
+      if ((el = hit('[data-combat-zoom]'))) {
+        combatUi.zoom = Math.max(12, Math.min(80, combatUi.zoom + Number(el.dataset.combatZoom) * 6));
+        drawCombat(mesaId); return;
+      }
+      if (hit('[data-combat-fit]')) { fitCombatZoom(mesaId, true); drawCombat(mesaId); return; }
+      if (hit('[data-combat-new]')) { createCombat(mesa); return; }
+      if (!cb) return;
+
+      // Folha de ação.
+      const act = combatUi.act;
+      if (hit('[data-act-cancel]')) { combatUi.act = null; renderCombatAll(mesaId); return; }
+      if (act && hit('[data-act-back]')) { act.step = 'pick'; act.targets = []; act.preview = []; act.warn = ''; renderCombatAll(mesaId); return; }
+      if (act && (el = hit('[data-act-pick]'))) {
+        const actor = cb.pieces.find((p) => p.id === act.actor);
+        const opt = combatActionOptions(mesa, actor).find((o) => o.id === el.dataset.actPick);
+        if (!opt) return;
+        act.opt = opt;
+        if (opt.combat.acao === 'livre' && act.mode !== 'oportunidade') act.mode = 'livre';
+        act.step = 'target';
+        act.targets = []; act.preview = []; act.warn = '';
+        act.halved = !!(opt.weapon && opt.combat.alcance > 1 && engagedInMelee(cb, actor));
+        if (opt.combat.alvos === 'proprio' && opt.combat.forma === 'alvo') act.targets = [actor.id];
+        if (opt.combat.forma === 'cena') aimAt({ x: actor.x, y: actor.y });
+        if (act.fixedTarget) {
+          const target = cb.pieces.find((p) => p.id === act.fixedTarget);
+          if (target) aimAt({ x: target.x, y: target.y });
+        }
+        if (opt.cost && opt.cost.valor) {
+          const pool = opt.cost.unidade === 'MP' ? actor.mp : hpTotals(actor);
+          if (pool && pool.cur < opt.cost.valor) act.warn = `Custa ${opt.cost.valor} ${opt.cost.unidade} e ${actor.name} tem ${pool.cur}.`;
+        }
+        renderCombatAll(mesaId); return;
+      }
+      if (act && hit('[data-act-confirm]')) {
+        if (!act.targets.length) return;
+        if (act.opt.combat.uso === 'ataque') performAttackRoll(cb, act);
+        else {
+          act.roll = null;
+          act.results = act.targets.map((id) => ({ target: id, hit: true, da: 0, part: '' }));
+          act.needsDamage = act.opt.combat.dano.length > 0;
+          act.step = 'result';
+          if (!act.needsDamage) { await applyCombatAction(mesa, cb, act, false); return; }
+        }
+        renderCombatAll(mesaId); return;
+      }
+      if (act && hit('[data-act-damage]')) { await applyCombatAction(mesa, cb, act, true); return; }
+      if (act && hit('[data-act-apply]')) { await applyCombatAction(mesa, cb, act, false); return; }
+
+      if (hit('[data-combat-act]')) { startAction('turno'); return; }
+      if ((el = hit('[data-combat-oa]'))) { startAction('oportunidade', { by: el.dataset.combatOa, target: el.dataset.oaTarget }); return; }
+      if ((el = hit('[data-combat-oa-skip]'))) { combatRpc(mesaId, 'combate_acao', { p_id: cb.id, p_actor: el.dataset.combatOaSkip, p_mode: 'recusar', p_updates: [] }); return; }
+      if (hit('[data-combat-endturn]')) { combatUi.selected = ''; combatUi.reach = null; combatUi.act = null; combatRpc(mesaId, 'combate_fim_turno', { p_id: cb.id }); return; }
+      if (hit('[data-combat-dash]')) {
+        const ok = await combatRpc(mesaId, 'combate_correr', { p_id: cb.id });
+        const fresh = combatOf(mesaId); const p = currentTurnPiece(fresh);
+        if (ok && p) { combatUi.selected = p.id; combatUi.reach = reachableCells(fresh, p, fresh.turn.moveLeft); renderCombatAll(mesaId); }
+        return;
+      }
+      if (hit('[data-combat-roll-init]')) {
+        const mine = cb.pieces.filter((p) => p.owner === auth.user?.id && !p.initRoll && placed(p));
+        for (const p of mine) {
+          const roll = randomInt(100);
+          const da = p.da || rollDaFor(p);
+          const { error } = await sb.rpc('combate_iniciativa', { p_id: cb.id, p_piece: p.id, p_roll: roll, p_da: da });
+          if (error) { toast(error.message); continue; }
+          combatChat(mesa, p, { event: 'iniciativa' }, `${p.name} rolou iniciativa **${roll + (Number(p.initBonus) || 0)}** e DA **${da}**.`);
+        }
+        await loadMesaCombat(mesaId); renderCombatAll(mesaId); return;
+      }
+      if (!master) return;
+      if (hit('[data-combat-call]')) { combatUi.brush = ''; callInitiative(mesa); return; }
+      if (hit('[data-combat-rounds]')) { startRounds(mesa); return; }
+      if (hit('[data-combat-close]')) {
+        const prep = cb.status === 'preparando';
+        if (!confirm(prep ? 'Descartar este combate? O mapa e as peças serão apagados.' : 'Encerrar o combate? O grid some para todos.')) return;
+        combatUi.selected = ''; combatUi.reach = null; combatUi.brush = ''; combatUi.act = null;
+        if (prep) {
+          const { error } = await sb.from('mesa_combates').delete().eq('id', cb.id);
+          if (error) { toast(error.message); return; }
+        } else {
+          if (confirm('Levar o HP e o MP de agora para as fichas e NPCs da mesa?')) await syncCombatToSheets(mesa, cb);
+          await combatUpdate(mesaId, { status: 'encerrado' });
+          combatChat(mesa, null, { event: 'fim' }, 'O combate terminou.');
+        }
+        MESA_COMBATS[mesaId] = null;
+        renderCombatAll(mesaId);
+        return;
+      }
+      if ((el = hit('[data-combat-brush]'))) {
+        combatUi.brush = combatUi.brush === el.dataset.combatBrush ? '' : el.dataset.combatBrush;
+        combatUi.selected = ''; combatUi.reach = null; combatUi.view = 'grid'; combatUi.placing = '';
+        renderCombatAll(mesaId); return;
+      }
+      if ((el = hit('[data-combat-fill]'))) {
+        const n = cb.map.w * cb.map.h;
+        const map = { ...cb.map };
+        if (el.dataset.combatFill === 'chao') map.cells = map.cells.split('').map((c) => (c === ' ' ? '0' : c)).join('');
+        if (el.dataset.combatFill === 'revelar') map.revealed = '1'.repeat(n);
+        if (el.dataset.combatFill === 'esconder') map.revealed = '0'.repeat(n);
+        combatUpdate(mesaId, { map }); return;
+      }
+      if (hit('[data-combat-resize]')) {
+        const panel = hit('.combat-sec__body');
+        const w = Math.max(4, Math.min(COMBAT_MAX_SIDE, parseInt(panel.querySelector('[data-combat-w]').value, 10) || cb.map.w));
+        const h = Math.max(4, Math.min(COMBAT_MAX_SIDE, parseInt(panel.querySelector('[data-combat-h]').value, 10) || cb.map.h));
+        const resize = (str, fill) => {
+          let out = '';
+          for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) out += (x < cb.map.w && y < cb.map.h) ? str[y * cb.map.w + x] : fill;
+          return out;
+        };
+        const map = { ...cb.map, w, h, cells: resize(cb.map.cells, ' '), revealed: resize(cb.map.revealed, '0') };
+        const pieces = cb.pieces.map((p) => (placed(p) && (p.x + pieceSize(p) > w || p.y + pieceSize(p) > h) ? { ...p, x: null, y: null } : p));
+        combatUpdate(mesaId, { map, pieces }); return;
+      }
+      if (hit('[data-dungeon-go]')) {
+        const panel = hit('.combat-sec__body');
+        const hasMap = /[012]/.test(cb.map.cells);
+        if (hasMap && !confirm('Gerar uma masmorra nova troca o mapa atual. Continuar?')) return;
+        const seed = (panel.querySelector('[data-dungeon-seed]').value || '').trim() || Math.random().toString(36).slice(2, 8);
+        const g = generateDungeon(panel.querySelector('[data-dungeon-size]').value, seed, panel.querySelector('[data-dungeon-rubble]').checked);
+        const map = { ...cb.map, w: g.w, h: g.h, cells: g.cells, revealed: '0'.repeat(g.w * g.h), seed };
+        combatUi.fitted = '';
+        combatUpdate(mesaId, { map, pieces: cb.pieces.map((p) => ({ ...p, x: null, y: null })) });
+        toast(`Masmorra gerada (semente ${seed}). Ponha as peças de novo.`);
+        return;
+      }
+      if (hit('[data-bg-reset]')) { combatUpdate(mesaId, { map: { ...cb.map, bg: { ...cb.map.bg, x: 0, y: 0, scale: 100 } } }); return; }
+      if (hit('[data-combat-add]')) {
+        const key = root.querySelector('[data-combat-source]')?.value;
+        const p = key && makeCombatPiece(mesa, key);
+        if (!p) return;
+        combatUi.selected = p.id;
+        combatUi.placing = p.id;
+        combatUi.brush = '';
+        combatUi.view = 'grid';
+        combatSetPieces(mesaId, (list) => list.push(p));
+        return;
+      }
+      if ((el = hit('[data-combat-select]'))) {
+        const p = cb.pieces.find((x) => x.id === el.dataset.combatSelect);
+        combatUi.brush = '';
+        selectPiece(combatUi.selected === (p && p.id) ? null : p); return;
+      }
+      if (hit('[data-combat-deselect]')) { selectPiece(null); return; }
+      const editor = hit('[data-combat-piece]');
+      if (editor) {
+        const id = editor.dataset.combatPiece;
+        if (hit('[data-combat-place]')) { combatUi.placing = id; combatUi.brush = ''; combatUi.view = 'grid'; renderCombatAll(mesaId); return; }
+        if (hit('[data-combat-unplace]')) { combatSetPieces(mesaId, (list) => { const p = list.find((x) => x.id === id); if (p) { p.x = null; p.y = null; } }); return; }
+        if ((el = hit('[data-cp-rmfx]'))) { combatSetPieces(mesaId, (list) => { const p = list.find((x) => x.id === id); if (p) p.effects = (p.effects || []).filter((_, i) => i !== Number(el.dataset.cpRmfx)); }); return; }
+        if ((el = hit('[data-cp-rmmod]'))) { combatSetPieces(mesaId, (list) => { const p = list.find((x) => x.id === id); if (p) p.mods = (p.mods || []).filter((_, i) => i !== Number(el.dataset.cpRmmod)); }); return; }
+        if (hit('[data-combat-remove]')) {
+          combatUi.selected = ''; combatUi.reach = null;
+          const turn = cb.turn || {};
+          const order = (turn.order || []).filter((x) => x !== id);
+          combatUpdate(mesaId, { pieces: cb.pieces.filter((p) => p.id !== id), turn: { ...turn, order, index: Math.min(turn.index || 0, Math.max(0, order.length - 1)) } });
+        }
+      }
+    });
+
+    root.addEventListener('change', (e) => {
+      const t = e.target;
+      if (t.matches('[data-act-part]') && combatUi.act && combatUi.act.results) {
+        const res = combatUi.act.results.find((r) => r.target === t.dataset.actPart);
+        if (res) res.part = t.value;
+        return;
+      }
+      if (!master) return;
+      const cb = combatOf(mesaId);
+      if (!cb) return;
+      if (t.matches('[data-combat-fog]')) { combatUpdate(mesaId, { map: { ...cb.map, fog: t.value } }); return; }
+      if (t.matches('[data-combat-vision]')) { combatUpdate(mesaId, { map: { ...cb.map, vision: Math.max(1, Math.min(60, parseInt(t.value, 10) || 12)) } }); return; }
+      if (t.matches('[data-combat-bg]')) {
+        const img = (MESA_IMAGES[mesaId] || []).find((x) => x.id === t.value);
+        combatUpdate(mesaId, { map: { ...cb.map, bg: img ? { url: img.url, path: img.path || '', title: img.title || '', x: 0, y: 0, scale: 100, opacity: 100 } : null } });
+        return;
+      }
+      if (t.matches('[data-bg]') && cb.map.bg) {
+        const v = parseFloat(t.value);
+        combatUpdate(mesaId, { map: { ...cb.map, bg: { ...cb.map.bg, [t.dataset.bg]: Number.isFinite(v) ? v : 0 } } });
+        return;
+      }
+      const editor = t.closest('[data-combat-piece]');
+      if (!editor) return;
+      const id = editor.dataset.combatPiece;
+      if (t.matches('[data-cp-hp]') || t.matches('[data-cp-mp]')) {
+        combatSetPieces(mesaId, (list) => {
+          const p = list.find((x) => x.id === id);
+          if (!p) return;
+          const v = Math.max(0, parseInt(t.value, 10) || 0);
+          if (t.matches('[data-cp-mp]') && p.mp) p.mp = { ...p.mp, cur: Math.min(p.mp.max, v) };
+          else if (p.hp && p.hp[t.dataset.cpHp]) { p.hp = { ...p.hp, [t.dataset.cpHp]: { ...p.hp[t.dataset.cpHp], cur: Math.min(p.hp[t.dataset.cpHp].max, v) } }; }
+          const tot = hpTotals(p);
+          if (tot && tot.cur <= 0) p.down = true;
+        });
+        return;
+      }
+      const field = t.dataset.cp;
+      if (!field) return;
+      combatSetPieces(mesaId, (list) => {
+        const p = list.find((x) => x.id === id);
+        if (!p) return;
+        if (t.type === 'checkbox') p[field] = t.checked;
+        else if (field === 'initRoll') { const v = parseInt(t.value, 10); if (v >= 1 && v <= 100) p.initRoll = v; else delete p.initRoll; }
+        else if (field === 'da') { const v = parseInt(t.value, 10); if (v > 0) p.da = v; else delete p.da; }
+        else p[field] = parseInt(t.value, 10) || 0;
+        if (field === 'size' && placed(p) && !pieceFits({ ...cb, pieces: list }, p, p.x, p.y)) { p.x = null; p.y = null; toast('A peça não coube. Ponha de novo no mapa.'); }
+      });
+    });
+
+    if (!combatUi.resizeBound) {
+      combatUi.resizeBound = true;
+      window.addEventListener('resize', () => { const id = chatState.mesaId; if (id && combatOf(id)) { combatUi.fitted = ''; drawCombat(id); } });
+    }
+  }
+
+  /* Fim do combate: HP e MP voltam para as fichas e NPCs da mesa. */
+  async function syncCombatToSheets(mesa, cb) {
+    let failed = 0;
+    for (const p of cb.pieces) {
+      try {
+        if (p.kind === 'char') {
+          const c = CHARACTERS.find((x) => x.id === p.ref);
+          if (!c) continue;
+          const v = ensureVitals(c);
+          Object.entries(p.hp || {}).forEach(([part, slot]) => { if (v.hp[part]) v.hp[part].cur = Math.min(v.hp[part].max, slot.cur); });
+          if (p.mp && v.mana) v.mana.cur = Math.min(v.mana.max, p.mp.cur);
+          await persistCharacterState(c);
+        } else if (p.kind === 'npc') {
+          const n = (MESA_NPCS[mesa.id] || []).find((x) => x.id === p.ref);
+          const tot = hpTotals(p);
+          if (!n || !tot) continue;
+          const combat = { ...npcCombat(n), cur: tot.cur };
+          const { error } = await sb.from('mesa_npcs').update({ combat }).eq('id', n.id);
+          if (error) throw error;
+          n.combat = combat;
+        }
+      } catch (err) { failed++; console.error(err); }
+    }
+    if (failed) toast(`${failed} ficha(s) não foram atualizadas.`);
+  }
+
+  /* Tempo real: chamado pelo canal da mesa. */
+  function onCombatChange(mesaId, payload) {
+    if (payload.eventType === 'DELETE') {
+      const cur = MESA_COMBATS[mesaId];
+      if (cur && payload.old && payload.old.id === cur.id) MESA_COMBATS[mesaId] = null;
+    } else if (payload.new) {
+      const row = normalizeCombatRow(payload.new);
+      MESA_COMBATS[mesaId] = row.status === 'encerrado' ? null : row;
+    }
+    const cb = combatOf(mesaId);
+    if (cb && combatUi.selected) {
+      const p = cb.pieces.find((x) => x.id === combatUi.selected);
+      const turn = currentTurnPiece(cb);
+      combatUi.reach = (p && turn && turn.id === p.id && placed(p)) ? reachableCells(cb, p, cb.turn.moveLeft || 0) : null;
+    }
+    renderCombatAll(mesaId);
+  }
+
   function mesaChatPanel(mesa) {
     const observer = mesa.role === 'observador';
     const speaker = currentSpeaker(mesa);
@@ -6809,10 +9181,12 @@
     return `
       <section class="chat ${observer ? 'chat--observer' : ''}" data-chat="${escapeHtml(mesa.id)}">
         <div class="chat__main">
-          <div class="chat__presence" data-chat-presence></div>
+          <div class="chat__presence" data-chat-presence><strong class="chat-presence__mesa">${escapeHtml(mesa.name)}</strong></div>
+          <div class="combat-viewtoggle" data-combat-view hidden></div>
+          <div class="combat-stage" data-combat-stage hidden></div>
           <ol class="chat__log" data-mesa-chat-log="${escapeHtml(mesa.id)}" aria-live="polite">${chatLogHTML(mesa.id)}</ol>
           <p class="chat__typing" data-chat-typing aria-live="polite"></p>
-          ${observer ? '<p class="chat__observer">Observando como Platina.</p>' : `
+          ${observer ? '<p class="chat__observer">Observando como Platina. <a class="chat-link" href="#/Mesas">Voltar às mesas</a></p>' : `
           <form class="chat__composer" id="mesaChatForm" data-mesa-id="${escapeHtml(mesa.id)}">
             <ul class="chat__commands" data-chat-commands hidden>
               ${CHAT_COMMANDS.filter((c) => master || !c.master).map((c) => `<li><button type="button" data-chat-command="${c.cmd} "><code>${escapeHtml(c.example)}</code><span>${escapeHtml(c.hint)}</span></button></li>`).join('')}
@@ -7045,6 +9419,7 @@
   }
 
   function messagePreview(msg) {
+    if (msg.kind === 'combate') return msg.data && msg.data.action ? `usou ${msg.data.action}` : 'combate';
     if (msg.kind === 'rolagem') return msg.data && msg.data.secret ? 'rolou dados em segredo' : `rolou ${msg.data?.expr || 'dados'}`;
     if (msg.kind === 'imagem') return 'enviou uma imagem';
     if (msg.kind === 'cena') return `abriu a cena ${msg.data?.title || ''}`.trim();
@@ -7247,6 +9622,7 @@
         renderChatPresence();
         chatState.renderTool?.('iniciativa');
       })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'mesa_combates', filter }, (payload) => onCombatChange(mesaId, payload))
       .on('presence', { event: 'sync' }, () => {
         const state = mesaChannel?.presenceState ? mesaChannel.presenceState() : {};
         const names = new Map();
@@ -7273,7 +9649,8 @@
     const others = chatState.online.filter(([id]) => id !== auth.user?.id);
     const ini = mesaInitiative(chatState.mesaId);
     const turn = ini.entries[ini.turn];
-    box.innerHTML = `${chatState.online.length
+    const mesa = mesaById(chatState.mesaId);
+    box.innerHTML = `${mesa ? `<strong class="chat-presence__mesa">${escapeHtml(mesa.name)}</strong>` : ''}${chatState.online.length
       ? `<span class="chat-presence__dot" aria-hidden="true"></span><span>${chatState.online.length === 1 ? 'Só você aqui' : chatState.online.map(([, n]) => escapeHtml(n)).join(', ')}</span>`
       : ''}${turn ? `<span class="chat-presence__turn" style="--who:${turn.color || 'inherit'}">Rodada ${ini.round} · vez de <b>${escapeHtml(turn.name)}</b></span>` : ''}`;
     box.classList.toggle('is-alone', !others.length);
@@ -7428,6 +9805,7 @@
     }
     subscribeMesaChat(mesaId);
     renderChatPresence();
+    attachCombat(root, mesa);
     cleanupExpiredChatImages(mesaId).then(() => {
       (MESA_MESSAGES[mesaId] || []).filter((m) => m.kind === 'imagem').forEach((m) => rerenderChatMessage(mesaId, m.id));
     });
@@ -8641,6 +11019,25 @@
     };
   }
 
+  /* Movimento (regra Combate em Grid): Deslocamento da raça + 1q por dado de
+     Destreza além do primeiro. 1 quadrado = 1 metro. */
+  function raceDisplacementOf(raceId) {
+    const race = raceDataFor(raceId).race;
+    const m = String(((race && race.fields) || {}).Deslocamento || '').match(/\d+/);
+    return m ? Math.max(0, parseInt(m[0], 10)) : 1;
+  }
+  function computedMovementFor(raceId, dexDice) {
+    return raceDisplacementOf(raceId) + Math.max(0, (Number(dexDice) || 1) - 1);
+  }
+  function movementTyped(c) {
+    const idn = (c && c.identity) || {};
+    return String(idn.movement || idn.movimento || '').trim();
+  }
+  function movementLabelOf(c, A) {
+    const dex = A && A.Destreza ? A.Destreza.dice : 1;
+    return movementTyped(c) || `${computedMovementFor(c && c.raceId, dex)}m`;
+  }
+
   function characterHpFormHTML(values) {
     const data = values || {};
     const parts = hpPartKeys(data);
@@ -9174,7 +11571,7 @@
     const hpMax = hpParts.reduce((s, p) => s + (Number(v.hp[p].max) || 0), 0);
     const initDice = A['Destreza'] ? A['Destreza'].dice : 1;
     const level = Math.max(1, Number(idn.level || c.level) || 1);
-    const movement = String(idn.movement || idn.movimento || '9m').trim() || '9m';
+    const movement = movementLabelOf(c, A);
     const daAttr = daAttrOf(c);
     const daState = daStateOf(c);
     const playerName = (idn.ownerLabel || (auth.user && c.userId === auth.user.id ? (auth.user.name || auth.user.email) : '')) || '—';
@@ -9415,7 +11812,7 @@
     const hpCur = hpParts.reduce((sum, part) => sum + (Number(v.hp[part].cur) || 0), 0);
     const hpMax = hpParts.reduce((sum, part) => sum + (Number(v.hp[part].max) || 0), 0);
     const level = Math.max(1, Number(idn.level || c.level) || 1);
-    const movement = String(idn.movement || idn.movimento || '9m').trim() || '9m';
+    const movement = movementLabelOf(c, A);
     const daAttr = daAttrOf(c);
     const daState = daStateOf(c);
     const daDice = A[daAttr] ? A[daAttr].dice : 1;
@@ -9652,7 +12049,7 @@
                   <label class="dossier-field"><span>Raça</span><select id="charRace" class="create-form__input char-select"><option value="">— Sem raça —</option>${races.map((r) => `<option value="${escapeHtml(r.id)}" ${r.id === selectedRaceId ? 'selected' : ''}>${escapeHtml(r.title)}</option>`).join('')}</select></label>
                   <div class="dossier-field char-color-field"><span>Cor primária</span><span class="char-color"><input type="color" id="charColor" value="${escapeHtml(safeChatColor(idn.chatColor, c.id || c.name || 'nova'))}" aria-label="Cor primária">${CHAT_COLORS.map((col) => `<button type="button" class="char-color__swatch" data-char-color="${col}" style="--swatch:${col}" aria-label="Usar ${col}"></button>`).join('')}</span><small>Cor do nome e das ações no chat.</small></div>
                   <label class="dossier-field"><span>Nível</span><input type="number" id="charLevel" class="create-form__input" min="1" max="99" value="${escapeHtml(String(idn.level || 1))}"></label>
-                  <label class="dossier-field"><span>Movimento</span><input type="text" id="charMovement" class="create-form__input" maxlength="20" value="${escapeHtml(idn.movement || idn.movimento || '9m')}" placeholder="9m"></label>
+                  <label class="dossier-field"><span>Movimento</span><input type="text" id="charMovement" class="create-form__input" maxlength="20" value="${escapeHtml(movementTyped(c))}" placeholder="${escapeHtml(`${computedMovementFor(selectedRaceId, attrDiceForScore((c.attributes && c.attributes.Destreza) || CHAR_ATTR_BASE, raceDataFor(selectedRaceId).mod.Destreza))}m`)}"><small>Vazio = calculado pela raça e pela Destreza.</small></label>
                   <label class="dossier-field char-create__wide"><span>Papel</span><input type="text" id="charPapel" class="create-form__input" maxlength="160" value="${escapeHtml(idn.papel || '')}" placeholder="Ex.: Mercenária errante"></label>
                   <label class="dossier-field"><span>Desejo</span><input type="text" id="charDesejo" class="create-form__input" maxlength="160" value="${escapeHtml(idn.desejo || '')}" placeholder="O que persegue"></label>
                   <label class="dossier-field"><span>Ferida</span><input type="text" id="charFerida" class="create-form__input" maxlength="160" value="${escapeHtml(idn.ferida || '')}" placeholder="O que carrega"></label>
@@ -9955,17 +12352,33 @@
       ['Duração', ability.duration],
       ['Limite', ability.limit]
     ].filter(([, value]) => value);
-    if (!rows.length) return '';
+    const combat = combatOfAbility(ability);
+    const combatRead = combat.combat ? combatBadgeHTML(combat.combat, { useForm: combat.useForm }) : '';
+    if (!rows.length && !combatRead) return '';
     return `
-      <dl class="ability-modal__meta">
+      ${rows.length ? `<dl class="ability-modal__meta">
         ${rows.map(([label, value]) => `
           <div>
             <dt>${escapeHtml(label)}</dt>
             <dd>${escapeHtml(value)}</dd>
           </div>
         `).join('')}
-      </dl>
+      </dl>` : ''}
+      ${combatRead ? `<div class="combat-read">${combatRead}${combat.derived ? '<small class="combat-read__note">Lido do texto. Ao editar a besta, o Mestre confirma e salva.</small>' : ''}</div>` : ''}
     `;
+  }
+
+  /* Uso em combate de uma habilidade de besta: a magia vinculada manda. */
+  function combatOfAbility(ability) {
+    const a = ability || {};
+    if (a.source === 'magic' && a.refId) {
+      const linked = entryById(a.refId);
+      if (linked) return { ...combatOfEntry(linked), useForm: (linked.fields || {})['Forma de Uso'] || '' };
+    }
+    const saved = normalizeCombat(a.combat);
+    if (saved) return { combat: saved, derived: false, doubts: [] };
+    const r = combatFromBeastAbility(a);
+    return { combat: r.combat, derived: true, doubts: r.doubts };
   }
 
   function openBeastAbilityModal(ability) {
@@ -10582,6 +12995,11 @@
 
     let current = (subtype && ITEM_SUBTYPES[subtype]) ? subtype : ITEM_SUBTYPE_KEYS[0];
     let extraFields = itemExtraFieldsForForm(fields);
+    /* Uso em combate: o salvo, ou o convertido do texto ao editar um item antigo. */
+    let combat = normalizeCombat(fields && fields.Combate);
+    if (!combat && fields && Object.keys(fields).length) {
+      combat = combatFromItem(fields, current).combat;
+    }
     const cache = {};
     Object.keys(ITEM_SUBTYPES).forEach((k) => {
       cache[k] = {};
@@ -10633,6 +13051,8 @@
         if (cache[current]) cache[current][k] = readValue(el);
       });
       extraFields = readExtraFieldsFromDOM();
+      const combatRoot = wrap.querySelector('[data-combat-form]');
+      if (combatRoot) combat = readCombatForm(combatRoot);
     }
 
     function usedFieldKeys() {
@@ -10789,6 +13209,7 @@
           ${fields.map(fieldHTML).join('')}
         </div>
         ${extraFieldsHTML()}
+        ${current === 'item' ? '' : combatFormHTML(combat || { uso: 'nenhum' }, 'item')}
       `;
     }
 
@@ -10875,8 +13296,10 @@
         });
         const extras = readExtraFieldsFromDOM();
         if (extras.length) out.Campos = extras;
+        if (current !== 'item' && combat) out.Combate = combat;
         return out;
-      }
+      },
+      getCombatErrors: () => combatFormErrors(wrap.querySelector('[data-combat-form]'))
     };
   }
 
@@ -11280,6 +13703,10 @@
         </div>
         <textarea class="create-form__input beast-ability-row__effect" data-beast-ability-effect rows="2" placeholder="Efeito completo da habilidade" maxlength="700">${escapeHtml(a.effect)}</textarea>
         <input type="text" class="create-form__input" data-beast-ability-limit value="${escapeHtml(a.limit)}" placeholder="Limite / recarga / observação" maxlength="160">
+        <details class="combat-details" data-beast-ability-combat ${a.source === 'magic' ? 'hidden' : ''}>
+          <summary>Uso em combate${a.combat ? '' : ' <small>convertido do texto, revise</small>'}</summary>
+          ${combatFormHTML(a.combat || combatFromBeastAbility(a).combat || { uso: 'nenhum' }, 'habilidade', { compact: true })}
+        </details>
       </div>
     `;
   }
@@ -11444,7 +13871,8 @@
             duration: (row.querySelector('[data-beast-ability-duration]')?.value || '').trim(),
             effect: (row.querySelector('[data-beast-ability-effect]')?.value || '').trim(),
             limit: (row.querySelector('[data-beast-ability-limit]')?.value || '').trim(),
-            summary: (linked && linked.summary) || row.dataset.abilitySummary || ''
+            summary: (linked && linked.summary) || row.dataset.abilitySummary || '',
+            combat: source === 'magic' ? null : readCombatForm(row.querySelector('[data-combat-form]'))
           };
           if (ability.source === 'magic' && !ability.refId) return null;
           if (ability.source === 'custom' && !ability.name && !ability.effect) return null;
@@ -11478,6 +13906,8 @@
       const name = row.querySelector('[data-beast-ability-name]');
       if (codex) codex.hidden = source !== 'magic';
       if (name) name.hidden = source === 'magic';
+      const combatBox = row.querySelector('[data-beast-ability-combat]');
+      if (combatBox) combatBox.hidden = source === 'magic';
     }
 
     function addItemFrom(input) {
@@ -12407,6 +14837,13 @@
       const subtype = dossier.getSubtype();
       const fields = dossier.getFields();
 
+      const combatBad = dossier.getCombatErrors ? dossier.getCombatErrors() : [];
+      if (combatBad.length) {
+        combatBad[0].focus();
+        toast('Escreva os dados de dano no formato 3d6.');
+        return;
+      }
+
       if (tabId === 'Historias' && !fields.Era) {
         const eraSelect = document.getElementById('narrativeEra');
         eraSelect?.classList.add('is-invalid');
@@ -12643,6 +15080,11 @@
       else if (raceMod) { tag.textContent = `${raceMod > 0 ? '+' : ''}${raceMod}d6 raca`; }
       else { tag.textContent = ''; }
       tag.className = tagClass;
+      if (row.dataset.attr === 'Destreza') {
+        const mv = document.getElementById('charMovement');
+        const race = document.getElementById('charRace');
+        if (mv) mv.placeholder = `${computedMovementFor(race ? race.value : '', dice)}m`;
+      }
     }
     function syncAll() {
       const rem = remaining();
@@ -13288,7 +15730,7 @@
           ...(existing?.identity || {}),
           level: Math.max(1, parseInt(levelInput && levelInput.value, 10) || 1),
           chatColor: (document.getElementById('charColor')?.value || existing?.identity?.chatColor || ''),
-          movement: (movementInput && movementInput.value.trim()) || '9m',
+          movement: (movementInput && movementInput.value.trim()) || '',
           daAttr: CHAR_ATTRIBUTES.includes(daAttrInput && daAttrInput.value) ? daAttrInput.value : 'Destreza',
           papel: document.getElementById('charPapel').value.trim(),
           desejo: document.getElementById('charDesejo').value.trim(),
@@ -14165,6 +16607,7 @@
   /* ── INIT ─────────────────────────────────────── */
   async function init() {
     bindEvents();
+    bindCombatForms();
 
     const topbar = document.querySelector('.topbar');
     window.addEventListener('scroll', () => {
